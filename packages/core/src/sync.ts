@@ -4,12 +4,21 @@ import { getAdapter } from "./adapters.js";
 import { copyDir, ensureDir, fileExists } from "./fs.js";
 import { writeManagedIndex } from "./indexes.js";
 import type { CatalogSkill, SkillctlCatalog, SkillctlConfig, SyncResult } from "./types.js";
+import { syncViaSkillsCli } from "./transport.js";
 
 function managedInstallSet(catalog: SkillctlCatalog, agent: CatalogSkill["targets"][number]): CatalogSkill[] {
   return catalog.skills.filter((skill) => skill.managed && skill.targets.includes(agent));
 }
 
 export async function syncCatalog(repoRoot: string, config: SkillctlConfig, catalog: SkillctlCatalog): Promise<SyncResult> {
+  if (config.transport.mode === "skills-cli") {
+    const result = await syncViaSkillsCli(repoRoot, config, catalog);
+    for (const agent of config.enabledAdapters) {
+      await writeManagedIndex(config.stateDir!, agent, managedInstallSet(catalog, agent));
+    }
+    return result;
+  }
+
   const copied: SyncResult["copied"] = [];
   const skipped: SyncResult["skipped"] = [];
   const managedIndexesUpdated: SyncResult["managedIndexesUpdated"] = [];

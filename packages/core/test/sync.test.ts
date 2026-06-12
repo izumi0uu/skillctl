@@ -48,6 +48,11 @@ describe("sync and prune", () => {
       enabledAdapters: ["codex"],
       excludeSkills: [],
       liveProbePolicy: "off",
+      transport: {
+        mode: "copy-fallback",
+        command: "npx",
+        args: ["--yes", "skills"],
+      },
       stateDir: path.join(repoRoot, ".skillctl-local"),
     };
 
@@ -83,6 +88,11 @@ describe("sync and prune", () => {
       enabledAdapters: ["codex"],
       excludeSkills: [],
       liveProbePolicy: "off",
+      transport: {
+        mode: "copy-fallback",
+        command: "npx",
+        args: ["--yes", "skills"],
+      },
       stateDir: path.join(repoRoot, ".skillctl-local"),
     };
     const catalog: SkillctlCatalog = { version: 1, generatedBy: "test", skills: [] };

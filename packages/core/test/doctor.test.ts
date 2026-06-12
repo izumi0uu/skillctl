@@ -36,6 +36,11 @@ describe("doctor and repair", () => {
       enabledAdapters: ["codex"],
       excludeSkills: [],
       liveProbePolicy: "off",
+      transport: {
+        mode: "copy-fallback",
+        command: "npx",
+        args: ["--yes", "skills"],
+      },
       stateDir: path.join(repoRoot, ".skillctl-local"),
     };
     const catalog: SkillctlCatalog = {

@@ -19,6 +19,11 @@ export function defaultConfig(): SkillctlConfig {
     enabledAdapters: ["claude-code", "codex", "pi", "hermes", "opencode"],
     excludeSkills: [],
     liveProbePolicy: "off",
+    transport: {
+      mode: "skills-cli",
+      command: "npx",
+      args: ["--yes", "skills"],
+    },
   };
 }
 

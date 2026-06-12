@@ -23,4 +23,10 @@
   ],
   "excludeSkills": [],
   "liveProbePolicy": "safe"
+  ,
+  "transport": {
+    "mode": "skills-cli",
+    "command": "npx",
+    "args": ["--yes", "skills"]
+  }
 }

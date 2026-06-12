@@ -6,6 +6,7 @@ import { summarizeCatalog } from "./catalog.js";
 import { fileExists } from "./fs.js";
 import { loadManagedIndex } from "./indexes.js";
 import { hashDirectory } from "./hash.js";
+import { transportHealth } from "./transport.js";
 import type { CatalogSkill, DoctorIssue, DoctorReport, RepairAction, SkillctlCatalog, SkillctlConfig } from "./types.js";
 
 function managedSkillsForAgent(catalog: SkillctlCatalog, agent: CatalogSkill["targets"][number]): CatalogSkill[] {
@@ -13,8 +14,19 @@ function managedSkillsForAgent(catalog: SkillctlCatalog, agent: CatalogSkill["ta
 }
 
 export async function runDoctor(repoRoot: string, config: SkillctlConfig, catalog: SkillctlCatalog): Promise<DoctorReport> {
+  void repoRoot;
   const issues: DoctorIssue[] = [];
   const repairActions: RepairAction[] = [];
+
+  const transportStatus = await transportHealth(config);
+  if (!transportStatus.ok) {
+    issues.push({
+      code: "invalid-config",
+      status: "error",
+      detail: transportStatus.detail,
+      repairable: false,
+    });
+  }
 
   for (const agent of config.enabledAdapters) {
     const adapter = getAdapter(agent);

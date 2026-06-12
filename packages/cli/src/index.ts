@@ -38,6 +38,7 @@ function usage(): string {
 Notes:
   - Run commands from the skillctl repo root.
   - Only managed public skills are synced into agent directories.
+  - Sync and repair default to the upstream skills CLI transport.
   - Private skills stay in local metadata and are never copied to public agent dirs.`;
 }
 
@@ -71,6 +72,15 @@ async function writeManifestSchemas(repoRoot: string): Promise<void> {
       enabledAdapters: { type: "array", items: { enum: ["claude-code", "codex", "pi", "hermes", "opencode"] } },
       excludeSkills: { type: "array", items: { type: "string" } },
       liveProbePolicy: { enum: ["off", "safe"] },
+      transport: {
+        type: "object",
+        required: ["mode", "command", "args"],
+        properties: {
+          mode: { enum: ["skills-cli", "copy-fallback"] },
+          command: { type: "string" },
+          args: { type: "array", items: { type: "string" } },
+        },
+      },
       stateDir: { type: "string" },
     },
   };

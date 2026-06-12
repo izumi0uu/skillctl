@@ -5,6 +5,7 @@ export type Visibility = "public" | "private";
 export type SourceKind = "local-public" | "local-private" | "upstream";
 
 export type ProbePolicy = "off" | "safe";
+export type TransportMode = "skills-cli" | "copy-fallback";
 
 export type DoctorStatus = "ok" | "warn" | "error";
 
@@ -27,6 +28,11 @@ export interface SkillctlConfig {
   enabledAdapters: AgentId[];
   excludeSkills: string[];
   liveProbePolicy: ProbePolicy;
+  transport: {
+    mode: TransportMode;
+    command: string;
+    args: string[];
+  };
   stateDir?: string;
 }
 
@@ -123,6 +129,7 @@ export interface SyncResult {
   copied: Array<{ agent: AgentId; skillId: string }>;
   skipped: Array<{ agent: AgentId; skillId: string; reason: string }>;
   managedIndexesUpdated: AgentId[];
+  transportRuns?: Array<{ agent: AgentId; command: string[] }>;
 }
 
 export interface PruneResult {

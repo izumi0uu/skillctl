@@ -12,4 +12,5 @@ export * from "./repair.js";
 export * from "./schema.js";
 export * from "./skill.js";
 export * from "./sync.js";
+export * from "./transport.js";
 export * from "./types.js";

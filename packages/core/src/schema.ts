@@ -4,6 +4,13 @@ export const agentIdSchema = z.enum(["claude-code", "codex", "pi", "hermes", "op
 export const visibilitySchema = z.enum(["public", "private"]);
 export const sourceKindSchema = z.enum(["local-public", "local-private", "upstream"]);
 export const probePolicySchema = z.enum(["off", "safe"]);
+export const transportModeSchema = z.enum(["skills-cli", "copy-fallback"]);
+
+export const transportSchema = z.object({
+  mode: transportModeSchema.default("skills-cli"),
+  command: z.string().min(1).default("npx"),
+  args: z.array(z.string()).default(["--yes", "skills"]),
+});
 
 export const sourceRootSchema = z.object({
   path: z.string().min(1),
@@ -17,6 +24,11 @@ export const skillctlConfigSchema = z.object({
   enabledAdapters: z.array(agentIdSchema),
   excludeSkills: z.array(z.string()).default([]),
   liveProbePolicy: probePolicySchema.default("off"),
+  transport: transportSchema.default({
+    mode: "skills-cli",
+    command: "npx",
+    args: ["--yes", "skills"],
+  }),
   stateDir: z.string().optional(),
 });
 

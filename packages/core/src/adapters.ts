@@ -12,6 +12,7 @@ export interface AgentAdapter {
   label: string;
   installDir(homeDir?: string): string;
   canProbe: boolean;
+  skillsCliAgent?: string;
   probeCommand?: { file: string; args: string[] };
 }
 
@@ -23,6 +24,7 @@ export const BUILTIN_ADAPTERS: Record<AgentId, AgentAdapter> = {
     label: "Claude Code",
     installDir: (homeDir = home()) => path.join(homeDir, ".claude", "skills"),
     canProbe: true,
+    skillsCliAgent: "claude-code",
     probeCommand: { file: "claude", args: ["--help"] },
   },
   codex: {
@@ -30,6 +32,7 @@ export const BUILTIN_ADAPTERS: Record<AgentId, AgentAdapter> = {
     label: "Codex",
     installDir: (homeDir = home()) => path.join(homeDir, ".codex", "skills"),
     canProbe: true,
+    skillsCliAgent: "codex",
     probeCommand: { file: "codex", args: ["--help"] },
   },
   pi: {
@@ -37,12 +40,14 @@ export const BUILTIN_ADAPTERS: Record<AgentId, AgentAdapter> = {
     label: "Pi Agent",
     installDir: (homeDir = home()) => path.join(homeDir, ".pi", "agent", "skills"),
     canProbe: false,
+    skillsCliAgent: "pi",
   },
   hermes: {
     id: "hermes",
     label: "Hermes",
     installDir: (homeDir = home()) => path.join(homeDir, ".hermes", "skills"),
     canProbe: true,
+    skillsCliAgent: "hermes-agent",
     probeCommand: { file: "hermes", args: ["--help"] },
   },
   opencode: {
@@ -50,6 +55,7 @@ export const BUILTIN_ADAPTERS: Record<AgentId, AgentAdapter> = {
     label: "OpenCode",
     installDir: (homeDir = home()) => path.join(homeDir, ".opencode", "skills"),
     canProbe: true,
+    skillsCliAgent: "opencode",
     probeCommand: { file: "opencode", args: ["--help"] },
   },
 };
