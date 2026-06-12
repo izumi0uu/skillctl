@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "skillctl catalog",
+  "type": "object",
+  "required": [
+    "version",
+    "generatedBy",
+    "skills"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "generatedBy": {
+      "type": "string"
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "skill_id",
+          "visibility",
+          "source_kind",
+          "hash",
+          "targets",
+          "managed"
+        ],
+        "properties": {
+          "skill_id": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "visibility": {
+            "enum": [
+              "public",
+              "private"
+            ]
+          },
+          "source_kind": {
+            "enum": [
+              "local-public",
+              "local-private",
+              "upstream"
+            ]
+          },
+          "hash": {
+            "type": "string"
+          },
+          "managed": {
+            "type": "boolean"
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "claude-code",
+                "codex",
+                "pi",
+                "hermes",
+                "opencode"
+              ]
+            }
+          },
+          "canonical_rel_path": {
+            "type": "string"
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "upstream": {
+            "type": "object",
+            "required": [
+              "repo",
+              "ref",
+              "skillPath",
+              "sourceType"
+            ],
+            "properties": {
+              "repo": {
+                "type": "string"
+              },
+              "ref": {
+                "type": "string"
+              },
+              "skillPath": {
+                "type": "string"
+              },
+              "sourceType": {
+                "enum": [
+                  "github",
+                  "git",
+                  "local"
+                ]
+              },
+              "sourceUrl": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

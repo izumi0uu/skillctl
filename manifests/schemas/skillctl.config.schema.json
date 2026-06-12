@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "skillctl config",
+  "type": "object",
+  "required": [
+    "sourceRoots",
+    "privateRoots",
+    "enabledAdapters",
+    "excludeSkills",
+    "liveProbePolicy"
+  ],
+  "properties": {
+    "sourceRoots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "visibility"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "visibility": {
+            "enum": [
+              "public",
+              "private"
+            ]
+          },
+          "managedByDefault": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "privateRoots": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "enabledAdapters": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "claude-code",
+          "codex",
+          "pi",
+          "hermes",
+          "opencode"
+        ]
+      }
+    },
+    "excludeSkills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "liveProbePolicy": {
+      "enum": [
+        "off",
+        "safe"
+      ]
+    },
+    "stateDir": {
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "sourceRoots": [
+    {
+      "path": "./skills",
+      "visibility": "public",
+      "managedByDefault": true
+    },
+    {
+      "path": "~/.claude/skills",
+      "visibility": "public",
+      "managedByDefault": false
+    }
+  ],
+  "privateRoots": [
+    "~/.agents/skills"
+  ],
+  "enabledAdapters": [
+    "claude-code",
+    "codex",
+    "pi",
+    "hermes",
+    "opencode"
+  ],
+  "excludeSkills": [],
+  "liveProbePolicy": "safe"
+}

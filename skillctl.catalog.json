@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "generatedBy": "skillctl",
+  "skills": [
+    {
+      "skill_id": "local-portable-demo",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "hash": "0fcf31eb8a4d225f34c065159e5ab1c3848a0311",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/local-portable-demo"
+    }
+  ]
+}
