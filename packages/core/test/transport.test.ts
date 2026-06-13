@@ -26,7 +26,7 @@ describe("transportHealth", () => {
         mode: "copy-fallback",
         command: "npx",
         args: ["--yes", "skills"],
-        embeddedRepoPath: "/tmp/vendor/vercel-skills",
+        embeddedRepoPath: "/tmp/vercel-skills",
       },
       stateDir: "/tmp/skillctl-state",
     });
@@ -35,7 +35,7 @@ describe("transportHealth", () => {
 
   test("warns when embedded repo exists but is not bootstrapped", async () => {
     const repoRoot = await makeTempDir("skillctl-transport-");
-    const embeddedRepo = path.join(repoRoot, "vendor", "vercel-skills");
+    const embeddedRepo = path.join(repoRoot, "vercel-skills");
     await fs.mkdir(path.join(embeddedRepo, "src"), { recursive: true });
     await fs.writeFile(path.join(embeddedRepo, "package.json"), JSON.stringify({ name: "skills" }), "utf8");
     await fs.writeFile(path.join(embeddedRepo, "src", "cli.ts"), "console.log('skills');\n", "utf8");
@@ -64,7 +64,7 @@ describe("transportHealth", () => {
 describe("bootstrapEmbeddedSkills", () => {
   test("uses embedded source transport once node_modules are present", async () => {
     const repoRoot = await makeTempDir("skillctl-bootstrap-");
-    const embeddedRepo = path.join(repoRoot, "vendor", "vercel-skills");
+    const embeddedRepo = path.join(repoRoot, "vercel-skills");
     await fs.mkdir(path.join(embeddedRepo, "src"), { recursive: true });
     await fs.mkdir(path.join(embeddedRepo, "node_modules"), { recursive: true });
     await fs.mkdir(path.join(embeddedRepo, "dist"), { recursive: true });
