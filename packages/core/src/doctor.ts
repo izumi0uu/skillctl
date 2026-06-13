@@ -19,12 +19,12 @@ export async function runDoctor(repoRoot: string, config: SkillctlConfig, catalo
   const repairActions: RepairAction[] = [];
 
   const transportStatus = await transportHealth(config);
-  if (!transportStatus.ok) {
+  if (transportStatus.status !== "ok") {
     issues.push({
-      code: "invalid-config",
-      status: "error",
+      code: transportStatus.status === "warn" ? "transport-not-ready" : "invalid-config",
+      status: transportStatus.status,
       detail: transportStatus.detail,
-      repairable: false,
+      repairable: transportStatus.status === "warn",
     });
   }
 

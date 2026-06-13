@@ -19,6 +19,7 @@
   "transport": {
     "mode": "skills-cli",
     "command": "npx",
-    "args": ["--yes", "skills"]
+    "args": ["--yes", "skills"],
+    "embeddedRepoPath": "./vendor/vercel-skills"
   }
 }

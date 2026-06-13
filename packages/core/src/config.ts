@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import { readJson, writeJson } from "./fs.js";
-import { CONFIG_FILE, defaultStateDir, expandHome } from "./paths.js";
+import { CONFIG_FILE, DEFAULT_EMBEDDED_SKILLS_REPO, defaultStateDir, expandHome } from "./paths.js";
 import { skillctlConfigSchema } from "./schema.js";
 import type { SkillctlConfig } from "./types.js";
 
@@ -23,6 +23,7 @@ export function defaultConfig(): SkillctlConfig {
       mode: "skills-cli",
       command: "npx",
       args: ["--yes", "skills"],
+      embeddedRepoPath: DEFAULT_EMBEDDED_SKILLS_REPO,
     },
   };
 }
@@ -35,6 +36,12 @@ export async function loadConfig(repoRoot: string): Promise<SkillctlConfig> {
     ...parsed,
     sourceRoots: parsed.sourceRoots.map((root) => ({ ...root, path: resolveConfigPath(repoRoot, root.path) })),
     privateRoots: parsed.privateRoots.map((root) => resolveConfigPath(repoRoot, root)),
+    transport: {
+      ...parsed.transport,
+      embeddedRepoPath: parsed.transport.embeddedRepoPath
+        ? resolveConfigPath(repoRoot, parsed.transport.embeddedRepoPath)
+        : resolveConfigPath(repoRoot, DEFAULT_EMBEDDED_SKILLS_REPO),
+    },
     stateDir: parsed.stateDir ? resolveConfigPath(repoRoot, parsed.stateDir) : defaultStateDir(repoRoot),
   };
 }
