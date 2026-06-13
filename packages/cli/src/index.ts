@@ -10,6 +10,7 @@ import {
   getAdapter,
   initRepo,
   listAdapters,
+  bootstrapEmbeddedSkills,
   loadCatalog,
   loadConfig,
   pruneManaged,
@@ -27,6 +28,7 @@ function usage(): string {
   skillctl discover
   skillctl import
   skillctl sync
+  skillctl bootstrap-upstream
   skillctl status
   skillctl diff
   skillctl doctor [--json]
@@ -38,7 +40,7 @@ function usage(): string {
 Notes:
   - Run commands from the skillctl repo root.
   - Only managed public skills are synced into agent directories.
-  - Sync and repair default to the upstream skills CLI transport.
+  - Sync and repair default to the embedded upstream skills transport when bootstrapped.
   - Private skills stay in local metadata and are never copied to public agent dirs.`;
 }
 
@@ -79,6 +81,7 @@ async function writeManifestSchemas(repoRoot: string): Promise<void> {
           mode: { enum: ["skills-cli", "copy-fallback"] },
           command: { type: "string" },
           args: { type: "array", items: { type: "string" } },
+          embeddedRepoPath: { type: "string" },
         },
       },
       stateDir: { type: "string" },
@@ -226,6 +229,15 @@ async function syncCommand(repoRoot: string): Promise<void> {
   console.log(JSON.stringify(result, null, 2));
 }
 
+async function bootstrapUpstreamCommand(repoRoot: string): Promise<void> {
+  const config = await loadConfig(repoRoot);
+  const result = await bootstrapEmbeddedSkills(config);
+  console.log(JSON.stringify({
+    repoRoot,
+    ...result,
+  }, null, 2));
+}
+
 async function pruneCommand(repoRoot: string): Promise<void> {
   const config = await loadConfig(repoRoot);
   const catalog = await loadCatalog(repoRoot);
@@ -272,6 +284,11 @@ async function main(): Promise<void> {
     case "sync": {
       await ensureInitialized(repoRoot);
       await syncCommand(repoRoot);
+      return;
+    }
+    case "bootstrap-upstream": {
+      await ensureInitialized(repoRoot);
+      await bootstrapUpstreamCommand(repoRoot);
       return;
     }
     case "status": {

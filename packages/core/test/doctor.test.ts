@@ -24,6 +24,10 @@ describe("doctor and repair", () => {
     await fs.mkdir(skillsDir, { recursive: true });
     const skillDir = await writeSkill(skillsDir, "alpha", "hello");
     const hash = await hashDirectory(skillDir);
+    const embeddedRepo = path.join(repoRoot, "vendor", "vercel-skills");
+    await fs.mkdir(path.join(embeddedRepo, "src"), { recursive: true });
+    await fs.writeFile(path.join(embeddedRepo, "package.json"), JSON.stringify({ name: "skills" }), "utf8");
+    await fs.writeFile(path.join(embeddedRepo, "src", "cli.ts"), "console.log('skills');\n", "utf8");
     const fakeHome = await makeTempDir("skillctl-home-");
     process.env.HOME = fakeHome;
     const codexSkillDir = path.join(fakeHome, ".codex", "skills", "alpha");
@@ -40,6 +44,7 @@ describe("doctor and repair", () => {
         mode: "copy-fallback",
         command: "npx",
         args: ["--yes", "skills"],
+        embeddedRepoPath: embeddedRepo,
       },
       stateDir: path.join(repoRoot, ".skillctl-local"),
     };
@@ -63,5 +68,35 @@ describe("doctor and repair", () => {
 
     const repaired = await repairCatalog(repoRoot, config, catalog);
     expect(repaired.exitCode).toBe(0);
+  });
+
+  test("warns when embedded upstream repo is present but not bootstrapped", async () => {
+    const repoRoot = await makeTempDir("skillctl-doctor-transport-");
+    const embeddedRepo = path.join(repoRoot, "vendor", "vercel-skills");
+    await fs.mkdir(path.join(embeddedRepo, "src"), { recursive: true });
+    await fs.writeFile(path.join(embeddedRepo, "package.json"), JSON.stringify({ name: "skills" }), "utf8");
+    await fs.writeFile(path.join(embeddedRepo, "src", "cli.ts"), "console.log('skills');\n", "utf8");
+    const fakeHome = await makeTempDir("skillctl-home-");
+    process.env.HOME = fakeHome;
+
+    const config: SkillctlConfig = {
+      sourceRoots: [],
+      privateRoots: [],
+      enabledAdapters: ["codex"],
+      excludeSkills: [],
+      liveProbePolicy: "off",
+      transport: {
+        mode: "skills-cli",
+        command: "npx",
+        args: ["--yes", "skills"],
+        embeddedRepoPath: embeddedRepo,
+      },
+      stateDir: path.join(repoRoot, ".skillctl-local"),
+    };
+    const catalog: SkillctlCatalog = { version: 1, generatedBy: "test", skills: [] };
+
+    const report = await runDoctor(repoRoot, config, catalog);
+    expect(report.exitCode).toBe(1);
+    expect(report.issues.some((issue) => issue.code === "transport-not-ready")).toBe(true);
   });
 });

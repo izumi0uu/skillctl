@@ -32,6 +32,7 @@ export interface SkillctlConfig {
     mode: TransportMode;
     command: string;
     args: string[];
+    embeddedRepoPath?: string;
   };
   stateDir?: string;
 }
@@ -103,7 +104,7 @@ export interface RepairAction {
 }
 
 export interface DoctorIssue {
-  code: "missing-dir" | "collision" | "unreadable-skill" | "drift" | "stale-managed-entry" | "invalid-config";
+  code: "missing-dir" | "collision" | "unreadable-skill" | "drift" | "stale-managed-entry" | "invalid-config" | "transport-not-ready";
   status: DoctorStatus;
   detail: string;
   agent?: AgentId;
@@ -135,4 +136,27 @@ export interface SyncResult {
 export interface PruneResult {
   removed: Array<{ agent: AgentId; skillId: string }>;
   skipped: Array<{ agent: AgentId; skillId: string; reason: string }>;
+}
+
+export interface ResolvedTransportInvocation {
+  command: string;
+  args: string[];
+  cwd: string;
+  source: "embedded-source" | "embedded-dist" | "fallback";
+  detail: string;
+}
+
+export interface TransportHealthReport {
+  status: DoctorStatus;
+  detail: string;
+  invocation: ResolvedTransportInvocation;
+}
+
+export interface BootstrapUpstreamResult {
+  embeddedRepoPath: string;
+  steps: string[];
+  invocation: {
+    command: string[];
+    source: ResolvedTransportInvocation["source"];
+  };
 }

@@ -8,6 +8,7 @@
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "cli": "pnpm --filter skillctl-cli exec tsx src/index.ts"
+    "cli": "pnpm --filter skillctl-cli exec tsx src/index.ts",
+    "bootstrap-upstream": "pnpm --filter skillctl-cli exec tsx src/index.ts bootstrap-upstream"
   }
 }

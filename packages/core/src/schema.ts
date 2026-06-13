@@ -10,6 +10,7 @@ export const transportSchema = z.object({
   mode: transportModeSchema.default("skills-cli"),
   command: z.string().min(1).default("npx"),
   args: z.array(z.string()).default(["--yes", "skills"]),
+  embeddedRepoPath: z.string().min(1).optional(),
 });
 
 export const sourceRootSchema = z.object({
@@ -28,6 +29,7 @@ export const skillctlConfigSchema = z.object({
     mode: "skills-cli",
     command: "npx",
     args: ["--yes", "skills"],
+    embeddedRepoPath: "vendor/vercel-skills",
   }),
   stateDir: z.string().optional(),
 });
