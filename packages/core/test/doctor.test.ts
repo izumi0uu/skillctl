@@ -3,11 +3,12 @@ import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
 
+import { normalizeCatalogArtifacts } from "../src/attribution.js";
 import { hashDirectory } from "../src/hash.js";
 import { repairCatalog } from "../src/repair.js";
 import { runDoctor } from "../src/doctor.js";
 import type { SkillctlCatalog, SkillctlConfig } from "../src/types.js";
-import { makeTempDir, writeSkill } from "./helpers.js";
+import { makeTempDir, writeReadme, writeSkill } from "./helpers.js";
 
 const originalHome = process.env.HOME;
 
@@ -23,7 +24,7 @@ describe("doctor and repair", () => {
     const skillsDir = path.join(repoRoot, "skills");
     await fs.mkdir(skillsDir, { recursive: true });
     const skillDir = await writeSkill(skillsDir, "alpha", "hello");
-    const hash = await hashDirectory(skillDir);
+    await writeReadme(repoRoot, "# skillctl\n");
     const embeddedRepo = path.join(repoRoot, "vercel-skills");
     await fs.mkdir(path.join(embeddedRepo, "src"), { recursive: true });
     await fs.writeFile(path.join(embeddedRepo, "package.json"), JSON.stringify({ name: "skills" }), "utf8");
@@ -54,17 +55,26 @@ describe("doctor and repair", () => {
       skills: [{
         skill_id: "alpha",
         visibility: "public",
-        source_kind: "local-public",
-        hash,
+        source_kind: "upstream",
+        origin_kind: "imported-upstream",
+        hash: "placeholder",
         managed: true,
         targets: ["codex"],
         canonical_rel_path: path.relative(repoRoot, skillDir),
+        upstream: {
+          repo: "owner/repo",
+          ref: "main",
+          skillPath: "skills/alpha",
+          sourceType: "github",
+          local_modifications: false,
+        },
       }],
     };
+    await normalizeCatalogArtifacts(repoRoot, catalog);
 
     const report = await runDoctor(repoRoot, config, catalog);
     expect(report.exitCode).toBe(1);
-    expect(report.issues.some((issue) => issue.code === "drift")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "drift" || issue.code === "footer-drift")).toBe(true);
 
     const repaired = await repairCatalog(repoRoot, config, catalog);
     expect(repaired.exitCode).toBe(0);
@@ -98,5 +108,49 @@ describe("doctor and repair", () => {
     const report = await runDoctor(repoRoot, config, catalog);
     expect(report.exitCode).toBe(1);
     expect(report.issues.some((issue) => issue.code === "transport-not-ready")).toBe(true);
+  });
+
+  test("warns on missing provenance and README drift", async () => {
+    const repoRoot = await makeTempDir("skillctl-doctor-readme-");
+    const skillsDir = path.join(repoRoot, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    const skillDir = await writeSkill(skillsDir, "alpha", "hello");
+    await writeReadme(repoRoot, "# skillctl\n\nstale\n");
+
+    const config: SkillctlConfig = {
+      sourceRoots: [{ path: skillsDir, visibility: "public", managedByDefault: true }],
+      privateRoots: [],
+      enabledAdapters: ["codex"],
+      excludeSkills: [],
+      liveProbePolicy: "off",
+      transport: {
+        mode: "copy-fallback",
+        command: "npx",
+        args: ["--yes", "skills"],
+      },
+      stateDir: path.join(repoRoot, ".skillctl-local"),
+    };
+    const catalog: SkillctlCatalog = {
+      version: 1,
+      generatedBy: "test",
+      skills: [{
+        skill_id: "alpha",
+        visibility: "public",
+        source_kind: "upstream",
+        origin_kind: "imported-upstream",
+        hash: await hashDirectory(skillDir),
+        managed: true,
+        targets: ["codex"],
+        canonical_rel_path: path.relative(repoRoot, skillDir),
+        upstream: {
+          repo: "owner/repo",
+          sourceType: "github",
+        },
+      }],
+    };
+
+    const report = await runDoctor(repoRoot, config, catalog);
+    expect(report.issues.some((issue) => issue.code === "missing-provenance")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "readme-drift")).toBe(true);
   });
 });

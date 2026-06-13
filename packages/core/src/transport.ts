@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import { ensureReadmeSourceRegistry, expectedSkillRenderedHash } from "./attribution.js";
 import { getAdapter } from "./adapters.js";
 import { copyDir, ensureDir, fileExists } from "./fs.js";
 import type {
@@ -131,6 +132,11 @@ async function runSkillsCliForAgent(
       timeout: 30000,
     });
 
+    const installedDir = path.join(getAdapter(agent).installDir(), skill.skill_id);
+    if (await fileExists(installedDir)) {
+      await expectedSkillRenderedHash(installedDir, skill);
+    }
+
     copied.push({ agent, skillId: skill.skill_id });
   }
 
@@ -163,6 +169,7 @@ export async function syncViaSkillsCli(repoRoot: string, config: SkillctlConfig,
   const invocation = await resolveTransportInvocation(config);
 
   for (const agent of config.enabledAdapters) {
+    await ensureDir(getAdapter(agent).installDir());
     const installable = installableSkillSet(catalog, agent);
     const privateOnly = managedInstallSet(catalog, agent).filter((skill) => skill.visibility !== "public");
 
@@ -183,6 +190,8 @@ export async function syncViaSkillsCli(repoRoot: string, config: SkillctlConfig,
 
     managedIndexesUpdated.push(agent);
   }
+
+  await ensureReadmeSourceRegistry(repoRoot, catalog);
 
   return { copied, skipped, managedIndexesUpdated, transportRuns };
 }

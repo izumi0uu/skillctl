@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { ensureReadmeSourceRegistry, expectedSkillRenderedHash } from "./attribution.js";
 import { getAdapter } from "./adapters.js";
 import { copyDir, ensureDir, fileExists } from "./fs.js";
 import { writeManagedIndex } from "./indexes.js";
@@ -16,6 +17,7 @@ export async function syncCatalog(repoRoot: string, config: SkillctlConfig, cata
     for (const agent of config.enabledAdapters) {
       await writeManagedIndex(config.stateDir!, agent, managedInstallSet(catalog, agent));
     }
+    await ensureReadmeSourceRegistry(repoRoot, catalog);
     return result;
   }
 
@@ -45,12 +47,15 @@ export async function syncCatalog(repoRoot: string, config: SkillctlConfig, cata
       }
 
       await copyDir(srcDir, path.join(installDir, skill.skill_id));
+      await expectedSkillRenderedHash(path.join(installDir, skill.skill_id), skill);
       copied.push({ agent, skillId: skill.skill_id });
     }
 
     await writeManagedIndex(config.stateDir!, agent, managedInstallSet(catalog, agent));
     managedIndexesUpdated.push(agent);
   }
+
+  await ensureReadmeSourceRegistry(repoRoot, catalog);
 
   return { copied, skipped, managedIndexesUpdated };
 }

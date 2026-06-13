@@ -1,4 +1,6 @@
 export * from "./adapters.js";
+export * from "./adopt.js";
+export * from "./attribution.js";
 export * from "./catalog.js";
 export * from "./config.js";
 export * from "./discover.js";
@@ -11,6 +13,7 @@ export * from "./prune.js";
 export * from "./repair.js";
 export * from "./schema.js";
 export * from "./skill.js";
+export * from "./source-verification.js";
 export * from "./sync.js";
 export * from "./transport.js";
 export * from "./types.js";

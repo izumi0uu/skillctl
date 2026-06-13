@@ -19,9 +19,18 @@ export async function readJson<T>(filePath: string): Promise<T> {
   return JSON.parse(raw) as T;
 }
 
+export async function readText(filePath: string): Promise<string> {
+  return fs.readFile(filePath, "utf8");
+}
+
 export async function writeJson(filePath: string, data: unknown): Promise<void> {
   await ensureDir(path.dirname(filePath));
   await fs.writeFile(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
+export async function writeText(filePath: string, content: string): Promise<void> {
+  await ensureDir(path.dirname(filePath));
+  await fs.writeFile(filePath, content, "utf8");
 }
 
 export async function removeDirContents(dirPath: string): Promise<void> {

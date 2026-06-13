@@ -6,6 +6,9 @@ import process from "node:process";
 import {
   CATALOG_FILE,
   CONFIG_FILE,
+  adoptSkill,
+  buildSourceRegistry,
+  verifyCatalogSources,
   discoverCatalog,
   getAdapter,
   initRepo,
@@ -13,6 +16,7 @@ import {
   bootstrapEmbeddedSkills,
   loadCatalog,
   loadConfig,
+  normalizeCatalogArtifacts,
   pruneManaged,
   repairCatalog,
   runDoctor,
@@ -27,6 +31,7 @@ function usage(): string {
   skillctl init
   skillctl discover
   skillctl import
+  skillctl adopt --source <path> [--from-repo <repo>] [--skill-path <path>] [--ref <ref>] [--source-type <github|git|local>] [--source-url <url>] [--origin-kind <local-authored|imported-upstream|derived-from-upstream>]
   skillctl sync
   skillctl bootstrap-upstream
   skillctl status
@@ -35,6 +40,8 @@ function usage(): string {
   skillctl repair [--json]
   skillctl prune
   skillctl publish
+  skillctl sources [--json]
+  skillctl verify-sources [--json]
   skillctl adapters
 
 Notes:
@@ -106,6 +113,7 @@ async function writeManifestSchemas(repoRoot: string): Promise<void> {
             display_name: { type: "string" },
             visibility: { enum: ["public", "private"] },
             source_kind: { enum: ["local-public", "local-private", "upstream"] },
+            origin_kind: { enum: ["local-authored", "imported-upstream", "derived-from-upstream"] },
             hash: { type: "string" },
             managed: { type: "boolean" },
             targets: { type: "array", items: { enum: ["claude-code", "codex", "pi", "hermes", "opencode"] } },
@@ -113,13 +121,15 @@ async function writeManifestSchemas(repoRoot: string): Promise<void> {
             aliases: { type: "array", items: { type: "string" } },
             upstream: {
               type: "object",
-              required: ["repo", "ref", "skillPath", "sourceType"],
               properties: {
                 repo: { type: "string" },
                 ref: { type: "string" },
                 skillPath: { type: "string" },
                 sourceType: { enum: ["github", "git", "local"] },
                 sourceUrl: { type: "string" },
+                imported_at: { type: "string" },
+                last_verified_ref: { type: "string" },
+                local_modifications: { type: "boolean" },
               },
             },
           },
@@ -139,7 +149,9 @@ async function ensureInitialized(repoRoot: string): Promise<void> {
 
 async function discoverAndPersist(repoRoot: string): Promise<{ conflicts: number; skills: number }> {
   const config = await loadConfig(repoRoot);
-  const { catalog, conflicts } = await discoverCatalog(repoRoot, config);
+  const current = await loadCatalog(repoRoot);
+  const { catalog, conflicts } = await discoverCatalog(repoRoot, config, current);
+  await normalizeCatalogArtifacts(repoRoot, catalog);
   await writeCatalog(repoRoot, catalog);
   return { conflicts: conflicts.length, skills: catalog.skills.length };
 }
@@ -163,7 +175,7 @@ async function statusCommand(repoRoot: string): Promise<void> {
 async function diffCommand(repoRoot: string): Promise<number> {
   const config = await loadConfig(repoRoot);
   const current = await loadCatalog(repoRoot);
-  const discovered = await discoverCatalog(repoRoot, config);
+  const discovered = await discoverCatalog(repoRoot, config, current);
   const oldMap = new Map(current.skills.map((skill) => [skill.skill_id, skill.hash]));
   const newMap = new Map(discovered.catalog.skills.map((skill) => [skill.skill_id, skill.hash]));
 
@@ -210,7 +222,10 @@ async function doctorCommand(repoRoot: string, asJson: boolean): Promise<number>
 async function repairCommand(repoRoot: string, asJson: boolean): Promise<number> {
   const config = await loadConfig(repoRoot);
   const catalog = await loadCatalog(repoRoot);
+  await normalizeCatalogArtifacts(repoRoot, catalog);
+  await writeCatalog(repoRoot, catalog);
   const report = await repairCatalog(repoRoot, config, catalog);
+  await writeCatalog(repoRoot, catalog);
   if (asJson) {
     console.log(JSON.stringify(report, null, 2));
   } else {
@@ -225,7 +240,10 @@ async function repairCommand(repoRoot: string, asJson: boolean): Promise<number>
 async function syncCommand(repoRoot: string): Promise<void> {
   const config = await loadConfig(repoRoot);
   const catalog = await loadCatalog(repoRoot);
+  await normalizeCatalogArtifacts(repoRoot, catalog);
+  await writeCatalog(repoRoot, catalog);
   const result = await syncCatalog(repoRoot, config, catalog);
+  await writeCatalog(repoRoot, catalog);
   console.log(JSON.stringify(result, null, 2));
 }
 
@@ -245,12 +263,73 @@ async function pruneCommand(repoRoot: string): Promise<void> {
   console.log(JSON.stringify(result, null, 2));
 }
 
+function readFlag(args: string[], flag: string): string | undefined {
+  const index = args.indexOf(flag);
+  if (index === -1) {
+    return undefined;
+  }
+  return args[index + 1];
+}
+
+function hasFlag(args: string[], flag: string): boolean {
+  return args.includes(flag);
+}
+
+async function adoptCommand(repoRoot: string, args: string[]): Promise<void> {
+  const sourcePath = readFlag(args, "--source");
+  if (!sourcePath) {
+    throw new Error("adopt requires --source <path>");
+  }
+
+  const config = await loadConfig(repoRoot);
+  const catalog = await loadCatalog(repoRoot);
+  const result = await adoptSkill(repoRoot, config, catalog, {
+    sourcePath,
+    fromRepo: readFlag(args, "--from-repo"),
+    skillPath: readFlag(args, "--skill-path"),
+    ref: readFlag(args, "--ref"),
+    sourceType: readFlag(args, "--source-type") as "github" | "git" | "local" | undefined,
+    sourceUrl: readFlag(args, "--source-url"),
+    originKind: readFlag(args, "--origin-kind") as "local-authored" | "imported-upstream" | "derived-from-upstream" | undefined,
+    localModifications: hasFlag(args, "--local-modifications"),
+  });
+
+  await writeCatalog(repoRoot, catalog);
+  console.log(JSON.stringify(result, null, 2));
+}
+
+async function sourcesCommand(repoRoot: string, asJson: boolean): Promise<void> {
+  const catalog = await loadCatalog(repoRoot);
+  const entries = buildSourceRegistry(catalog);
+  if (asJson) {
+    console.log(JSON.stringify({ sources: entries }, null, 2));
+    return;
+  }
+  for (const entry of entries) {
+    console.log(`${entry.skill_id}\t${entry.origin_kind}\t${entry.upstream_repo ?? "n/a"}\t${entry.upstream_path ?? "n/a"}\t${entry.ref ?? "n/a"}\t${entry.local_modifications ? "yes" : "no"}`);
+  }
+}
+
+async function verifySourcesCommand(repoRoot: string, asJson: boolean): Promise<number> {
+  const catalog = await loadCatalog(repoRoot);
+  const report = await verifyCatalogSources(catalog);
+  if (asJson) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    for (const result of report.results) {
+      console.log(`[${result.status}] ${result.skill_id}: ${result.detail}${result.resolved_ref ? ` (${result.resolved_ref})` : ""}`);
+    }
+  }
+  return report.ok ? 0 : 1;
+}
+
 async function publishCommand(repoRoot: string): Promise<void> {
   const catalog = await loadCatalog(repoRoot);
   const published = catalog.skills
     .filter((skill) => skill.visibility === "public" && skill.source_kind !== "local-private")
     .map((skill) => ({
       skill_id: skill.skill_id,
+      origin_kind: skill.origin_kind,
       hash: skill.hash,
       canonical_rel_path: skill.canonical_rel_path,
       upstream: skill.upstream ?? null,
@@ -279,6 +358,11 @@ async function main(): Promise<void> {
       const result = await discoverAndPersist(repoRoot);
       console.log(JSON.stringify(result, null, 2));
       process.exitCode = result.conflicts > 0 ? 2 : 0;
+      return;
+    }
+    case "adopt": {
+      await ensureInitialized(repoRoot);
+      await adoptCommand(repoRoot, args);
       return;
     }
     case "sync": {
@@ -319,6 +403,16 @@ async function main(): Promise<void> {
     case "publish": {
       await ensureInitialized(repoRoot);
       await publishCommand(repoRoot);
+      return;
+    }
+    case "sources": {
+      await ensureInitialized(repoRoot);
+      await sourcesCommand(repoRoot, args.includes("--json"));
+      return;
+    }
+    case "verify-sources": {
+      await ensureInitialized(repoRoot);
+      process.exitCode = await verifySourcesCommand(repoRoot, args.includes("--json"));
       return;
     }
     case "adapters": {

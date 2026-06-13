@@ -3,6 +3,8 @@ export type AgentId = "claude-code" | "codex" | "pi" | "hermes" | "opencode";
 export type Visibility = "public" | "private";
 
 export type SourceKind = "local-public" | "local-private" | "upstream";
+export type OriginKind = "local-authored" | "imported-upstream" | "derived-from-upstream";
+export type UpstreamSourceType = "github" | "git" | "local";
 
 export type ProbePolicy = "off" | "safe";
 export type TransportMode = "skills-cli" | "copy-fallback";
@@ -38,11 +40,14 @@ export interface SkillctlConfig {
 }
 
 export interface UpstreamSource {
-  repo: string;
-  ref: string;
-  skillPath: string;
-  sourceType: "github" | "git" | "local";
+  repo?: string;
+  ref?: string;
+  skillPath?: string;
+  sourceType?: UpstreamSourceType;
   sourceUrl?: string;
+  imported_at?: string;
+  last_verified_ref?: string;
+  local_modifications?: boolean;
 }
 
 export interface CatalogSkill {
@@ -50,6 +55,7 @@ export interface CatalogSkill {
   display_name?: string;
   visibility: Visibility;
   source_kind: SourceKind;
+  origin_kind: OriginKind;
   hash: string;
   managed: boolean;
   targets: AgentId[];
@@ -67,6 +73,8 @@ export interface SkillctlCatalog {
 export interface ManagedSkillIndexEntry {
   skill_id: string;
   hash: string;
+  source_hash?: string;
+  rendered_hash?: string;
   managedAt: string;
 }
 
@@ -97,14 +105,26 @@ export interface ProbeResult {
 }
 
 export interface RepairAction {
-  type: "create-dir" | "rewrite-skill" | "remove-managed-skill" | "rewrite-index";
-  agent: AgentId;
+  type: "create-dir" | "rewrite-skill" | "remove-managed-skill" | "rewrite-index" | "rewrite-footer" | "rewrite-readme";
+  agent?: AgentId;
   skillId?: string;
   detail: string;
 }
 
 export interface DoctorIssue {
-  code: "missing-dir" | "collision" | "unreadable-skill" | "drift" | "stale-managed-entry" | "invalid-config" | "transport-not-ready";
+  code:
+    | "missing-dir"
+    | "collision"
+    | "unreadable-skill"
+    | "drift"
+    | "stale-managed-entry"
+    | "invalid-config"
+    | "transport-not-ready"
+    | "missing-provenance"
+    | "malformed-footer"
+    | "footer-drift"
+    | "readme-drift"
+    | "catalog-mismatch";
   status: DoctorStatus;
   detail: string;
   agent?: AgentId;
@@ -159,4 +179,26 @@ export interface BootstrapUpstreamResult {
     command: string[];
     source: ResolvedTransportInvocation["source"];
   };
+}
+
+export interface SourceRegistryEntry {
+  skill_id: string;
+  origin_kind: OriginKind;
+  upstream_repo: string | null;
+  upstream_path: string | null;
+  ref: string | null;
+  local_modifications: boolean;
+}
+
+export interface SourceVerificationEntry {
+  skill_id: string;
+  status: "ok" | "warn" | "error" | "skip";
+  detail: string;
+  resolved_ref?: string;
+}
+
+export interface SourceVerificationReport {
+  ok: boolean;
+  results: SourceVerificationEntry[];
+  catalog: SkillctlCatalog;
 }

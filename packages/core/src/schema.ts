@@ -3,6 +3,7 @@ import { z } from "zod";
 export const agentIdSchema = z.enum(["claude-code", "codex", "pi", "hermes", "opencode"]);
 export const visibilitySchema = z.enum(["public", "private"]);
 export const sourceKindSchema = z.enum(["local-public", "local-private", "upstream"]);
+export const originKindSchema = z.enum(["local-authored", "imported-upstream", "derived-from-upstream"]);
 export const probePolicySchema = z.enum(["off", "safe"]);
 export const transportModeSchema = z.enum(["skills-cli", "copy-fallback"]);
 
@@ -35,11 +36,14 @@ export const skillctlConfigSchema = z.object({
 });
 
 export const upstreamSourceSchema = z.object({
-  repo: z.string().min(1),
-  ref: z.string().min(1),
-  skillPath: z.string().min(1),
-  sourceType: z.enum(["github", "git", "local"]),
+  repo: z.string().min(1).optional(),
+  ref: z.string().min(1).optional(),
+  skillPath: z.string().min(1).optional(),
+  sourceType: z.enum(["github", "git", "local"]).optional(),
   sourceUrl: z.string().optional(),
+  imported_at: z.string().optional(),
+  last_verified_ref: z.string().optional(),
+  local_modifications: z.boolean().optional(),
 });
 
 export const catalogSkillSchema = z.object({
@@ -47,6 +51,7 @@ export const catalogSkillSchema = z.object({
   display_name: z.string().optional(),
   visibility: visibilitySchema,
   source_kind: sourceKindSchema,
+  origin_kind: originKindSchema.default("local-authored"),
   hash: z.string().min(1),
   managed: z.boolean(),
   targets: z.array(agentIdSchema),
@@ -64,6 +69,8 @@ export const skillctlCatalogSchema = z.object({
 export const managedSkillIndexEntrySchema = z.object({
   skill_id: z.string().min(1),
   hash: z.string().min(1),
+  source_hash: z.string().optional(),
+  rendered_hash: z.string().optional(),
   managedAt: z.string().min(1),
 });
 

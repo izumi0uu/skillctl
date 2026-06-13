@@ -29,10 +29,28 @@ export function descriptorToCatalogSkill(repoRoot: string, descriptor: SkillDesc
     skill_id: descriptor.skillId,
     visibility: descriptor.visibility,
     source_kind: inferSourceKind(descriptor.visibility),
+    origin_kind: "local-authored",
     hash: descriptor.hash,
     managed: descriptor.managedByDefault,
     targets,
     canonical_rel_path: path.relative(repoRoot, descriptor.dirPath),
+  };
+}
+
+export function mergeCatalogSkillMetadata(previous: CatalogSkill | undefined, next: CatalogSkill): CatalogSkill {
+  if (!previous) {
+    return next;
+  }
+
+  return {
+    ...next,
+    display_name: previous.display_name ?? next.display_name,
+    source_kind: previous.origin_kind === "local-authored" ? next.source_kind : previous.source_kind,
+    origin_kind: previous.origin_kind ?? next.origin_kind,
+    managed: previous.managed,
+    targets: previous.targets.length > 0 ? previous.targets : next.targets,
+    upstream: previous.upstream ?? next.upstream,
+    aliases: previous.aliases ?? next.aliases,
   };
 }
 

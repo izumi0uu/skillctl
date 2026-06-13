@@ -1,15 +1,14 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
 
-import { descriptorToCatalogSkill } from "../src/catalog.js";
+import { normalizeCatalogArtifacts } from "../src/attribution.js";
 import { hashDirectory } from "../src/hash.js";
 import { pruneManaged } from "../src/prune.js";
 import { syncCatalog } from "../src/sync.js";
 import type { SkillctlCatalog, SkillctlConfig } from "../src/types.js";
-import { makeTempDir, writeSkill } from "./helpers.js";
+import { makeTempDir, writeReadme, writeSkill } from "./helpers.js";
 
 const originalHome = process.env.HOME;
 
@@ -25,7 +24,7 @@ describe("sync and prune", () => {
     const skillsDir = path.join(repoRoot, "skills");
     await fs.mkdir(skillsDir, { recursive: true });
     const skillPath = await writeSkill(skillsDir, "alpha");
-    const hash = await hashDirectory(skillPath);
+    await writeReadme(repoRoot, "# skillctl\n");
     const fakeHome = await makeTempDir("skillctl-home-");
     process.env.HOME = fakeHome;
 
@@ -35,11 +34,19 @@ describe("sync and prune", () => {
       skills: [{
         skill_id: "alpha",
         visibility: "public",
-        source_kind: "local-public",
-        hash,
+        source_kind: "upstream",
+        origin_kind: "imported-upstream",
+        hash: "placeholder",
         managed: true,
         targets: ["codex"],
         canonical_rel_path: path.relative(repoRoot, skillPath),
+        upstream: {
+          repo: "owner/repo",
+          ref: "main",
+          skillPath: "skills/alpha",
+          sourceType: "github",
+          local_modifications: false,
+        },
       }],
     };
     const config: SkillctlConfig = {
@@ -55,6 +62,7 @@ describe("sync and prune", () => {
       },
       stateDir: path.join(repoRoot, ".skillctl-local"),
     };
+    await normalizeCatalogArtifacts(repoRoot, catalog);
 
     const codexDir = path.join(fakeHome, ".codex", "skills");
     await fs.mkdir(path.join(codexDir, "manual-skill"), { recursive: true });
@@ -63,7 +71,9 @@ describe("sync and prune", () => {
     const result = await syncCatalog(repoRoot, config, catalog);
     expect(result.copied).toEqual([{ agent: "codex", skillId: "alpha" }]);
     expect(await fs.readFile(path.join(codexDir, "alpha", "SKILL.md"), "utf8")).toContain("name: alpha");
+    expect(await fs.readFile(path.join(codexDir, "alpha", "SKILL.md"), "utf8")).toContain("## Source Attribution");
     expect(await fs.readFile(path.join(codexDir, "manual-skill", "SKILL.md"), "utf8")).toContain("manual-skill");
+    expect(await fs.readFile(path.join(repoRoot, "README.md"), "utf8")).toContain("Managed Skill Sources");
   });
 
   test("prune removes only previously managed directories", async () => {

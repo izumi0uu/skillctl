@@ -1,9 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { applySkillAttribution, hasMalformedAttributionBlock, readmeSourceRegistryDrift, sourceDirForSkill } from "./attribution.js";
 import { getAdapter, runProbe } from "./adapters.js";
 import { summarizeCatalog } from "./catalog.js";
-import { fileExists } from "./fs.js";
+import { fileExists, readText } from "./fs.js";
 import { loadManagedIndex } from "./indexes.js";
 import { hashDirectory } from "./hash.js";
 import { transportHealth } from "./transport.js";
@@ -14,7 +15,6 @@ function managedSkillsForAgent(catalog: SkillctlCatalog, agent: CatalogSkill["ta
 }
 
 export async function runDoctor(repoRoot: string, config: SkillctlConfig, catalog: SkillctlCatalog): Promise<DoctorReport> {
-  void repoRoot;
   const issues: DoctorIssue[] = [];
   const repairActions: RepairAction[] = [];
 
@@ -26,6 +26,53 @@ export async function runDoctor(repoRoot: string, config: SkillctlConfig, catalo
       detail: transportStatus.detail,
       repairable: transportStatus.status === "warn",
     });
+  }
+
+  for (const skill of catalog.skills) {
+    if (skill.origin_kind !== "local-authored") {
+      if (!skill.upstream?.repo || !skill.upstream?.skillPath || !skill.upstream?.ref) {
+        issues.push({
+          code: "missing-provenance",
+          status: "warn",
+          detail: `${skill.skill_id} is missing upstream repo, path, or ref`,
+          skillId: skill.skill_id,
+          repairable: false,
+        });
+      }
+    }
+
+    const sourceDir = sourceDirForSkill(repoRoot, skill);
+    if (!sourceDir) {
+      continue;
+    }
+    const sourceSkillFile = path.join(sourceDir, "SKILL.md");
+    if (!await fileExists(sourceSkillFile)) {
+      continue;
+    }
+    const sourceContent = await readText(sourceSkillFile);
+    if (hasMalformedAttributionBlock(sourceContent)) {
+      issues.push({
+        code: "malformed-footer",
+        status: "warn",
+        detail: `${skill.skill_id} has malformed source attribution footer in canonical source`,
+        skillId: skill.skill_id,
+        repairable: true,
+      });
+      repairActions.push({ type: "rewrite-footer", agent: config.enabledAdapters[0]!, skillId: skill.skill_id, detail: `Rewrite source attribution footer for ${skill.skill_id}` });
+      continue;
+    }
+
+    const expectedSource = applySkillAttribution(sourceContent, skill);
+    if (expectedSource !== sourceContent) {
+      issues.push({
+        code: "catalog-mismatch",
+        status: "warn",
+        detail: `${skill.skill_id} canonical source footer does not match catalog provenance`,
+        skillId: skill.skill_id,
+        repairable: true,
+      });
+      repairActions.push({ type: "rewrite-footer", agent: config.enabledAdapters[0]!, skillId: skill.skill_id, detail: `Rewrite source attribution footer for ${skill.skill_id}` });
+    }
   }
 
   for (const agent of config.enabledAdapters) {
@@ -64,6 +111,34 @@ export async function runDoctor(repoRoot: string, config: SkillctlConfig, catalo
       }
 
       try {
+        const rawInstalledSkill = await readText(skillFile);
+        if (hasMalformedAttributionBlock(rawInstalledSkill)) {
+          issues.push({
+            code: "malformed-footer",
+            status: "warn",
+            detail: `${agent}:${skill.skill_id} has malformed source attribution footer`,
+            agent,
+            skillId: skill.skill_id,
+            repairable: true,
+          });
+          repairActions.push({ type: "rewrite-skill", agent, skillId: skill.skill_id, detail: `Re-copy ${skill.skill_id}` });
+          continue;
+        }
+
+        const expectedInstalledSkill = applySkillAttribution(rawInstalledSkill, skill);
+        if (expectedInstalledSkill !== rawInstalledSkill) {
+          issues.push({
+            code: "footer-drift",
+            status: "warn",
+            detail: `${agent}:${skill.skill_id} footer drift from catalog provenance`,
+            agent,
+            skillId: skill.skill_id,
+            repairable: true,
+          });
+          repairActions.push({ type: "rewrite-skill", agent, skillId: skill.skill_id, detail: `Re-copy ${skill.skill_id}` });
+          continue;
+        }
+
         const installedHash = await hashDirectory(skillDir);
         if (installedHash !== skill.hash) {
           issues.push({
@@ -127,6 +202,16 @@ export async function runDoctor(repoRoot: string, config: SkillctlConfig, catalo
         }
       }
     }
+  }
+
+  if (await readmeSourceRegistryDrift(repoRoot, catalog)) {
+    issues.push({
+      code: "readme-drift",
+      status: "warn",
+      detail: "README managed skill sources section is missing or out of date",
+      repairable: true,
+    });
+    repairActions.push({ type: "rewrite-readme", agent: config.enabledAdapters[0]!, detail: "Rewrite README managed skill sources section" });
   }
 
   const probes = await Promise.all(config.enabledAdapters.map((agent) => runProbe(agent, config.liveProbePolicy)));

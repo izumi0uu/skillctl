@@ -12,3 +12,9 @@ export async function writeSkill(dirPath: string, skillId: string, extraBody = "
   await fs.writeFile(path.join(skillDir, "SKILL.md"), `---\nname: ${skillId}\ndescription: test skill ${skillId}\n---\n\n# ${skillId}\n\n${extraBody}\n`, "utf8");
   return skillDir;
 }
+
+export async function writeReadme(dirPath: string, content = "# skillctl\n"): Promise<string> {
+  const readmePath = path.join(dirPath, "README.md");
+  await fs.writeFile(readmePath, content, "utf8");
+  return readmePath;
+}
