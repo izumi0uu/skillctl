@@ -37,18 +37,47 @@ async function verifyGithubRef(skill: CatalogSkill): Promise<SourceVerificationE
       env: process.env,
     });
     const resolved = stdout.trim().split(/\s+/u)[0];
-    if (!resolved) {
+    if (resolved) {
       return {
         skill_id: skill.skill_id,
-        status: "warn",
-        detail: `ref not found on remote ${repo}`,
+        status: "ok",
+        detail: `verified against ${repo}`,
+        resolved_ref: resolved,
       };
     }
+
+    // ls-remote filters by ref name, so a pinned commit SHA never matches above.
+    // Fall back to scanning advertised tips; if the SHA isn't a tip it may still
+    // be a valid history commit, so report skip rather than a false "not found".
+    if (/^[0-9a-f]{7,40}$/iu.test(ref)) {
+      const { stdout: advertised } = await execFileAsync("git", ["ls-remote", repoUrl], {
+        timeout: 15000,
+        env: process.env,
+      });
+      const needle = ref.toLowerCase();
+      const match = advertised
+        .split("\n")
+        .map((line) => line.trim().split(/\s+/u)[0])
+        .find((oid) => oid !== undefined && oid !== "" && (oid === needle || oid.startsWith(needle)));
+      if (match) {
+        return {
+          skill_id: skill.skill_id,
+          status: "ok",
+          detail: `commit ${ref} is advertised by ${repo}`,
+          resolved_ref: match,
+        };
+      }
+      return {
+        skill_id: skill.skill_id,
+        status: "skip",
+        detail: `pinned commit ${ref} is not an advertised ref tip on ${repo}; cannot verify via ls-remote without a clone`,
+      };
+    }
+
     return {
       skill_id: skill.skill_id,
-      status: "ok",
-      detail: `verified against ${repo}`,
-      resolved_ref: resolved,
+      status: "warn",
+      detail: `ref not found on remote ${repo}`,
     };
   } catch (error) {
     return {

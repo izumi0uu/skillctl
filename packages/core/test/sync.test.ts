@@ -76,6 +76,82 @@ describe("sync and prune", () => {
     expect(await fs.readFile(path.join(repoRoot, "README.md"), "utf8")).toContain("Managed Skill Sources");
   });
 
+  test("skills-cli transport footers the final per-agent install after mirroring", async () => {
+    const repoRoot = await makeTempDir("skillctl-sync-cli-");
+    const skillsDir = path.join(repoRoot, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    const skillPath = await writeSkill(skillsDir, "alpha");
+    await writeReadme(repoRoot, "# skillctl\n");
+    const fakeHome = await makeTempDir("skillctl-home-");
+    process.env.HOME = fakeHome;
+
+    // Stand in for the upstream skills CLI in copy mode for a universal agent:
+    // it installs into the canonical ~/.agents/skills, NOT the adapter dir. The
+    // source is intentionally left un-footered so this only passes if skillctl
+    // applies attribution AFTER mirroring into ~/.codex/skills.
+    const fakeCli = path.join(repoRoot, "fake-skills.mjs");
+    await fs.writeFile(
+      fakeCli,
+      [
+        'import { cpSync, mkdirSync, rmSync } from "node:fs";',
+        'import os from "node:os";',
+        'import path from "node:path";',
+        'const args = process.argv.slice(2);',
+        'const sourceDir = args[args.indexOf("add") + 1];',
+        'const sIndex = args.indexOf("-s");',
+        'const skillId = sIndex !== -1 ? args[sIndex + 1] : path.basename(sourceDir);',
+        'const dest = path.join(os.homedir(), ".agents", "skills", skillId);',
+        'rmSync(dest, { recursive: true, force: true });',
+        'mkdirSync(path.dirname(dest), { recursive: true });',
+        'cpSync(sourceDir, dest, { recursive: true });',
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const catalog: SkillctlCatalog = {
+      version: 1,
+      generatedBy: "test",
+      skills: [{
+        skill_id: "alpha",
+        visibility: "public",
+        source_kind: "local-public",
+        origin_kind: "imported-upstream",
+        hash: "placeholder",
+        managed: true,
+        targets: ["codex"],
+        canonical_rel_path: path.relative(repoRoot, skillPath),
+        upstream: {
+          repo: "owner/repo",
+          ref: "main",
+          skillPath: "skills/alpha",
+          sourceType: "github",
+          local_modifications: false,
+        },
+      }],
+    };
+    const config: SkillctlConfig = {
+      sourceRoots: [{ path: skillsDir, visibility: "public", managedByDefault: true }],
+      privateRoots: [],
+      enabledAdapters: ["codex"],
+      excludeSkills: [],
+      liveProbePolicy: "off",
+      transport: {
+        mode: "skills-cli",
+        command: "node",
+        args: [fakeCli],
+      },
+      stateDir: path.join(repoRoot, ".skillctl-local"),
+    };
+
+    const result = await syncCatalog(repoRoot, config, catalog);
+
+    expect(result.copied).toContainEqual({ agent: "codex", skillId: "alpha" });
+    const installed = await fs.readFile(path.join(fakeHome, ".codex", "skills", "alpha", "SKILL.md"), "utf8");
+    expect(installed).toContain("## Source Attribution");
+    expect(installed).toContain("imported-upstream");
+  });
+
   test("prune removes only previously managed directories", async () => {
     const repoRoot = await makeTempDir("skillctl-prune-");
     const fakeHome = await makeTempDir("skillctl-home-");

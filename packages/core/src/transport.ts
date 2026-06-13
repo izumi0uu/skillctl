@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 
 import { ensureReadmeSourceRegistry, expectedSkillRenderedHash } from "./attribution.js";
 import { getAdapter } from "./adapters.js";
+import { managedSkillsForAgent } from "./catalog.js";
 import { copyDir, ensureDir, fileExists } from "./fs.js";
 import type {
   AgentId,
@@ -19,12 +20,8 @@ import type {
 
 const execFileAsync = promisify(execFile);
 
-function managedInstallSet(catalog: SkillctlCatalog, agent: AgentId): CatalogSkill[] {
-  return catalog.skills.filter((skill) => skill.managed && skill.targets.includes(agent));
-}
-
 function installableSkillSet(catalog: SkillctlCatalog, agent: AgentId): CatalogSkill[] {
-  return managedInstallSet(catalog, agent).filter((skill) => skill.visibility === "public");
+  return managedSkillsForAgent(catalog, agent).filter((skill) => skill.visibility === "public");
 }
 
 function agentArg(agent: AgentId): string {
@@ -132,11 +129,6 @@ async function runSkillsCliForAgent(
       timeout: 30000,
     });
 
-    const installedDir = path.join(getAdapter(agent).installDir(), skill.skill_id);
-    if (await fileExists(installedDir)) {
-      await expectedSkillRenderedHash(installedDir, skill);
-    }
-
     copied.push({ agent, skillId: skill.skill_id });
   }
 
@@ -161,6 +153,26 @@ async function mirrorSharedInstallToAdapter(agent: AgentId, copiedSkills: string
   }
 }
 
+// Apply the source-attribution footer to each skill's final per-agent install
+// location. This must run AFTER mirrorSharedInstallToAdapter: for universal
+// agents the upstream CLI copies into ~/.agents/skills and the mirror brings it
+// into the adapter dir, so footering the adapter dir before the mirror would be
+// silently lost (and leave installs in permanent footer drift).
+async function renderInstalledAttribution(agent: AgentId, skills: CatalogSkill[], copied: SyncResult["copied"]): Promise<void> {
+  const copiedIds = new Set(copied.map((entry) => entry.skillId));
+  const installRoot = getAdapter(agent).installDir();
+
+  for (const skill of skills) {
+    if (!copiedIds.has(skill.skill_id)) {
+      continue;
+    }
+    const installedDir = path.join(installRoot, skill.skill_id);
+    if (await fileExists(installedDir)) {
+      await expectedSkillRenderedHash(installedDir, skill);
+    }
+  }
+}
+
 export async function syncViaSkillsCli(repoRoot: string, config: SkillctlConfig, catalog: SkillctlCatalog): Promise<SyncResult> {
   const copied: SyncResult["copied"] = [];
   const skipped: SyncResult["skipped"] = [];
@@ -171,7 +183,7 @@ export async function syncViaSkillsCli(repoRoot: string, config: SkillctlConfig,
   for (const agent of config.enabledAdapters) {
     await ensureDir(getAdapter(agent).installDir());
     const installable = installableSkillSet(catalog, agent);
-    const privateOnly = managedInstallSet(catalog, agent).filter((skill) => skill.visibility !== "public");
+    const privateOnly = managedSkillsForAgent(catalog, agent).filter((skill) => skill.visibility !== "public");
 
     for (const skill of privateOnly) {
       skipped.push({ agent, skillId: skill.skill_id, reason: "private skill not synced to public agent dirs" });
@@ -182,6 +194,7 @@ export async function syncViaSkillsCli(repoRoot: string, config: SkillctlConfig,
       copied.push(...result.copied);
       skipped.push(...result.skipped);
       await mirrorSharedInstallToAdapter(agent, result.copied.map((entry) => entry.skillId));
+      await renderInstalledAttribution(agent, installable, result.copied);
       transportRuns.push({
         agent,
         command: [invocation.command, ...invocation.args],

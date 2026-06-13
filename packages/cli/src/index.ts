@@ -147,13 +147,13 @@ async function ensureInitialized(repoRoot: string): Promise<void> {
   await loadCatalog(repoRoot);
 }
 
-async function discoverAndPersist(repoRoot: string): Promise<{ conflicts: number; skills: number }> {
+async function discoverAndPersist(repoRoot: string): Promise<{ conflicts: Array<{ skillId: string; paths: string[] }>; skills: number }> {
   const config = await loadConfig(repoRoot);
   const current = await loadCatalog(repoRoot);
   const { catalog, conflicts } = await discoverCatalog(repoRoot, config, current);
   await normalizeCatalogArtifacts(repoRoot, catalog);
   await writeCatalog(repoRoot, catalog);
-  return { conflicts: conflicts.length, skills: catalog.skills.length };
+  return { conflicts, skills: catalog.skills.length };
 }
 
 async function statusCommand(repoRoot: string): Promise<void> {
@@ -275,6 +275,17 @@ function hasFlag(args: string[], flag: string): boolean {
   return args.includes(flag);
 }
 
+function parseEnumFlag<T extends string>(args: string[], flag: string, allowed: readonly T[]): T | undefined {
+  const value = readFlag(args, flag);
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!allowed.includes(value as T)) {
+    throw new Error(`${flag} must be one of: ${allowed.join(", ")} (got "${value}")`);
+  }
+  return value as T;
+}
+
 async function adoptCommand(repoRoot: string, args: string[]): Promise<void> {
   const sourcePath = readFlag(args, "--source");
   if (!sourcePath) {
@@ -288,9 +299,9 @@ async function adoptCommand(repoRoot: string, args: string[]): Promise<void> {
     fromRepo: readFlag(args, "--from-repo"),
     skillPath: readFlag(args, "--skill-path"),
     ref: readFlag(args, "--ref"),
-    sourceType: readFlag(args, "--source-type") as "github" | "git" | "local" | undefined,
+    sourceType: parseEnumFlag(args, "--source-type", ["github", "git", "local"] as const),
     sourceUrl: readFlag(args, "--source-url"),
-    originKind: readFlag(args, "--origin-kind") as "local-authored" | "imported-upstream" | "derived-from-upstream" | undefined,
+    originKind: parseEnumFlag(args, "--origin-kind", ["local-authored", "imported-upstream", "derived-from-upstream"] as const),
     localModifications: hasFlag(args, "--local-modifications"),
   });
 
@@ -357,7 +368,7 @@ async function main(): Promise<void> {
       await ensureInitialized(repoRoot);
       const result = await discoverAndPersist(repoRoot);
       console.log(JSON.stringify(result, null, 2));
-      process.exitCode = result.conflicts > 0 ? 2 : 0;
+      process.exitCode = result.conflicts.length > 0 ? 2 : 0;
       return;
     }
     case "adopt": {

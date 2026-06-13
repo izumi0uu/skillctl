@@ -2,12 +2,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { getAdapter } from "./adapters.js";
+import { managedSkillsForAgent } from "./catalog.js";
 import { loadManagedIndex, writeManagedIndex } from "./indexes.js";
-import type { CatalogSkill, PruneResult, SkillctlCatalog, SkillctlConfig } from "./types.js";
-
-function managedSkillsForAgent(catalog: SkillctlCatalog, agent: CatalogSkill["targets"][number]): Set<string> {
-  return new Set(catalog.skills.filter((skill) => skill.managed && skill.targets.includes(agent)).map((skill) => skill.skill_id));
-}
+import type { PruneResult, SkillctlCatalog, SkillctlConfig } from "./types.js";
 
 export async function pruneManaged(repoRoot: string, config: SkillctlConfig, catalog: SkillctlCatalog): Promise<PruneResult> {
   void repoRoot;
@@ -16,7 +13,7 @@ export async function pruneManaged(repoRoot: string, config: SkillctlConfig, cat
 
   for (const agent of config.enabledAdapters) {
     const adapter = getAdapter(agent);
-    const keep = managedSkillsForAgent(catalog, agent);
+    const keep = new Set(managedSkillsForAgent(catalog, agent).map((skill) => skill.skill_id));
     const index = await loadManagedIndex(config.stateDir!, agent);
 
     for (const entry of index.entries) {
@@ -28,8 +25,7 @@ export async function pruneManaged(repoRoot: string, config: SkillctlConfig, cat
       removed.push({ agent, skillId: entry.skill_id });
     }
 
-    const nextSkills = catalog.skills.filter((skill) => skill.managed && skill.targets.includes(agent));
-    await writeManagedIndex(config.stateDir!, agent, nextSkills);
+    await writeManagedIndex(config.stateDir!, agent, managedSkillsForAgent(catalog, agent));
   }
 
   return { removed, skipped };

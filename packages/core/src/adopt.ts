@@ -47,6 +47,15 @@ export async function adoptSkill(
 
   const skillId = await parseSkillName(path.join(sourcePath, "SKILL.md"));
   const destinationDir = path.join(repoRoot, "skills", skillId);
+
+  if (sourcePath === destinationDir) {
+    throw new Error(`source is already the canonical skill location: ${destinationDir}`);
+  }
+  const alreadyCataloged = catalog.skills.some((skill) => skill.skill_id === skillId);
+  if (!alreadyCataloged && await fileExists(destinationDir)) {
+    throw new Error(`refusing to overwrite untracked skill directory not in the catalog: ${destinationDir}`);
+  }
+
   await copyDir(sourcePath, destinationDir);
 
   const originKind = inferOriginKind(options);

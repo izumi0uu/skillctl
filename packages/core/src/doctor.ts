@@ -3,16 +3,12 @@ import path from "node:path";
 
 import { applySkillAttribution, hasMalformedAttributionBlock, readmeSourceRegistryDrift, sourceDirForSkill } from "./attribution.js";
 import { getAdapter, runProbe } from "./adapters.js";
-import { summarizeCatalog } from "./catalog.js";
+import { managedSkillsForAgent, summarizeCatalog } from "./catalog.js";
 import { fileExists, readText } from "./fs.js";
 import { loadManagedIndex } from "./indexes.js";
 import { hashDirectory } from "./hash.js";
 import { transportHealth } from "./transport.js";
-import type { CatalogSkill, DoctorIssue, DoctorReport, RepairAction, SkillctlCatalog, SkillctlConfig } from "./types.js";
-
-function managedSkillsForAgent(catalog: SkillctlCatalog, agent: CatalogSkill["targets"][number]): CatalogSkill[] {
-  return catalog.skills.filter((skill) => skill.managed && skill.targets.includes(agent));
-}
+import type { DoctorIssue, DoctorReport, RepairAction, SkillctlCatalog, SkillctlConfig } from "./types.js";
 
 export async function runDoctor(repoRoot: string, config: SkillctlConfig, catalog: SkillctlCatalog): Promise<DoctorReport> {
   const issues: DoctorIssue[] = [];

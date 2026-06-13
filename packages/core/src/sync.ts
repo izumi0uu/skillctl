@@ -2,20 +2,17 @@ import path from "node:path";
 
 import { ensureReadmeSourceRegistry, expectedSkillRenderedHash } from "./attribution.js";
 import { getAdapter } from "./adapters.js";
+import { managedSkillsForAgent } from "./catalog.js";
 import { copyDir, ensureDir, fileExists } from "./fs.js";
 import { writeManagedIndex } from "./indexes.js";
-import type { CatalogSkill, SkillctlCatalog, SkillctlConfig, SyncResult } from "./types.js";
+import type { SkillctlCatalog, SkillctlConfig, SyncResult } from "./types.js";
 import { syncViaSkillsCli } from "./transport.js";
-
-function managedInstallSet(catalog: SkillctlCatalog, agent: CatalogSkill["targets"][number]): CatalogSkill[] {
-  return catalog.skills.filter((skill) => skill.managed && skill.targets.includes(agent));
-}
 
 export async function syncCatalog(repoRoot: string, config: SkillctlConfig, catalog: SkillctlCatalog): Promise<SyncResult> {
   if (config.transport.mode === "skills-cli") {
     const result = await syncViaSkillsCli(repoRoot, config, catalog);
     for (const agent of config.enabledAdapters) {
-      await writeManagedIndex(config.stateDir!, agent, managedInstallSet(catalog, agent));
+      await writeManagedIndex(config.stateDir!, agent, managedSkillsForAgent(catalog, agent));
     }
     await ensureReadmeSourceRegistry(repoRoot, catalog);
     return result;
@@ -30,7 +27,7 @@ export async function syncCatalog(repoRoot: string, config: SkillctlConfig, cata
     const installDir = adapter.installDir();
     await ensureDir(installDir);
 
-    for (const skill of managedInstallSet(catalog, agent)) {
+    for (const skill of managedSkillsForAgent(catalog, agent)) {
       if (skill.visibility !== "public") {
         skipped.push({ agent, skillId: skill.skill_id, reason: "private skill not synced to public agent dirs" });
         continue;
@@ -51,7 +48,7 @@ export async function syncCatalog(repoRoot: string, config: SkillctlConfig, cata
       copied.push({ agent, skillId: skill.skill_id });
     }
 
-    await writeManagedIndex(config.stateDir!, agent, managedInstallSet(catalog, agent));
+    await writeManagedIndex(config.stateDir!, agent, managedSkillsForAgent(catalog, agent));
     managedIndexesUpdated.push(agent);
   }
 
