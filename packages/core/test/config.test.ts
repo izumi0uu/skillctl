@@ -8,6 +8,6 @@ describe("defaultConfig", () => {
     expect(config.transport.mode).toBe("skills-cli");
     expect(config.transport.command).toBe("npx");
     expect(config.transport.args).toEqual(["--yes", "skills"]);
-    expect(config.transport.embeddedRepoPath).toBe("vendor/vercel-skills");
+    expect(config.transport.embeddedRepoPath).toBe("vercel-skills");
   });
 });

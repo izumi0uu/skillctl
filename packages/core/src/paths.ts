@@ -5,7 +5,7 @@ import type { AgentId } from "./types.js";
 
 export const CONFIG_FILE = "skillctl.config.json";
 export const CATALOG_FILE = "skillctl.catalog.json";
-export const DEFAULT_EMBEDDED_SKILLS_REPO = "vendor/vercel-skills";
+export const DEFAULT_EMBEDDED_SKILLS_REPO = "vercel-skills";
 
 export function defaultStateDir(repoRoot: string): string {
   return path.join(repoRoot, ".skillctl-local");

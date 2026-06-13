@@ -11,7 +11,7 @@ It is intentionally a control-plane wrapper around `vercel-labs/skills`, not a f
 - Tracks public-safe skills in Git under `skills/`
 - Records managed metadata in `skillctl.catalog.json`
 - Keeps machine-local state in `.skillctl-local/`
-- Vendors `vercel-labs/skills` as a git submodule under `vendor/vercel-skills`
+- Vendors `vercel-labs/skills` as a git submodule under `vercel-skills/`
 - Uses that embedded upstream as the default install and sync transport
 - Syncs managed skills into 5 built-in adapters:
   - `claude-code`
@@ -30,7 +30,7 @@ packages/cli       # CLI entrypoint and repo-root resolution
 apps/electron      # Future macOS shell; no duplicate core logic
 skills/            # Public-safe managed skills committed to Git
 manifests/         # Schemas and tracked metadata
-vendor/vercel-skills # Embedded upstream skills CLI submodule
+vercel-skills/      # Embedded upstream skills CLI submodule
 ```
 
 ## Quick Start
@@ -56,7 +56,7 @@ node packages/cli/dist/index.js status
 ## Config Model
 
 - `skillctl.config.json`: source roots, enabled adapters, private roots, excludes, live probe policy
-- `transport`: which install/sync transport to use; default is `skills-cli` with `embeddedRepoPath` pointing at `vendor/vercel-skills`
+- `transport`: which install/sync transport to use; default is `skills-cli` with `embeddedRepoPath` pointing at `vercel-skills/`
 - `skillctl.catalog.json`: managed catalog, hashes, targets, visibility
 - `.skillctl-local/managed/*.json`: local managed indexes per adapter
 
@@ -64,7 +64,7 @@ By default only `./skills` is discovered as a managed public root. Use `skillctl
 
 ## Embedded Upstream Lifecycle
 
-- `vendor/vercel-skills` is a git submodule pinned to the upstream `vercel-labs/skills` repo.
+- `vercel-skills/` is a git submodule pinned to the upstream `vercel-labs/skills` repo.
 - `pnpm bootstrap-upstream` installs that submodule's dependencies with `pnpm install --ignore-workspace` and builds the upstream CLI if `dist/` is missing.
 - `skillctl sync` and `skillctl doctor` prefer the embedded upstream when it is bootstrapped.
 - If the submodule exists but is not bootstrapped, `doctor` returns a repairable warning instead of silently drifting.

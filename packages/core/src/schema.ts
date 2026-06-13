@@ -29,7 +29,7 @@ export const skillctlConfigSchema = z.object({
     mode: "skills-cli",
     command: "npx",
     args: ["--yes", "skills"],
-    embeddedRepoPath: "vendor/vercel-skills",
+    embeddedRepoPath: "vercel-skills",
   }),
   stateDir: z.string().optional(),
 });
