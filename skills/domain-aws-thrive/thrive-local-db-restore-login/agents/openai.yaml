@@ -1,0 +1,4 @@
+interface:
+  display_name: "Thrive Local DB Restore Login"
+  short_description: "Restore Thrive DB dumps locally and rebind Cognito login users."
+  default_prompt: "Use this skill when restoring a Thrive database dump locally or when local login fails after restore because users.cognito_id still points at a prod Cognito user."

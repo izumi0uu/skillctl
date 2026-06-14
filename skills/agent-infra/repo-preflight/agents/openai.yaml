@@ -1,0 +1,7 @@
+interface:
+  display_name: "Repo Preflight"
+  short_description: "Sync develop with rebase-only semantics"
+  default_prompt: "Use $repo-preflight to sync the latest develop baseline and rebase this branch before making file changes; on non-develop branches, treat pulling develop as rebase-only."
+
+policy:
+  allow_implicit_invocation: true

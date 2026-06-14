@@ -3,9 +3,256 @@
   "generatedBy": "skillctl",
   "skills": [
     {
-      "skill_id": "local-portable-demo",
+      "skill_id": "agents-best-practices",
+      "category": "knowledge-and-research",
+      "tags": [
+        "research",
+        "agent-architecture",
+        "portable"
+      ],
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "243b809163c18cf67a6096e027eb9cf836d1e9dc",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/knowledge-and-research/agents-best-practices",
+      "upstream": {
+        "repo": "DenisSergeevitch/agents-best-practices",
+        "ref": "main",
+        "skillPath": ".",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/DenisSergeevitch/agents-best-practices",
+        "imported_at": "2026-06-14T01:23:45.585Z",
+        "last_verified_ref": "main",
+        "local_modifications": true
+      }
+    },
+    {
+      "skill_id": "anyrouter-config",
+      "category": "agent-infra",
+      "tags": [
+        "config",
+        "routing",
+        "network"
+      ],
       "visibility": "public",
       "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "a19551fe296a296b901defcd68ad1cd4d50f06da",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/anyrouter-config"
+    },
+    {
+      "skill_id": "aws-rds-dump-restore",
+      "category": "domain-aws-thrive",
+      "tags": [
+        "aws",
+        "database",
+        "operations"
+      ],
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "1ce26734207b34fbede7548793aaab2e5283108a",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/domain-aws-thrive/aws-rds-dump-restore"
+    },
+    {
+      "skill_id": "codex-config-health",
+      "category": "agent-infra",
+      "tags": [
+        "config",
+        "health",
+        "codex"
+      ],
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "4709de00cf4a05ee3926d0497b01cf5e2f31a782",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/codex-config-health"
+    },
+    {
+      "skill_id": "codex-session-recovery",
+      "category": "agent-infra",
+      "tags": [
+        "recovery",
+        "sessions",
+        "codex"
+      ],
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "ce7c3c4b9df162af992eea5a8120d3324ebf3445",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/codex-session-recovery"
+    },
+    {
+      "skill_id": "deploy-to-vercel",
+      "category": "deployment-and-platform",
+      "tags": [
+        "deployment",
+        "vercel",
+        "platform"
+      ],
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "25d1cebb0d7774773a91fc365733b925c47b84e0",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/deployment-and-platform/deploy-to-vercel",
+      "upstream": {
+        "repo": "vercel-labs/agent-skills",
+        "ref": "main",
+        "skillPath": "skills/deploy-to-vercel",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/vercel-labs/agent-skills/tree/main/skills/deploy-to-vercel",
+        "imported_at": "2026-06-14T01:23:45.815Z",
+        "last_verified_ref": "main",
+        "local_modifications": true
+      }
+    },
+    {
+      "skill_id": "excalidraw-diagram",
+      "category": "productivity-and-artifacts",
+      "tags": [
+        "diagram",
+        "artifact",
+        "visualization"
+      ],
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "71603546903141ff6230e3a3e0452f44fa0e9fe9",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/productivity-and-artifacts/excalidraw-diagram"
+    },
+    {
+      "skill_id": "google-sheets-editor",
+      "category": "productivity-and-artifacts",
+      "tags": [
+        "sheets",
+        "artifact",
+        "operations"
+      ],
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "423a232f7c5afba23018ce1f3eade4743e93ca8a",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/productivity-and-artifacts/google-sheets-editor"
+    },
+    {
+      "skill_id": "hermes-upstream-worktree-fix",
+      "category": "agent-infra",
+      "tags": [
+        "hermes",
+        "git",
+        "maintenance"
+      ],
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "9a7b1cc95fff0f3f911581c8add9e02d957a567e",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/hermes-upstream-worktree-fix"
+    },
+    {
+      "skill_id": "karpathy-guidelines",
+      "category": "knowledge-and-research",
+      "tags": [
+        "guidelines",
+        "llm",
+        "reasoning"
+      ],
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "638589ea4bb918137cf56457aa48fe73072d733d",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/knowledge-and-research/karpathy-guidelines"
+    },
+    {
+      "skill_id": "local-portable-demo",
+      "category": "system-and-demo",
+      "tags": [
+        "demo",
+        "portable",
+        "validation"
+      ],
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
       "hash": "0fcf31eb8a4d225f34c065159e5ab1c3848a0311",
       "managed": true,
       "targets": [
@@ -15,7 +262,459 @@
         "hermes",
         "opencode"
       ],
-      "canonical_rel_path": "skills/local-portable-demo"
+      "canonical_rel_path": "skills/system-and-demo/local-portable-demo"
+    },
+    {
+      "skill_id": "motion-design",
+      "category": "frontend-and-design",
+      "tags": [
+        "design",
+        "motion",
+        "ui"
+      ],
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "311aaef32a4d4fb4b5b45aac2765b48d6d129643",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/motion-design",
+      "upstream": {
+        "repo": "LottieFiles/motion-design-skill",
+        "ref": "main",
+        "skillPath": "skills/motion-design",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/LottieFiles/motion-design-skill/tree/main/skills/motion-design",
+        "imported_at": "2026-06-14T01:23:47.769Z",
+        "last_verified_ref": "main",
+        "local_modifications": true
+      }
+    },
+    {
+      "skill_id": "obsidian-llm-wiki",
+      "category": "knowledge-and-research",
+      "tags": [
+        "wiki",
+        "obsidian",
+        "knowledge-base"
+      ],
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "1d91cd935b877d416ce8a628efc954013ac00acf",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/knowledge-and-research/obsidian-llm-wiki",
+      "upstream": {
+        "repo": "https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f.git",
+        "ref": "main",
+        "skillPath": ".",
+        "sourceType": "github",
+        "sourceUrl": "https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f",
+        "imported_at": "2026-06-14T02:32:13.455Z",
+        "last_verified_ref": "main",
+        "local_modifications": true
+      }
+    },
+    {
+      "skill_id": "omx-project-scope-git-isolation",
+      "category": "agent-infra",
+      "tags": [
+        "git",
+        "project-scope",
+        "omx"
+      ],
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "1b8944d17ad41177b062323ec07519acce374284",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/omx-project-scope-git-isolation"
+    },
+    {
+      "skill_id": "recruitflow-project-ops",
+      "category": "domain-aws-thrive",
+      "tags": [
+        "domain",
+        "ops",
+        "project"
+      ],
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "beb42980f19bbede27d8407f7878cbfb4c932256",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/domain-aws-thrive/recruitflow-project-ops"
+    },
+    {
+      "skill_id": "repo-preflight",
+      "category": "agent-infra",
+      "tags": [
+        "git",
+        "preflight",
+        "workflow"
+      ],
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "ac963901554576100a62bc165264fc7886508c1e",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/repo-preflight"
+    },
+    {
+      "skill_id": "thrive-billing-claim-cleanup-diagnostics",
+      "category": "domain-aws-thrive",
+      "tags": [
+        "billing",
+        "diagnostics",
+        "domain"
+      ],
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "bcec5a110ed3151c7128c90be88236771294f9c1",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/domain-aws-thrive/thrive-billing-claim-cleanup-diagnostics"
+    },
+    {
+      "skill_id": "thrive-local-db-restore-login",
+      "category": "domain-aws-thrive",
+      "tags": [
+        "database",
+        "restore",
+        "login"
+      ],
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "86e7328f01dddc20d20f1e1bcbc21df9628b3624",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/domain-aws-thrive/thrive-local-db-restore-login"
+    },
+    {
+      "skill_id": "thrive-therapy-session-diagnostics",
+      "category": "domain-aws-thrive",
+      "tags": [
+        "diagnostics",
+        "therapy",
+        "domain"
+      ],
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "91280bb517209a58af2c3d7339bc4309288190db",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/domain-aws-thrive/thrive-therapy-session-diagnostics"
+    },
+    {
+      "skill_id": "vercel-cli-with-tokens",
+      "category": "deployment-and-platform",
+      "tags": [
+        "vercel",
+        "cli",
+        "auth"
+      ],
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "0a6e503412479053b489de91cb716ce033ce955e",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/deployment-and-platform/vercel-cli-with-tokens",
+      "upstream": {
+        "repo": "vercel-labs/agent-skills",
+        "ref": "main",
+        "skillPath": "skills/vercel-cli-with-tokens",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/vercel-labs/agent-skills/tree/main/skills/vercel-cli-with-tokens",
+        "imported_at": "2026-06-14T01:23:49.715Z",
+        "last_verified_ref": "main",
+        "local_modifications": true
+      }
+    },
+    {
+      "skill_id": "vercel-composition-patterns",
+      "category": "frontend-and-design",
+      "tags": [
+        "react",
+        "composition",
+        "patterns"
+      ],
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "dde274d80c19d17aed9d46fd3b661f5c4934e06f",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/vercel-composition-patterns",
+      "upstream": {
+        "repo": "vercel-labs/agent-skills",
+        "ref": "main",
+        "skillPath": "skills/composition-patterns",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/vercel-labs/agent-skills/tree/main/skills/composition-patterns",
+        "imported_at": "2026-06-14T01:23:49.965Z",
+        "last_verified_ref": "main",
+        "local_modifications": true
+      }
+    },
+    {
+      "skill_id": "vercel-optimize",
+      "category": "deployment-and-platform",
+      "tags": [
+        "vercel",
+        "optimization",
+        "performance"
+      ],
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "d989b357f596363e074a0b5a08a416ab93f58e3d",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/deployment-and-platform/vercel-optimize",
+      "upstream": {
+        "repo": "vercel-labs/agent-skills",
+        "ref": "main",
+        "skillPath": "skills/vercel-optimize",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/vercel-labs/agent-skills/tree/main/skills/vercel-optimize",
+        "imported_at": "2026-06-14T01:23:50.251Z",
+        "last_verified_ref": "main",
+        "local_modifications": true
+      }
+    },
+    {
+      "skill_id": "vercel-react-best-practices",
+      "category": "frontend-and-design",
+      "tags": [
+        "react",
+        "best-practices",
+        "performance"
+      ],
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "89f2966f8b4983a8027a2f896804c5427157b5a9",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/vercel-react-best-practices",
+      "upstream": {
+        "repo": "vercel-labs/agent-skills",
+        "ref": "main",
+        "skillPath": "skills/react-best-practices",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/vercel-labs/agent-skills/tree/main/skills/react-best-practices",
+        "imported_at": "2026-06-14T01:23:50.524Z",
+        "last_verified_ref": "main",
+        "local_modifications": true
+      }
+    },
+    {
+      "skill_id": "vercel-react-native-skills",
+      "category": "frontend-and-design",
+      "tags": [
+        "react-native",
+        "mobile",
+        "expo"
+      ],
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "17df395136c4d6b04a8c9357392d60de4be46213",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/vercel-react-native-skills",
+      "upstream": {
+        "repo": "vercel-labs/agent-skills",
+        "ref": "main",
+        "skillPath": "skills/react-native-skills",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/vercel-labs/agent-skills/tree/main/skills/react-native-skills",
+        "imported_at": "2026-06-14T01:23:51.258Z",
+        "last_verified_ref": "main",
+        "local_modifications": true
+      }
+    },
+    {
+      "skill_id": "vercel-react-view-transitions",
+      "category": "frontend-and-design",
+      "tags": [
+        "react",
+        "animation",
+        "transitions"
+      ],
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "e157cc355d0c91aa22f6bd191931d854b7f09558",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/vercel-react-view-transitions",
+      "upstream": {
+        "repo": "vercel-labs/agent-skills",
+        "ref": "main",
+        "skillPath": "skills/react-view-transitions",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/vercel-labs/agent-skills/tree/main/skills/react-view-transitions",
+        "imported_at": "2026-06-14T01:23:51.541Z",
+        "last_verified_ref": "main",
+        "local_modifications": true
+      }
+    },
+    {
+      "skill_id": "web-design-guidelines",
+      "category": "frontend-and-design",
+      "tags": [
+        "design",
+        "web",
+        "guidelines"
+      ],
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "da7cbce810e58ed50be663548871954d674d94da",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/web-design-guidelines",
+      "upstream": {
+        "repo": "vercel-labs/agent-skills",
+        "ref": "main",
+        "skillPath": "skills/web-design-guidelines",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/vercel-labs/agent-skills/tree/main/skills/web-design-guidelines",
+        "imported_at": "2026-06-14T01:23:51.800Z",
+        "last_verified_ref": "main",
+        "local_modifications": true
+      }
+    },
+    {
+      "skill_id": "writing-guidelines",
+      "category": "knowledge-and-research",
+      "tags": [
+        "writing",
+        "guidelines",
+        "docs"
+      ],
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "0b8c2702ff87e81a2eaf1c5cb9c56af9e650395d",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/knowledge-and-research/writing-guidelines",
+      "upstream": {
+        "repo": "vercel-labs/agent-skills",
+        "ref": "main",
+        "skillPath": "skills/writing-guidelines",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/vercel-labs/agent-skills/tree/main/skills/writing-guidelines",
+        "imported_at": "2026-06-14T01:23:52.081Z",
+        "last_verified_ref": "main",
+        "local_modifications": true
+      }
     }
   ]
 }

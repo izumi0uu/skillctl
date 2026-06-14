@@ -4,7 +4,7 @@ import { parse } from "yaml";
 
 import { hashDirectory } from "./hash.js";
 import { fileExists } from "./fs.js";
-import type { SkillDescriptor, SourceRoot, Visibility } from "./types.js";
+import type { OriginKind, SkillDescriptor, SourceKind, SourceRoot, Visibility } from "./types.js";
 
 export async function parseSkillName(skillFilePath: string): Promise<string> {
   const raw = await fs.readFile(skillFilePath, "utf8");
@@ -43,20 +43,31 @@ export async function loadSkillDescriptor(root: SourceRoot, dirPath: string): Pr
 }
 
 export async function discoverSkillsInRoot(root: SourceRoot): Promise<SkillDescriptor[]> {
-  const entries = await fs.readdir(root.path, { withFileTypes: true }).catch(() => []);
-  const descriptors: SkillDescriptor[] = [];
-
-  for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith(".")) {
-      continue;
+  async function visit(dirPath: string): Promise<SkillDescriptor[]> {
+    const skillFilePath = path.join(dirPath, "SKILL.md");
+    if (await fileExists(skillFilePath)) {
+      return [await loadSkillDescriptor(root, dirPath)];
     }
-    const dirPath = path.join(root.path, entry.name);
-    descriptors.push(await loadSkillDescriptor(root, dirPath));
+
+    const entries = await fs.readdir(dirPath, { withFileTypes: true }).catch(() => []);
+    const descriptors: SkillDescriptor[] = [];
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith(".")) {
+        continue;
+      }
+      descriptors.push(...await visit(path.join(dirPath, entry.name)));
+    }
+
+    return descriptors;
   }
 
-  return descriptors;
+  return visit(root.path);
 }
 
-export function inferSourceKind(visibility: Visibility): "local-public" | "local-private" {
+export function inferSourceKind(visibility: Visibility, originKind: OriginKind = "local-authored"): SourceKind {
+  if (originKind !== "local-authored") {
+    return "upstream";
+  }
   return visibility === "public" ? "local-public" : "local-private";
 }

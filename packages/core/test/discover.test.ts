@@ -94,4 +94,27 @@ describe("discoverCatalog", () => {
     expect(result.catalog.skills[0]?.managed).toBe(false);
     expect(result.catalog.skills[0]?.upstream?.repo).toBe("owner/repo");
   });
+
+  test("discovers skills from nested category directories", async () => {
+    const repoRoot = await makeTempDir("skillctl-discover-");
+    const skillsDir = path.join(repoRoot, "skills");
+    const categoryDir = path.join(skillsDir, "frontend-and-design");
+    await fs.mkdir(categoryDir, { recursive: true });
+    const alphaDir = await writeSkill(categoryDir, "alpha");
+
+    const result = await discoverCatalog(repoRoot, {
+      sourceRoots: [{ path: skillsDir, visibility: "public", managedByDefault: true }],
+      privateRoots: [],
+      enabledAdapters: ["codex"],
+      excludeSkills: [],
+      liveProbePolicy: "off",
+      stateDir: path.join(repoRoot, ".skillctl-local"),
+      transport: { mode: "copy-fallback", command: "npx", args: ["--yes", "skills"] },
+    });
+
+    expect(result.conflicts).toEqual([]);
+    expect(result.catalog.skills).toHaveLength(1);
+    expect(result.catalog.skills[0]?.skill_id).toBe("alpha");
+    expect(result.catalog.skills[0]?.canonical_rel_path).toBe(path.relative(repoRoot, alphaDir));
+  });
 });

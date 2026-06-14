@@ -4,11 +4,13 @@ import { mergeCatalogSkillMetadata } from "./catalog.js";
 import { fileExists, copyDir } from "./fs.js";
 import { hashDirectory } from "./hash.js";
 import { inferSourceKind, parseSkillName } from "./skill.js";
+import { inferSkillCategoryFromRelPath } from "./taxonomy.js";
 import type { CatalogSkill, OriginKind, SkillctlCatalog, SkillctlConfig, UpstreamSourceType, Visibility } from "./types.js";
 import { normalizeCatalogArtifacts } from "./attribution.js";
 
 export interface AdoptSkillOptions {
   sourcePath: string;
+  destinationSubdir?: string;
   originKind?: OriginKind;
   visibility?: Visibility;
   sourceType?: UpstreamSourceType;
@@ -46,7 +48,15 @@ export async function adoptSkill(
   }
 
   const skillId = await parseSkillName(path.join(sourcePath, "SKILL.md"));
-  const destinationDir = path.join(repoRoot, "skills", skillId);
+  const previous = catalog.skills.find((skill) => skill.skill_id === skillId);
+  const explicitSubdir = options.destinationSubdir?.trim().replace(/^\/+|\/+$/gu, "");
+  const previousRelDir = previous?.canonical_rel_path ? path.dirname(previous.canonical_rel_path) : null;
+  const destinationParent = explicitSubdir
+    ? path.join(repoRoot, "skills", explicitSubdir)
+    : previousRelDir && previousRelDir !== "."
+      ? path.join(repoRoot, previousRelDir)
+      : path.join(repoRoot, "skills");
+  const destinationDir = path.join(destinationParent, skillId);
 
   if (sourcePath === destinationDir) {
     throw new Error(`source is already the canonical skill location: ${destinationDir}`);
@@ -75,8 +85,9 @@ export async function adoptSkill(
 
   const discovered: CatalogSkill = {
     skill_id: skillId,
+    category: inferSkillCategoryFromRelPath(path.relative(repoRoot, destinationDir)),
     visibility,
-    source_kind: inferSourceKind(visibility),
+    source_kind: inferSourceKind(visibility, originKind),
     origin_kind: originKind,
     hash: await hashDirectory(destinationDir),
     managed: true,
@@ -85,7 +96,6 @@ export async function adoptSkill(
     upstream,
   };
 
-  const previous = catalog.skills.find((skill) => skill.skill_id === skillId);
   const merged = mergeCatalogSkillMetadata(previous, discovered);
   const nextSkills = catalog.skills.filter((skill) => skill.skill_id !== skillId);
   nextSkills.push(merged);

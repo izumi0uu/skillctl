@@ -1,0 +1,3 @@
+display_name: Obsidian LLM Wiki
+short_description: Maintain the Agent learning Obsidian vault as an LLM wiki.
+default_prompt: Use the Obsidian LLM Wiki workflow for this vault.

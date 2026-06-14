@@ -10,7 +10,9 @@ import {
   README_SOURCES_START,
   applySkillAttribution,
   buildSourceRegistry,
+  injectManagedSkillTaxonomySection,
   injectManagedSkillSourcesSection,
+  summarizeSourceRegistry,
   normalizeCatalogArtifacts,
   readmeSourceRegistryDrift,
 } from "../src/attribution.js";
@@ -50,6 +52,7 @@ describe("attribution", () => {
       skills: [
         {
           skill_id: "beta",
+          category: "knowledge-and-research",
           visibility: "public",
           source_kind: "local-public",
           origin_kind: "local-authored",
@@ -59,6 +62,7 @@ describe("attribution", () => {
         },
         {
           skill_id: "alpha",
+          category: "agent-infra",
           visibility: "public",
           source_kind: "upstream",
           origin_kind: "imported-upstream",
@@ -82,6 +86,99 @@ describe("attribution", () => {
 
     const registry = buildSourceRegistry(catalog);
     expect(registry.map((entry) => entry.skill_id)).toEqual(["alpha", "beta"]);
+    expect(registry[0]?.category_label).toBe("Agent Infra");
+    expect(registry[1]?.category_label).toBe("Knowledge And Research");
+  });
+
+  test("summarizes source registry by category and provenance", () => {
+    const catalog: SkillctlCatalog = {
+      version: 1,
+      generatedBy: "test",
+      skills: [
+        {
+          skill_id: "alpha",
+          category: "agent-infra",
+          visibility: "public",
+          source_kind: "upstream",
+          origin_kind: "derived-from-upstream",
+          hash: "a",
+          managed: true,
+          tags: ["ops", "config"],
+          targets: ["codex"],
+          canonical_rel_path: "skills/agent-infra/alpha",
+          upstream: {
+            repo: "owner/repo",
+            ref: "main",
+            skillPath: "skills/alpha",
+            sourceType: "github",
+            sourceUrl: "https://example.com",
+            last_verified_ref: "main",
+            local_modifications: true,
+          },
+        },
+        {
+          skill_id: "beta",
+          visibility: "private",
+          source_kind: "local-private",
+          origin_kind: "local-authored",
+          hash: "b",
+          managed: false,
+          targets: ["codex"],
+        },
+      ],
+    };
+
+    const summary = summarizeSourceRegistry(buildSourceRegistry(catalog));
+    expect(summary.totalSkills).toBe(2);
+    expect(summary.byOriginKind["derived-from-upstream"]).toBe(1);
+    expect(summary.bySourceKind.upstream).toBe(1);
+    expect(summary.byCategory[0]?.id).toBe("agent-infra");
+    expect(summary.byCategory[0]?.localModifiedSkills).toBe(1);
+  });
+
+  test("renders README taxonomy section deterministically", () => {
+    const catalog: SkillctlCatalog = {
+      version: 1,
+      generatedBy: "test",
+      skills: [
+        {
+          skill_id: "beta",
+          category: "knowledge-and-research",
+          tags: ["research", "portable"],
+          visibility: "public",
+          source_kind: "local-public",
+          origin_kind: "local-authored",
+          hash: "b",
+          managed: true,
+          targets: ["codex"],
+        },
+        {
+          skill_id: "alpha",
+          category: "agent-infra",
+          tags: ["config", "health"],
+          visibility: "public",
+          source_kind: "upstream",
+          origin_kind: "imported-upstream",
+          hash: "a",
+          managed: true,
+          targets: ["codex"],
+          upstream: {
+            repo: "owner/repo",
+            ref: "main",
+            skillPath: "skills/alpha",
+            sourceType: "github",
+            local_modifications: false,
+          },
+        },
+      ],
+    };
+
+    const rendered = injectManagedSkillTaxonomySection("# skillctl\n", catalog);
+    expect(rendered).toContain("## Managed Skill Taxonomy");
+    expect(rendered).toContain("Agent Infra");
+    expect(rendered).toContain("Knowledge And Research");
+    expect(rendered).toContain("`alpha`");
+    expect(rendered).toContain("`beta`");
   });
 
   test("normalizes skill footer and README together", async () => {

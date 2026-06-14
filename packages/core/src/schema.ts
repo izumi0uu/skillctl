@@ -6,6 +6,15 @@ export const sourceKindSchema = z.enum(["local-public", "local-private", "upstre
 export const originKindSchema = z.enum(["local-authored", "imported-upstream", "derived-from-upstream"]);
 export const probePolicySchema = z.enum(["off", "safe"]);
 export const transportModeSchema = z.enum(["skills-cli", "copy-fallback"]);
+export const skillCategorySchema = z.enum([
+  "agent-infra",
+  "knowledge-and-research",
+  "frontend-and-design",
+  "deployment-and-platform",
+  "productivity-and-artifacts",
+  "domain-aws-thrive",
+  "system-and-demo",
+]);
 
 export const transportSchema = z.object({
   mode: transportModeSchema.default("skills-cli"),
@@ -49,6 +58,8 @@ export const upstreamSourceSchema = z.object({
 export const catalogSkillSchema = z.object({
   skill_id: z.string().min(1),
   display_name: z.string().optional(),
+  category: skillCategorySchema.optional(),
+  tags: z.array(z.string()).optional(),
   visibility: visibilitySchema,
   source_kind: sourceKindSchema,
   origin_kind: originKindSchema.default("local-authored"),

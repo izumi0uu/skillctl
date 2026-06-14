@@ -1,0 +1,4 @@
+interface:
+  display_name: "AWS RDS Dump Restore"
+  short_description: "Guide AWS RDS or Aurora Postgres create-and-restore workflows, including bastion staging and pg version checks."
+  default_prompt: "Use this skill to explain how to create an AWS RDS or Aurora PostgreSQL database and restore a dump into it. Default to advisory mode: organize the decision path, check bastion or restore-host PostgreSQL client compatibility first, and when local-to-prod networking is unreliable give a bastion-first staging workflow with a temp directory, rollback dump, incoming dump, and if needed a local-to-S3-to-bastion presigned-link handoff."

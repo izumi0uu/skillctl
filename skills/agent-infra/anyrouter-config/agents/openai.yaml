@@ -1,0 +1,4 @@
+interface:
+  display_name: "AnyRouter Config"
+  short_description: "Configure and verify AnyRouter Claude gateways"
+  default_prompt: "Use $anyrouter-config to configure, verify, or debug an AnyRouter Claude gateway."

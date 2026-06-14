@@ -3,6 +3,7 @@ import path from "node:path";
 import { readJson, writeJson } from "./fs.js";
 import { CATALOG_FILE } from "./paths.js";
 import { skillctlCatalogSchema } from "./schema.js";
+import { inferSkillCategoryFromRelPath } from "./taxonomy.js";
 import type { AgentId, CatalogSkill, SkillDescriptor, SkillctlCatalog } from "./types.js";
 import { inferSourceKind } from "./skill.js";
 
@@ -30,15 +31,17 @@ export async function writeCatalog(repoRoot: string, catalog: SkillctlCatalog): 
 }
 
 export function descriptorToCatalogSkill(repoRoot: string, descriptor: SkillDescriptor, targets: CatalogSkill["targets"]): CatalogSkill {
+  const canonicalRelPath = path.relative(repoRoot, descriptor.dirPath);
   return {
     skill_id: descriptor.skillId,
+    category: inferSkillCategoryFromRelPath(canonicalRelPath),
     visibility: descriptor.visibility,
     source_kind: inferSourceKind(descriptor.visibility),
     origin_kind: "local-authored",
     hash: descriptor.hash,
     managed: descriptor.managedByDefault,
     targets,
-    canonical_rel_path: path.relative(repoRoot, descriptor.dirPath),
+    canonical_rel_path: canonicalRelPath,
   };
 }
 
@@ -47,14 +50,20 @@ export function mergeCatalogSkillMetadata(previous: CatalogSkill | undefined, ne
     return next;
   }
 
+  const originKind = previous.origin_kind === "local-authored" ? next.origin_kind : previous.origin_kind;
+
+  const sourceKind = originKind === "local-authored" ? next.source_kind : inferSourceKind(next.visibility, originKind);
+
   return {
     ...next,
     display_name: previous.display_name ?? next.display_name,
-    source_kind: previous.origin_kind === "local-authored" ? next.source_kind : previous.source_kind,
-    origin_kind: previous.origin_kind ?? next.origin_kind,
+    category: previous.category ?? next.category,
+    tags: previous.tags ?? next.tags,
+    source_kind: sourceKind,
+    origin_kind: originKind,
     managed: previous.managed,
     targets: previous.targets.length > 0 ? previous.targets : next.targets,
-    upstream: previous.upstream ?? next.upstream,
+    upstream: originKind === "local-authored" ? next.upstream : previous.upstream ?? next.upstream,
     aliases: previous.aliases ?? next.aliases,
   };
 }

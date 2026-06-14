@@ -8,6 +8,15 @@ export type UpstreamSourceType = "github" | "git" | "local";
 
 export type ProbePolicy = "off" | "safe";
 export type TransportMode = "skills-cli" | "copy-fallback";
+export type SkillCategory =
+  | "agent-infra"
+  | "knowledge-and-research"
+  | "frontend-and-design"
+  | "deployment-and-platform"
+  | "productivity-and-artifacts"
+  | "domain-aws-thrive"
+  | "system-and-demo";
+export type ManagedSkillCategoryId = SkillCategory | "uncategorized";
 
 export type DoctorStatus = "ok" | "warn" | "error";
 
@@ -53,6 +62,8 @@ export interface UpstreamSource {
 export interface CatalogSkill {
   skill_id: string;
   display_name?: string;
+  category?: SkillCategory;
+  tags?: string[];
   visibility: Visibility;
   source_kind: SourceKind;
   origin_kind: OriginKind;
@@ -183,11 +194,87 @@ export interface BootstrapUpstreamResult {
 
 export interface SourceRegistryEntry {
   skill_id: string;
+  category: ManagedSkillCategoryId;
+  category_label: string;
+  tags: string[];
+  visibility: Visibility;
+  source_kind: SourceKind;
   origin_kind: OriginKind;
+  managed: boolean;
+  canonical_rel_path: string | null;
   upstream_repo: string | null;
   upstream_path: string | null;
   ref: string | null;
+  upstream_source_type: UpstreamSourceType | null;
+  upstream_source_url: string | null;
+  last_verified_ref: string | null;
   local_modifications: boolean;
+}
+
+export interface ManagedSkillCategoryDefinition {
+  id: ManagedSkillCategoryId;
+  label: string;
+  purpose: string;
+}
+
+export interface ManagedSkillTaxonomySkill {
+  skill_id: string;
+  display_name?: string;
+  category: ManagedSkillCategoryId;
+  category_label: string;
+  tags: string[];
+  visibility: Visibility;
+  source_kind: SourceKind;
+  origin_kind: OriginKind;
+  managed: boolean;
+  canonical_rel_path: string | null;
+  targets: AgentId[];
+  has_upstream: boolean;
+  local_modifications: boolean;
+}
+
+export interface ManagedSkillTaxonomyGroup extends ManagedSkillCategoryDefinition {
+  skillCount: number;
+  skills: ManagedSkillTaxonomySkill[];
+}
+
+export interface ManagedSkillTaxonomySummaryEntry extends ManagedSkillCategoryDefinition {
+  skillCount: number;
+  managedSkillCount: number;
+  upstreamSkillCount: number;
+  localAuthoredCount: number;
+}
+
+export interface ManagedSkillTaxonomySummary {
+  totalSkills: number;
+  managedSkills: number;
+  upstreamSkills: number;
+  uncategorizedSkills: number;
+  categories: ManagedSkillTaxonomySummaryEntry[];
+}
+
+export interface ManagedSkillTaxonomy {
+  availableCategories: ManagedSkillCategoryDefinition[];
+  categories: ManagedSkillTaxonomyGroup[];
+  summary: ManagedSkillTaxonomySummary;
+}
+
+export interface SourceRegistryCategorySummary {
+  id: ManagedSkillCategoryId;
+  label: string;
+  totalSkills: number;
+  upstreamSkills: number;
+  localModifiedSkills: number;
+}
+
+export interface SourceRegistrySummary {
+  totalSkills: number;
+  withUpstreamProvenance: number;
+  missingUpstreamMetadata: number;
+  localModifications: number;
+  byOriginKind: Record<OriginKind, number>;
+  bySourceKind: Record<SourceKind, number>;
+  byCategory: SourceRegistryCategorySummary[];
 }
 
 export interface SourceVerificationEntry {

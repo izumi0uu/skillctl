@@ -1,0 +1,8 @@
+interface:
+  display_name: "Google Sheets Editor"
+  short_description: "Update Sheets while preserving tables and style"
+  brand_color: "#4A568D"
+  default_prompt: "Use $google-sheets-editor to update this Google Sheet tab while preserving its table styling and verify the result."
+
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,7 @@
+interface:
+  display_name: "RecruitFlow Project Ops"
+  short_description: "Onboard into RecruitFlow project rules"
+  default_prompt: "Use $recruitflow-project-ops before planning or coding in RecruitFlow."
+
+policy:
+  allow_implicit_invocation: true

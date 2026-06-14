@@ -3,10 +3,24 @@ import path from "node:path";
 import { hashDirectory } from "./hash.js";
 import { fileExists, readText, writeText } from "./fs.js";
 import { README_FILE } from "./paths.js";
-import type { CatalogSkill, SkillctlCatalog, SourceRegistryEntry, UpstreamSource } from "./types.js";
+import {
+  MANAGED_SKILL_CATEGORY_DEFINITIONS,
+  buildManagedSkillTaxonomy,
+  getManagedSkillCategoryDefinition,
+  resolveManagedSkillCategoryId,
+} from "./taxonomy.js";
+import type {
+  CatalogSkill,
+  SkillctlCatalog,
+  SourceRegistryEntry,
+  SourceRegistrySummary,
+  UpstreamSource,
+} from "./types.js";
 
 export const ATTRIBUTION_START = "<!-- skillctl:source-attribution:start -->";
 export const ATTRIBUTION_END = "<!-- skillctl:source-attribution:end -->";
+export const README_TAXONOMY_START = "<!-- skillctl:managed-skill-taxonomy:start -->";
+export const README_TAXONOMY_END = "<!-- skillctl:managed-skill-taxonomy:end -->";
 export const README_SOURCES_START = "<!-- skillctl:managed-skill-sources:start -->";
 export const README_SOURCES_END = "<!-- skillctl:managed-skill-sources:end -->";
 
@@ -117,14 +131,109 @@ export function sourceDirForSkill(repoRoot: string, skill: CatalogSkill): string
 export function buildSourceRegistry(catalog: SkillctlCatalog): SourceRegistryEntry[] {
   return [...catalog.skills]
     .sort((a, b) => a.skill_id.localeCompare(b.skill_id))
-    .map((skill) => ({
-      skill_id: skill.skill_id,
-      origin_kind: skill.origin_kind,
-      upstream_repo: skill.upstream?.repo ?? null,
-      upstream_path: skill.upstream?.skillPath ?? null,
-      ref: skill.upstream?.ref ?? null,
-      local_modifications: skill.upstream?.local_modifications ?? false,
-    }));
+    .map((skill) => {
+      const category = resolveManagedSkillCategoryId(skill);
+      const categoryDefinition = getManagedSkillCategoryDefinition(category);
+      return {
+        skill_id: skill.skill_id,
+        category,
+        category_label: categoryDefinition.label,
+        tags: [...(skill.tags ?? [])].sort((a, b) => a.localeCompare(b)),
+        visibility: skill.visibility,
+        source_kind: skill.source_kind,
+        origin_kind: skill.origin_kind,
+        managed: skill.managed,
+        canonical_rel_path: skill.canonical_rel_path ?? null,
+        upstream_repo: skill.upstream?.repo ?? null,
+        upstream_path: skill.upstream?.skillPath ?? null,
+        ref: skill.upstream?.ref ?? null,
+        upstream_source_type: skill.upstream?.sourceType ?? null,
+        upstream_source_url: skill.upstream?.sourceUrl ?? null,
+        last_verified_ref: skill.upstream?.last_verified_ref ?? null,
+        local_modifications: skill.upstream?.local_modifications ?? false,
+      };
+    });
+}
+
+export function summarizeSourceRegistry(entries: SourceRegistryEntry[]): SourceRegistrySummary {
+  const byOriginKind = {
+    "local-authored": 0,
+    "imported-upstream": 0,
+    "derived-from-upstream": 0,
+  } as SourceRegistrySummary["byOriginKind"];
+  const bySourceKind = {
+    "local-public": 0,
+    "local-private": 0,
+    upstream: 0,
+  } as SourceRegistrySummary["bySourceKind"];
+
+  for (const entry of entries) {
+    byOriginKind[entry.origin_kind] += 1;
+    bySourceKind[entry.source_kind] += 1;
+  }
+
+  const categories = MANAGED_SKILL_CATEGORY_DEFINITIONS
+    .map((definition) => {
+      const categoryEntries = entries.filter((entry) => entry.category === definition.id);
+      if (categoryEntries.length === 0) {
+        return null;
+      }
+      return {
+        id: definition.id,
+        label: definition.label,
+        totalSkills: categoryEntries.length,
+        upstreamSkills: categoryEntries.filter((entry) => entry.origin_kind !== "local-authored").length,
+        localModifiedSkills: categoryEntries.filter((entry) => entry.local_modifications).length,
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+  return {
+    totalSkills: entries.length,
+    withUpstreamProvenance: entries.filter((entry) => entry.origin_kind !== "local-authored" || entry.upstream_repo || entry.upstream_path || entry.ref).length,
+    missingUpstreamMetadata: entries.filter((entry) => entry.origin_kind !== "local-authored" && (!entry.upstream_repo || !entry.upstream_path || !entry.ref)).length,
+    localModifications: entries.filter((entry) => entry.local_modifications).length,
+    byOriginKind,
+    bySourceKind,
+    byCategory: categories,
+  };
+}
+
+export function renderManagedSkillTaxonomySection(catalog: SkillctlCatalog): string {
+  const taxonomy = buildManagedSkillTaxonomy(catalog);
+
+  const lines = [
+    README_TAXONOMY_START,
+    "## Managed Skill Taxonomy",
+    "",
+    "Canonical skill sources live under `skills/` and are grouped by usage-oriented category.",
+    "",
+    "| Category | Purpose | Skills |",
+    "| --- | --- | --- |",
+  ];
+
+  for (const category of taxonomy.categories) {
+    const renderedSkills = category.skills.map((skill) => `\`${skill.skill_id}\``).join(", ");
+    lines.push(`| ${category.label} | ${category.purpose} | ${renderedSkills} |`);
+  }
+
+  lines.push(README_TAXONOMY_END);
+  return `${lines.join("\n")}\n`;
+}
+
+export function injectManagedSkillTaxonomySection(readmeContent: string, catalog: SkillctlCatalog): string {
+  const section = renderManagedSkillTaxonomySection(catalog).trimEnd();
+  const start = readmeContent.indexOf(README_TAXONOMY_START);
+  const end = readmeContent.indexOf(README_TAXONOMY_END);
+
+  if (start !== -1 && end !== -1 && end > start) {
+    const after = end + README_TAXONOMY_END.length;
+    const prefix = readmeContent.slice(0, start).trimEnd();
+    const suffix = readmeContent.slice(after).trimStart();
+    return `${prefix}\n\n${section}\n${suffix ? `\n${suffix}` : ""}`.trimEnd() + "\n";
+  }
+
+  return `${readmeContent.trimEnd()}\n\n${section}\n`;
 }
 
 export function renderManagedSkillSourcesSection(catalog: SkillctlCatalog): string {
@@ -133,9 +242,9 @@ export function renderManagedSkillSourcesSection(catalog: SkillctlCatalog): stri
     README_SOURCES_START,
     "## Managed Skill Sources",
     "",
-    "| Skill | Origin | Upstream Repo | Upstream Path | Ref | Local Modifications |",
-    "| --- | --- | --- | --- | --- | --- |",
-    ...entries.map((entry) => `| ${entry.skill_id} | ${entry.origin_kind} | ${formatNullable(entry.upstream_repo)} | ${formatNullable(entry.upstream_path)} | ${formatNullable(entry.ref)} | ${entry.local_modifications ? "yes" : "no"} |`),
+    "| Skill | Category | Origin | Upstream Repo | Upstream Path | Ref | Local Modifications |",
+    "| --- | --- | --- | --- | --- | --- | --- |",
+    ...entries.map((entry) => `| ${entry.skill_id} | ${entry.category_label} | ${entry.origin_kind} | ${formatNullable(entry.upstream_repo)} | ${formatNullable(entry.upstream_path)} | ${formatNullable(entry.ref)} | ${entry.local_modifications ? "yes" : "no"} |`),
     README_SOURCES_END,
   ];
   return `${lines.join("\n")}\n`;
@@ -162,7 +271,7 @@ export async function ensureReadmeSourceRegistry(repoRoot: string, catalog: Skil
     return false;
   }
   const current = await readText(readmePath);
-  const next = injectManagedSkillSourcesSection(current, catalog);
+  const next = injectManagedSkillSourcesSection(injectManagedSkillTaxonomySection(current, catalog), catalog);
   if (next === current) {
     return false;
   }
@@ -176,7 +285,7 @@ export async function readmeSourceRegistryDrift(repoRoot: string, catalog: Skill
     return true;
   }
   const current = await readText(readmePath);
-  const next = injectManagedSkillSourcesSection(current, catalog);
+  const next = injectManagedSkillSourcesSection(injectManagedSkillTaxonomySection(current, catalog), catalog);
   return current !== next;
 }
 

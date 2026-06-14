@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Config Health"
+  short_description: "Audit and repair local Codex configuration"
+  default_prompt: "Use $codex-config-health to assess and repair my local Codex configuration."
