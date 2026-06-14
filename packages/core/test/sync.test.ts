@@ -76,6 +76,58 @@ describe("sync and prune", () => {
     expect(await fs.readFile(path.join(repoRoot, "README.md"), "utf8")).toContain("Managed Skill Sources");
   });
 
+  test("normalizes excluded runtime artifacts out of sync health", async () => {
+    const repoRoot = await makeTempDir("skillctl-sync-portable-");
+    const skillsDir = path.join(repoRoot, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    const skillPath = await writeSkill(skillsDir, "portable");
+    await fs.mkdir(path.join(skillPath, ".venv", "bin"), { recursive: true });
+    await fs.mkdir(path.join(skillPath, "__pycache__"), { recursive: true });
+    await fs.writeFile(path.join(skillPath, ".venv", "bin", "python"), "python", "utf8");
+    await fs.writeFile(path.join(skillPath, "__pycache__", "skill.pyc"), "compiled", "utf8");
+    await fs.writeFile(path.join(skillPath, "metadata.json"), "{\"private\":true}\n", "utf8");
+    await writeReadme(repoRoot, "# skillctl\n");
+    const fakeHome = await makeTempDir("skillctl-home-");
+    process.env.HOME = fakeHome;
+
+    const catalog: SkillctlCatalog = {
+      version: 1,
+      generatedBy: "test",
+      skills: [{
+        skill_id: "portable",
+        visibility: "public",
+        source_kind: "local-public",
+        origin_kind: "local-authored",
+        hash: "placeholder",
+        managed: true,
+        targets: ["codex"],
+        canonical_rel_path: path.relative(repoRoot, skillPath),
+      }],
+    };
+    const config: SkillctlConfig = {
+      sourceRoots: [{ path: skillsDir, visibility: "public", managedByDefault: true }],
+      privateRoots: [],
+      enabledAdapters: ["codex"],
+      excludeSkills: [],
+      liveProbePolicy: "off",
+      transport: {
+        mode: "copy-fallback",
+        command: "npx",
+        args: ["--yes", "skills"],
+      },
+      stateDir: path.join(repoRoot, ".skillctl-local"),
+    };
+
+    await normalizeCatalogArtifacts(repoRoot, catalog);
+    await syncCatalog(repoRoot, config, catalog);
+
+    const installedDir = path.join(fakeHome, ".codex", "skills", "portable");
+    expect(await hashDirectory(installedDir)).toBe(catalog.skills[0]?.hash);
+    await expect(fs.access(path.join(installedDir, ".venv"))).rejects.toThrow();
+    await expect(fs.access(path.join(installedDir, "__pycache__"))).rejects.toThrow();
+    await expect(fs.access(path.join(installedDir, "metadata.json"))).rejects.toThrow();
+  });
+
   test("skills-cli transport footers the final per-agent install after mirroring", async () => {
     const repoRoot = await makeTempDir("skillctl-sync-cli-");
     const skillsDir = path.join(repoRoot, "skills");

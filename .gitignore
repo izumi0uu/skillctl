@@ -4,3 +4,7 @@ node_modules
 .skillctl-local
 coverage
 .DS_Store
+skills/**/.venv/
+skills/**/node_modules/
+skills/**/__pycache__/
+skills/**/__pypackages__/

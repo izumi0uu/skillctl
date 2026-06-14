@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { isExcludedSkillEntry } from "./portable-skill-files.js";
+
 export async function fileExists(filePath: string): Promise<boolean> {
   try {
     await fs.access(filePath);
@@ -39,7 +41,57 @@ export async function removeDirContents(dirPath: string): Promise<void> {
   await Promise.all(entries.map(async (entry) => fs.rm(path.join(dirPath, entry), { recursive: true, force: true })));
 }
 
+async function copySkillTree(src: string, dst: string): Promise<void> {
+  await ensureDir(dst);
+  const entries = await fs.readdir(src, { withFileTypes: true });
+
+  await Promise.all(entries.map(async (entry) => {
+    const srcPath = path.join(src, entry.name);
+    const dstPath = path.join(dst, entry.name);
+
+    if (entry.isDirectory()) {
+      if (isExcludedSkillEntry(entry.name, true)) {
+        return;
+      }
+      await copySkillTree(srcPath, dstPath);
+      return;
+    }
+
+    if (entry.isSymbolicLink()) {
+      try {
+        const stats = await fs.stat(srcPath);
+        if (stats.isDirectory()) {
+          if (isExcludedSkillEntry(entry.name, true)) {
+            return;
+          }
+          await copySkillTree(srcPath, dstPath);
+          return;
+        }
+        if (stats.isFile()) {
+          if (isExcludedSkillEntry(entry.name, false)) {
+            return;
+          }
+          await fs.cp(srcPath, dstPath, { dereference: true });
+        }
+      } catch (error) {
+        if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+          return;
+        }
+        throw error;
+      }
+      return;
+    }
+
+    if (entry.isFile()) {
+      if (isExcludedSkillEntry(entry.name, false)) {
+        return;
+      }
+      await fs.cp(srcPath, dstPath, { dereference: true });
+    }
+  }));
+}
+
 export async function copyDir(src: string, dst: string): Promise<void> {
   await fs.rm(dst, { recursive: true, force: true });
-  await fs.cp(src, dst, { recursive: true });
+  await copySkillTree(src, dst);
 }
