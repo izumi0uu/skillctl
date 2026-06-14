@@ -32,6 +32,36 @@ function formatNullable(value: string | null | undefined): string {
   return value && value.trim().length > 0 ? value : "n/a";
 }
 
+function formatMarkdownLink(label: string, href: string | null | undefined): string {
+  if (!href || href.trim().length === 0) {
+    return label;
+  }
+  return `[${label}](${href})`;
+}
+
+function resolveUpstreamRepoUrl(entry: SourceRegistryEntry): string | null {
+  return entry.upstream_source_url;
+}
+
+function resolveUpstreamPathUrl(entry: SourceRegistryEntry): string | null {
+  if (!entry.upstream_repo || !entry.ref || !entry.upstream_path) {
+    return entry.upstream_source_url;
+  }
+
+  if (/^https?:\/\//u.test(entry.upstream_repo)) {
+    return entry.upstream_source_url;
+  }
+
+  if (entry.upstream_source_type === "github") {
+    if (entry.upstream_path === ".") {
+      return `https://github.com/${entry.upstream_repo}`;
+    }
+    return `https://github.com/${entry.upstream_repo}/tree/${entry.ref}/${entry.upstream_path}`;
+  }
+
+  return entry.upstream_source_url;
+}
+
 function sourceLine(label: string, value: string): string {
   return `- ${label}: ${value}`;
 }
@@ -244,7 +274,12 @@ export function renderManagedSkillSourcesSection(catalog: SkillctlCatalog): stri
     "",
     "| Skill | Category | Origin | Upstream Repo | Upstream Path | Ref | Source URL | Local Modifications |",
     "| --- | --- | --- | --- | --- | --- | --- | --- |",
-    ...entries.map((entry) => `| ${entry.skill_id} | ${entry.category_label} | ${entry.origin_kind} | ${formatNullable(entry.upstream_repo)} | ${formatNullable(entry.upstream_path)} | ${formatNullable(entry.ref)} | ${formatNullable(entry.upstream_source_url)} | ${entry.local_modifications ? "yes" : "no"} |`),
+    ...entries.map((entry) => {
+      const repoLabel = formatNullable(entry.upstream_repo);
+      const pathLabel = formatNullable(entry.upstream_path);
+      const sourceUrlLabel = entry.upstream_source_url ? "open" : "n/a";
+      return `| ${entry.skill_id} | ${entry.category_label} | ${entry.origin_kind} | ${formatMarkdownLink(repoLabel, resolveUpstreamRepoUrl(entry))} | ${formatMarkdownLink(pathLabel, resolveUpstreamPathUrl(entry))} | ${formatNullable(entry.ref)} | ${formatMarkdownLink(sourceUrlLabel, entry.upstream_source_url)} | ${entry.local_modifications ? "yes" : "no"} |`;
+    }),
     README_SOURCES_END,
   ];
   return `${lines.join("\n")}\n`;
