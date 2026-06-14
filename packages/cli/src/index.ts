@@ -7,7 +7,9 @@ import {
   CATALOG_FILE,
   CONFIG_FILE,
   adoptSkill,
+  buildManagedSkillTaxonomy,
   buildSourceRegistry,
+  summarizeSourceRegistry,
   verifyCatalogSources,
   discoverCatalog,
   getAdapter,
@@ -31,7 +33,7 @@ function usage(): string {
   skillctl init
   skillctl discover
   skillctl import
-  skillctl adopt --source <path> [--from-repo <repo>] [--skill-path <path>] [--ref <ref>] [--source-type <github|git|local>] [--source-url <url>] [--origin-kind <local-authored|imported-upstream|derived-from-upstream>]
+  skillctl adopt --source <path> [--into <category/path>] [--from-repo <repo>] [--skill-path <path>] [--ref <ref>] [--source-type <github|git|local>] [--source-url <url>] [--origin-kind <local-authored|imported-upstream|derived-from-upstream>]
   skillctl sync
   skillctl bootstrap-upstream
   skillctl status
@@ -41,6 +43,7 @@ function usage(): string {
   skillctl prune
   skillctl publish
   skillctl sources [--json]
+  skillctl taxonomy [--json]
   skillctl verify-sources [--json]
   skillctl adapters
 
@@ -111,6 +114,18 @@ async function writeManifestSchemas(repoRoot: string): Promise<void> {
           properties: {
             skill_id: { type: "string" },
             display_name: { type: "string" },
+            category: {
+              enum: [
+                "agent-infra",
+                "knowledge-and-research",
+                "frontend-and-design",
+                "deployment-and-platform",
+                "productivity-and-artifacts",
+                "domain-aws-thrive",
+                "system-and-demo",
+              ],
+            },
+            tags: { type: "array", items: { type: "string" } },
             visibility: { enum: ["public", "private"] },
             source_kind: { enum: ["local-public", "local-private", "upstream"] },
             origin_kind: { enum: ["local-authored", "imported-upstream", "derived-from-upstream"] },
@@ -160,6 +175,9 @@ async function statusCommand(repoRoot: string): Promise<void> {
   const config = await loadConfig(repoRoot);
   const catalog = await loadCatalog(repoRoot);
   const summary = summarizeCatalog(catalog);
+  const taxonomy = buildManagedSkillTaxonomy(catalog);
+  const sources = buildSourceRegistry(catalog);
+  const sourceSummary = summarizeSourceRegistry(sources);
   console.log(JSON.stringify({
     repoRoot,
     configFile: path.join(repoRoot, CONFIG_FILE),
@@ -169,6 +187,8 @@ async function statusCommand(repoRoot: string): Promise<void> {
       installDir: getAdapter(agent).installDir(),
     })),
     summary,
+    taxonomySummary: taxonomy.summary,
+    sourceSummary,
   }, null, 2));
 }
 
@@ -296,6 +316,7 @@ async function adoptCommand(repoRoot: string, args: string[]): Promise<void> {
   const catalog = await loadCatalog(repoRoot);
   const result = await adoptSkill(repoRoot, config, catalog, {
     sourcePath,
+    destinationSubdir: readFlag(args, "--into"),
     fromRepo: readFlag(args, "--from-repo"),
     skillPath: readFlag(args, "--skill-path"),
     ref: readFlag(args, "--ref"),
@@ -312,12 +333,30 @@ async function adoptCommand(repoRoot: string, args: string[]): Promise<void> {
 async function sourcesCommand(repoRoot: string, asJson: boolean): Promise<void> {
   const catalog = await loadCatalog(repoRoot);
   const entries = buildSourceRegistry(catalog);
+  const summary = summarizeSourceRegistry(entries);
   if (asJson) {
-    console.log(JSON.stringify({ sources: entries }, null, 2));
+    console.log(JSON.stringify({ summary, sources: entries }, null, 2));
     return;
   }
   for (const entry of entries) {
-    console.log(`${entry.skill_id}\t${entry.origin_kind}\t${entry.upstream_repo ?? "n/a"}\t${entry.upstream_path ?? "n/a"}\t${entry.ref ?? "n/a"}\t${entry.local_modifications ? "yes" : "no"}`);
+    console.log(`${entry.skill_id}\t${entry.category_label}\t${entry.origin_kind}\t${entry.upstream_repo ?? "n/a"}\t${entry.upstream_path ?? "n/a"}\t${entry.ref ?? "n/a"}\t${entry.local_modifications ? "yes" : "no"}`);
+  }
+}
+
+async function taxonomyCommand(repoRoot: string, asJson: boolean): Promise<void> {
+  const catalog = await loadCatalog(repoRoot);
+  const taxonomy = buildManagedSkillTaxonomy(catalog);
+  if (asJson) {
+    console.log(JSON.stringify(taxonomy, null, 2));
+    return;
+  }
+
+  for (const category of taxonomy.categories) {
+    console.log(`${category.label} (${category.skillCount})`);
+    for (const skill of category.skills) {
+      const tags = skill.tags.length > 0 ? ` [${skill.tags.join(", ")}]` : "";
+      console.log(`  - ${skill.skill_id}${tags}`);
+    }
   }
 }
 
@@ -419,6 +458,11 @@ async function main(): Promise<void> {
     case "sources": {
       await ensureInitialized(repoRoot);
       await sourcesCommand(repoRoot, args.includes("--json"));
+      return;
+    }
+    case "taxonomy": {
+      await ensureInitialized(repoRoot);
+      await taxonomyCommand(repoRoot, args.includes("--json"));
       return;
     }
     case "verify-sources": {

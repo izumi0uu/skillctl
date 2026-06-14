@@ -15,5 +15,6 @@ export * from "./schema.js";
 export * from "./skill.js";
 export * from "./source-verification.js";
 export * from "./sync.js";
+export * from "./taxonomy.js";
 export * from "./transport.js";
 export * from "./types.js";

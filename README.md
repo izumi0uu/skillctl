@@ -51,6 +51,8 @@ Or after build:
 
 ```bash
 node packages/cli/dist/index.js status
+node packages/cli/dist/index.js taxonomy --json
+node packages/cli/dist/index.js sources --json
 ```
 
 ## Config Model
@@ -59,8 +61,38 @@ node packages/cli/dist/index.js status
 - `transport`: which install/sync transport to use; default is `skills-cli` with `embeddedRepoPath` pointing at `vercel-skills/`
 - `skillctl.catalog.json`: managed catalog, hashes, targets, visibility
 - `.skillctl-local/managed/*.json`: local managed indexes per adapter
+- `skillctl taxonomy --json`: canonical grouped category tree for CLI tooling and future Electron surfaces
+- `skillctl sources --json`: provenance registry plus category/source summary for audits and UI consumption
 
 By default only `./skills` is discovered as a managed public root. Use `skillctl.config.example.json` as a starting point for adding upstream or private local sources.
+
+## Transport Topology
+
+`skillctl` intentionally keeps the default sync path as:
+
+```text
+skillctl catalog + skills/ canonical source
+  -> embedded vercel-skills CLI
+  -> ~/.agents/skills
+  -> per-agent install directories
+```
+
+Per-agent install directories currently include:
+
+- `~/.claude/skills`
+- `~/.codex/skills`
+- `~/.pi/agent/skills`
+- `~/.hermes/skills`
+- `~/.opencode/skills`
+
+This means `~/.agents/skills` is not accidental temporary output. In `skills-cli` mode it is the shared upstream install layer that `skillctl` mirrors into each managed agent adapter.
+
+## Why The Shared Layer Stays
+
+- `skillctl` is intentionally a control plane around the upstream `vercel-skills` installer, not a replacement for its install semantics
+- the embedded CLI remains the first transport executor, while `skillctl` adds catalog ownership, provenance, health checks, repair rules, and multi-agent mirroring
+- keeping `~/.agents/skills` preserves predictable behavior across adapters when the upstream CLI is the transport authority
+- if you manually remove `~/.agents/skills`, it may be recreated on the next `skillctl sync` while `transport.mode` remains `skills-cli`
 
 ## Embedded Upstream Lifecycle
 
@@ -73,6 +105,57 @@ By default only `./skills` is discovered as a managed public root. Use `skillctl
 ## Safety Rules
 
 - Sync uses the upstream `skills` CLI in copy mode by default; no symlinks
+- In `skills-cli` mode, do not treat `~/.agents/skills` as disposable if you want transport behavior to stay stable
 - `prune` only removes skills previously marked as managed by `skillctl`
 - Unmanaged skills already present in agent directories are left alone
 - Private skills can be indexed locally but are not copied into public agent directories
+
+<!-- skillctl:managed-skill-sources:start -->
+## Managed Skill Sources
+
+| Skill | Category | Origin | Upstream Repo | Upstream Path | Ref | Local Modifications |
+| --- | --- | --- | --- | --- | --- | --- |
+| agents-best-practices | Knowledge And Research | derived-from-upstream | DenisSergeevitch/agents-best-practices | . | main | yes |
+| anyrouter-config | Agent Infra | local-authored | n/a | n/a | n/a | no |
+| aws-rds-dump-restore | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | no |
+| codex-config-health | Agent Infra | local-authored | n/a | n/a | n/a | no |
+| codex-session-recovery | Agent Infra | local-authored | n/a | n/a | n/a | no |
+| deploy-to-vercel | Deployment And Platform | derived-from-upstream | vercel-labs/agent-skills | skills/deploy-to-vercel | main | yes |
+| excalidraw-diagram | Productivity And Artifacts | local-authored | n/a | n/a | n/a | no |
+| google-sheets-editor | Productivity And Artifacts | local-authored | n/a | n/a | n/a | no |
+| hermes-upstream-worktree-fix | Agent Infra | local-authored | n/a | n/a | n/a | no |
+| karpathy-guidelines | Knowledge And Research | local-authored | n/a | n/a | n/a | no |
+| local-portable-demo | System And Demo | local-authored | n/a | n/a | n/a | no |
+| motion-design | Frontend And Design | derived-from-upstream | LottieFiles/motion-design-skill | skills/motion-design | main | yes |
+| obsidian-llm-wiki | Knowledge And Research | derived-from-upstream | https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f.git | . | main | yes |
+| omx-project-scope-git-isolation | Agent Infra | local-authored | n/a | n/a | n/a | no |
+| recruitflow-project-ops | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | no |
+| repo-preflight | Agent Infra | local-authored | n/a | n/a | n/a | no |
+| thrive-billing-claim-cleanup-diagnostics | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | no |
+| thrive-local-db-restore-login | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | no |
+| thrive-therapy-session-diagnostics | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | no |
+| vercel-cli-with-tokens | Deployment And Platform | derived-from-upstream | vercel-labs/agent-skills | skills/vercel-cli-with-tokens | main | yes |
+| vercel-composition-patterns | Frontend And Design | derived-from-upstream | vercel-labs/agent-skills | skills/composition-patterns | main | yes |
+| vercel-optimize | Deployment And Platform | derived-from-upstream | vercel-labs/agent-skills | skills/vercel-optimize | main | yes |
+| vercel-react-best-practices | Frontend And Design | derived-from-upstream | vercel-labs/agent-skills | skills/react-best-practices | main | yes |
+| vercel-react-native-skills | Frontend And Design | derived-from-upstream | vercel-labs/agent-skills | skills/react-native-skills | main | yes |
+| vercel-react-view-transitions | Frontend And Design | derived-from-upstream | vercel-labs/agent-skills | skills/react-view-transitions | main | yes |
+| web-design-guidelines | Frontend And Design | derived-from-upstream | vercel-labs/agent-skills | skills/web-design-guidelines | main | yes |
+| writing-guidelines | Knowledge And Research | derived-from-upstream | vercel-labs/agent-skills | skills/writing-guidelines | main | yes |
+<!-- skillctl:managed-skill-sources:end -->
+
+<!-- skillctl:managed-skill-taxonomy:start -->
+## Managed Skill Taxonomy
+
+Canonical skill sources live under `skills/` and are grouped by usage-oriented category.
+
+| Category | Purpose | Skills |
+| --- | --- | --- |
+| Agent Infra | Agent runtime, configuration, recovery, and operational control-plane skills | `anyrouter-config`, `codex-config-health`, `codex-session-recovery`, `hermes-upstream-worktree-fix`, `omx-project-scope-git-isolation`, `repo-preflight` |
+| Knowledge And Research | Knowledge workflows, learning systems, and reusable research guidance | `agents-best-practices`, `karpathy-guidelines`, `obsidian-llm-wiki`, `writing-guidelines` |
+| Frontend And Design | Frontend architecture, design systems, UI patterns, and motion guidance | `motion-design`, `vercel-composition-patterns`, `vercel-react-best-practices`, `vercel-react-native-skills`, `vercel-react-view-transitions`, `web-design-guidelines` |
+| Deployment And Platform | Deployment, cloud platform, and environment optimization workflows | `deploy-to-vercel`, `vercel-cli-with-tokens`, `vercel-optimize` |
+| Productivity And Artifacts | General artifact creation and productivity-oriented tool workflows | `excalidraw-diagram`, `google-sheets-editor` |
+| Domain AWS-Thrive | AWS-Thrive and related domain-specific operational workflows | `aws-rds-dump-restore`, `recruitflow-project-ops`, `thrive-billing-claim-cleanup-diagnostics`, `thrive-local-db-restore-login`, `thrive-therapy-session-diagnostics` |
+| System And Demo | Portable demos, fixtures, and system validation helpers | `local-portable-demo` |
+<!-- skillctl:managed-skill-taxonomy:end -->
