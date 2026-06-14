@@ -153,4 +153,88 @@ describe("doctor and repair", () => {
     expect(report.issues.some((issue) => issue.code === "missing-provenance")).toBe(true);
     expect(report.issues.some((issue) => issue.code === "readme-drift")).toBe(true);
   });
+
+  test("reports portability classification and warns on needs-review", async () => {
+    const repoRoot = await makeTempDir("skillctl-doctor-portability-");
+    const skillsDir = path.join(repoRoot, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    const skillDir = path.join(skillsDir, "alpha");
+    await fs.mkdir(skillDir, { recursive: true });
+    await fs.writeFile(path.join(skillDir, "SKILL.md"), "---\nname: alpha\n---\n\n# alpha\n", "utf8");
+    await writeReadme(repoRoot, "# skillctl\n");
+
+    const config: SkillctlConfig = {
+      sourceRoots: [{ path: skillsDir, visibility: "public", managedByDefault: true }],
+      privateRoots: [],
+      enabledAdapters: ["codex"],
+      excludeSkills: [],
+      liveProbePolicy: "off",
+      transport: {
+        mode: "copy-fallback",
+        command: "npx",
+        args: ["--yes", "skills"],
+      },
+      stateDir: path.join(repoRoot, ".skillctl-local"),
+    };
+    const catalog: SkillctlCatalog = {
+      version: 1,
+      generatedBy: "test",
+      skills: [{
+        skill_id: "alpha",
+        visibility: "public",
+        source_kind: "local-public",
+        origin_kind: "local-authored",
+        hash: await hashDirectory(skillDir),
+        managed: true,
+        targets: ["codex"],
+        canonical_rel_path: path.relative(repoRoot, skillDir),
+      }],
+    };
+
+    const report = await runDoctor(repoRoot, config, catalog);
+    expect(report.portability.find((entry) => entry.skillId === "alpha")?.classification).toBe("needs-review");
+    expect(report.issues.some((issue) => issue.code === "portability-review")).toBe(true);
+  });
+
+  test("does not report drift when claude-only skill is intentionally not installed for codex", async () => {
+    const repoRoot = await makeTempDir("skillctl-doctor-portability-gated-");
+    const skillsDir = path.join(repoRoot, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    const skillDir = await writeSkill(skillsDir, "alpha", "!`echo hello`");
+    await writeReadme(repoRoot, "# skillctl\n");
+    const fakeHome = await makeTempDir("skillctl-home-");
+    process.env.HOME = fakeHome;
+
+    const config: SkillctlConfig = {
+      sourceRoots: [{ path: skillsDir, visibility: "public", managedByDefault: true }],
+      privateRoots: [],
+      enabledAdapters: ["codex"],
+      excludeSkills: [],
+      liveProbePolicy: "off",
+      transport: {
+        mode: "copy-fallback",
+        command: "npx",
+        args: ["--yes", "skills"],
+      },
+      stateDir: path.join(repoRoot, ".skillctl-local"),
+    };
+    const catalog: SkillctlCatalog = {
+      version: 1,
+      generatedBy: "test",
+      skills: [{
+        skill_id: "alpha",
+        visibility: "public",
+        source_kind: "local-public",
+        origin_kind: "local-authored",
+        hash: await hashDirectory(skillDir),
+        managed: true,
+        targets: ["codex"],
+        canonical_rel_path: path.relative(repoRoot, skillDir),
+      }],
+    };
+
+    const report = await runDoctor(repoRoot, config, catalog);
+    expect(report.portability.find((entry) => entry.skillId === "alpha")?.classification).toBe("claude-only");
+    expect(report.issues.some((issue) => issue.code === "drift")).toBe(false);
+  });
 });

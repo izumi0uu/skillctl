@@ -106,6 +106,14 @@ This means `~/.agents/skills` is not accidental temporary output. In `skills-cli
 
 - Sync uses the upstream `skills` CLI in copy mode by default; no symlinks
 - In `skills-cli` mode, do not treat `~/.agents/skills` as disposable if you want transport behavior to stay stable
+- `targets` express distribution intent, but sync applies portability policy before final install
+- Default portability policy is:
+  - `portable` -> distribute to declared `targets`
+  - `codex-enhanced` -> distribute to declared `targets`
+  - `claude-only` -> distribute only to `claude-code` unless the skill has an explicit catalog override
+  - `needs-review` -> do not distribute, even if the skill declares `targets`
+- Per-skill overrides live in `skillctl.catalog.json` as `distribution.portability_allow_targets`
+- A portability override can only allow already-declared targets; it cannot invent new target agents
 - `prune` only removes skills previously marked as managed by `skillctl`
 - Unmanaged skills already present in agent directories are left alone
 - Private skills can be indexed locally but are not copied into public agent directories
@@ -131,6 +139,8 @@ This means `~/.agents/skills` is not accidental temporary output. In `skills-cli
 | omx-project-scope-git-isolation | Agent Infra | local-authored | n/a | n/a | n/a | n/a | no |
 | recruitflow-project-ops | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | n/a | no |
 | repo-preflight | Agent Infra | local-authored | n/a | n/a | n/a | n/a | no |
+| shadcn | Frontend And Design | imported-upstream | [openai/plugins](https://github.com/openai/plugins/tree/main/plugins/build-web-apps/skills/shadcn-best-practices) | [plugins/build-web-apps/skills/shadcn-best-practices](https://github.com/openai/plugins/tree/main/plugins/build-web-apps/skills/shadcn-best-practices) | main | [open](https://github.com/openai/plugins/tree/main/plugins/build-web-apps/skills/shadcn-best-practices) | no |
+| skillctl-control-plane | Agent Infra | local-authored | n/a | n/a | n/a | n/a | no |
 | thrive-billing-claim-cleanup-diagnostics | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | n/a | no |
 | thrive-local-db-restore-login | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | n/a | no |
 | thrive-therapy-session-diagnostics | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | n/a | no |
@@ -151,9 +161,9 @@ Canonical skill sources live under `skills/` and are grouped by usage-oriented c
 
 | Category | Purpose | Skills |
 | --- | --- | --- |
-| Agent Infra | Agent runtime, configuration, recovery, and operational control-plane skills | `anyrouter-config`, `codex-config-health`, `codex-session-recovery`, `hermes-upstream-worktree-fix`, `omx-project-scope-git-isolation`, `repo-preflight` |
+| Agent Infra | Agent runtime, configuration, recovery, and operational control-plane skills | `anyrouter-config`, `codex-config-health`, `codex-session-recovery`, `hermes-upstream-worktree-fix`, `omx-project-scope-git-isolation`, `repo-preflight`, `skillctl-control-plane` |
 | Knowledge And Research | Knowledge workflows, learning systems, and reusable research guidance | `agents-best-practices`, `karpathy-guidelines`, `obsidian-llm-wiki`, `writing-guidelines` |
-| Frontend And Design | Frontend architecture, design systems, UI patterns, and motion guidance | `motion-design`, `vercel-composition-patterns`, `vercel-react-best-practices`, `vercel-react-native-skills`, `vercel-react-view-transitions`, `web-design-guidelines` |
+| Frontend And Design | Frontend architecture, design systems, UI patterns, and motion guidance | `motion-design`, `shadcn`, `vercel-composition-patterns`, `vercel-react-best-practices`, `vercel-react-native-skills`, `vercel-react-view-transitions`, `web-design-guidelines` |
 | Deployment And Platform | Deployment, cloud platform, and environment optimization workflows | `deploy-to-vercel`, `vercel-cli-with-tokens`, `vercel-optimize` |
 | Productivity And Artifacts | General artifact creation and productivity-oriented tool workflows | `excalidraw-diagram`, `google-sheets-editor` |
 | Domain AWS-Thrive | AWS-Thrive and related domain-specific operational workflows | `aws-rds-dump-restore`, `recruitflow-project-ops`, `thrive-billing-claim-cleanup-diagnostics`, `thrive-local-db-restore-login`, `thrive-therapy-session-diagnostics` |

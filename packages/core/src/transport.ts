@@ -6,7 +6,9 @@ import { promisify } from "node:util";
 import { ensureReadmeSourceRegistry, expectedSkillRenderedHash } from "./attribution.js";
 import { getAdapter } from "./adapters.js";
 import { managedSkillsForAgent } from "./catalog.js";
-import { copyDir, ensureDir, fileExists } from "./fs.js";
+import { copyDir, ensureDir, fileExists, removeDirIfExists } from "./fs.js";
+import { writeManagedIndex } from "./indexes.js";
+import { evaluateSkillDistributionPolicy, portabilityBlockReason } from "./portability.js";
 import type {
   AgentId,
   BootstrapUpstreamResult,
@@ -19,10 +21,6 @@ import type {
 } from "./types.js";
 
 const execFileAsync = promisify(execFile);
-
-function installableSkillSet(catalog: SkillctlCatalog, agent: AgentId): CatalogSkill[] {
-  return managedSkillsForAgent(catalog, agent).filter((skill) => skill.visibility === "public");
-}
 
 function agentArg(agent: AgentId): string {
   return getAdapter(agent).skillsCliAgent ?? agent;
@@ -181,9 +179,29 @@ export async function syncViaSkillsCli(repoRoot: string, config: SkillctlConfig,
   const invocation = await resolveTransportInvocation(config);
 
   for (const agent of config.enabledAdapters) {
-    await ensureDir(getAdapter(agent).installDir());
-    const installable = installableSkillSet(catalog, agent);
+    const adapter = getAdapter(agent);
+    await ensureDir(adapter.installDir());
+    const installable: CatalogSkill[] = [];
     const privateOnly = managedSkillsForAgent(catalog, agent).filter((skill) => skill.visibility !== "public");
+    for (const skill of managedSkillsForAgent(catalog, agent).filter((skill) => skill.visibility === "public")) {
+      const sourceDir = normalizeSourcePath(repoRoot, skill.canonical_rel_path);
+      if (!sourceDir || !await fileExists(sourceDir)) {
+        if (!sourceDir) {
+          skipped.push({ agent, skillId: skill.skill_id, reason: "missing canonical path" });
+        } else {
+          skipped.push({ agent, skillId: skill.skill_id, reason: `source missing: ${sourceDir}` });
+        }
+        continue;
+      }
+      const policy = await evaluateSkillDistributionPolicy(sourceDir, skill);
+      const blockedReason = portabilityBlockReason(policy, agent);
+      if (blockedReason) {
+        await removeDirIfExists(path.join(adapter.installDir(), skill.skill_id));
+        skipped.push({ agent, skillId: skill.skill_id, reason: blockedReason });
+        continue;
+      }
+      installable.push(skill);
+    }
 
     for (const skill of privateOnly) {
       skipped.push({ agent, skillId: skill.skill_id, reason: "private skill not synced to public agent dirs" });
@@ -201,6 +219,7 @@ export async function syncViaSkillsCli(repoRoot: string, config: SkillctlConfig,
       });
     }
 
+    await writeManagedIndex(config.stateDir!, agent, installable);
     managedIndexesUpdated.push(agent);
   }
 

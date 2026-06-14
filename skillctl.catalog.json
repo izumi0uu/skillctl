@@ -415,6 +415,50 @@
       "canonical_rel_path": "skills/agent-infra/repo-preflight"
     },
     {
+      "skill_id": "shadcn",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "1b1efe2cf89e0179a154cfecd65b1948903c794d",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/shadcn",
+      "upstream": {
+        "repo": "openai/plugins",
+        "ref": "main",
+        "skillPath": "plugins/build-web-apps/skills/shadcn-best-practices",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/openai/plugins/tree/main/plugins/build-web-apps/skills/shadcn-best-practices",
+        "imported_at": "2026-06-14T12:47:54.210Z",
+        "last_verified_ref": "main",
+        "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "skillctl-control-plane",
+      "category": "agent-infra",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "4a93436b9bd82c28bd8f87f6b85687eeaa33a436",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/skillctl-control-plane"
+    },
+    {
       "skill_id": "thrive-billing-claim-cleanup-diagnostics",
       "category": "domain-aws-thrive",
       "tags": [

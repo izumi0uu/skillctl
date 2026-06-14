@@ -23,7 +23,7 @@ export async function writeManagedIndex(stateDir: string, agent: AgentId, skills
   await writeJson(managedIndexPath(stateDir, agent), {
     version: 1,
     agent,
-    entries: skills.filter((skill) => skill.managed && skill.targets.includes(agent)).map((skill) => ({
+    entries: skills.filter((skill) => skill.managed).map((skill) => ({
       skill_id: skill.skill_id,
       hash: skill.hash,
       source_hash: skill.hash,

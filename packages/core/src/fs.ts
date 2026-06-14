@@ -95,3 +95,7 @@ export async function copyDir(src: string, dst: string): Promise<void> {
   await fs.rm(dst, { recursive: true, force: true });
   await copySkillTree(src, dst);
 }
+
+export async function removeDirIfExists(dirPath: string): Promise<void> {
+  await fs.rm(dirPath, { recursive: true, force: true });
+}

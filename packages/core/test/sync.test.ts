@@ -240,4 +240,170 @@ describe("sync and prune", () => {
     await expect(fs.access(path.join(codexDir, "alpha"))).rejects.toThrow();
     expect(await fs.readFile(path.join(codexDir, "manual-skill", "SKILL.md"), "utf8")).toContain("manual-skill");
   });
+
+  test("claude-only skills are blocked from codex by default in copy fallback", async () => {
+    const repoRoot = await makeTempDir("skillctl-sync-claude-only-");
+    const skillsDir = path.join(repoRoot, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    const skillPath = await writeSkill(skillsDir, "alpha", "!`echo hello`");
+    await writeReadme(repoRoot, "# skillctl\n");
+    const fakeHome = await makeTempDir("skillctl-home-");
+    process.env.HOME = fakeHome;
+
+    const catalog: SkillctlCatalog = {
+      version: 1,
+      generatedBy: "test",
+      skills: [{
+        skill_id: "alpha",
+        visibility: "public",
+        source_kind: "local-public",
+        origin_kind: "local-authored",
+        hash: "placeholder",
+        managed: true,
+        targets: ["claude-code", "codex"],
+        canonical_rel_path: path.relative(repoRoot, skillPath),
+      }],
+    };
+    const config: SkillctlConfig = {
+      sourceRoots: [{ path: skillsDir, visibility: "public", managedByDefault: true }],
+      privateRoots: [],
+      enabledAdapters: ["claude-code", "codex"],
+      excludeSkills: [],
+      liveProbePolicy: "off",
+      transport: {
+        mode: "copy-fallback",
+        command: "npx",
+        args: ["--yes", "skills"],
+      },
+      stateDir: path.join(repoRoot, ".skillctl-local"),
+    };
+    await normalizeCatalogArtifacts(repoRoot, catalog);
+
+    const result = await syncCatalog(repoRoot, config, catalog);
+    expect(result.copied).toContainEqual({ agent: "claude-code", skillId: "alpha" });
+    expect(result.skipped).toContainEqual({
+      agent: "codex",
+      skillId: "alpha",
+      reason: "blocked by claude-only portability policy",
+    });
+    await expect(fs.access(path.join(fakeHome, ".codex", "skills", "alpha"))).rejects.toThrow();
+    expect(await fs.readFile(path.join(fakeHome, ".claude", "skills", "alpha", "SKILL.md"), "utf8")).toContain("name: alpha");
+  });
+
+  test("portability override can allow codex distribution for claude-only skill", async () => {
+    const repoRoot = await makeTempDir("skillctl-sync-override-");
+    const skillsDir = path.join(repoRoot, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    const skillPath = await writeSkill(skillsDir, "alpha", "!`echo hello`");
+    await writeReadme(repoRoot, "# skillctl\n");
+    const fakeHome = await makeTempDir("skillctl-home-");
+    process.env.HOME = fakeHome;
+
+    const catalog: SkillctlCatalog = {
+      version: 1,
+      generatedBy: "test",
+      skills: [{
+        skill_id: "alpha",
+        visibility: "public",
+        source_kind: "local-public",
+        origin_kind: "local-authored",
+        hash: "placeholder",
+        managed: true,
+        targets: ["claude-code", "codex"],
+        canonical_rel_path: path.relative(repoRoot, skillPath),
+        distribution: {
+          portability_allow_targets: ["codex"],
+        },
+      }],
+    };
+    const config: SkillctlConfig = {
+      sourceRoots: [{ path: skillsDir, visibility: "public", managedByDefault: true }],
+      privateRoots: [],
+      enabledAdapters: ["claude-code", "codex"],
+      excludeSkills: [],
+      liveProbePolicy: "off",
+      transport: {
+        mode: "copy-fallback",
+        command: "npx",
+        args: ["--yes", "skills"],
+      },
+      stateDir: path.join(repoRoot, ".skillctl-local"),
+    };
+    await normalizeCatalogArtifacts(repoRoot, catalog);
+
+    const result = await syncCatalog(repoRoot, config, catalog);
+    expect(result.copied).toContainEqual({ agent: "codex", skillId: "alpha" });
+    expect(await fs.readFile(path.join(fakeHome, ".codex", "skills", "alpha", "SKILL.md"), "utf8")).toContain("name: alpha");
+  });
+
+  test("skills-cli removes blocked final-agent install and keeps sync successful", async () => {
+    const repoRoot = await makeTempDir("skillctl-sync-cli-blocked-");
+    const skillsDir = path.join(repoRoot, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    const skillPath = await writeSkill(skillsDir, "alpha", "!`echo hello`");
+    await writeReadme(repoRoot, "# skillctl\n");
+    const fakeHome = await makeTempDir("skillctl-home-");
+    process.env.HOME = fakeHome;
+
+    await fs.mkdir(path.join(fakeHome, ".codex", "skills", "alpha"), { recursive: true });
+    await fs.writeFile(path.join(fakeHome, ".codex", "skills", "alpha", "SKILL.md"), "---\nname: alpha\ndescription: stale\n---\n", "utf8");
+
+    const fakeCli = path.join(repoRoot, "fake-skills.mjs");
+    await fs.writeFile(
+      fakeCli,
+      [
+        'import { cpSync, mkdirSync, rmSync } from "node:fs";',
+        'import os from "node:os";',
+        'import path from "node:path";',
+        'const args = process.argv.slice(2);',
+        'const sourceDir = args[args.indexOf("add") + 1];',
+        'const sIndex = args.indexOf("-s");',
+        'const skillId = sIndex !== -1 ? args[sIndex + 1] : path.basename(sourceDir);',
+        'const dest = path.join(os.homedir(), ".agents", "skills", skillId);',
+        'rmSync(dest, { recursive: true, force: true });',
+        'mkdirSync(path.dirname(dest), { recursive: true });',
+        'cpSync(sourceDir, dest, { recursive: true });',
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const catalog: SkillctlCatalog = {
+      version: 1,
+      generatedBy: "test",
+      skills: [{
+        skill_id: "alpha",
+        visibility: "public",
+        source_kind: "local-public",
+        origin_kind: "local-authored",
+        hash: "placeholder",
+        managed: true,
+        targets: ["claude-code", "codex"],
+        canonical_rel_path: path.relative(repoRoot, skillPath),
+      }],
+    };
+    const config: SkillctlConfig = {
+      sourceRoots: [{ path: skillsDir, visibility: "public", managedByDefault: true }],
+      privateRoots: [],
+      enabledAdapters: ["claude-code", "codex"],
+      excludeSkills: [],
+      liveProbePolicy: "off",
+      transport: {
+        mode: "skills-cli",
+        command: "node",
+        args: [fakeCli],
+      },
+      stateDir: path.join(repoRoot, ".skillctl-local"),
+    };
+    await normalizeCatalogArtifacts(repoRoot, catalog);
+
+    const result = await syncCatalog(repoRoot, config, catalog);
+    expect(result.skipped).toContainEqual({
+      agent: "codex",
+      skillId: "alpha",
+      reason: "blocked by claude-only portability policy",
+    });
+    await expect(fs.access(path.join(fakeHome, ".codex", "skills", "alpha"))).rejects.toThrow();
+    expect(await fs.readFile(path.join(fakeHome, ".claude", "skills", "alpha", "SKILL.md"), "utf8")).toContain("name: alpha");
+  });
 });

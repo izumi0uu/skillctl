@@ -7,12 +7,14 @@ import { managedSkillsForAgent, summarizeCatalog } from "./catalog.js";
 import { fileExists, readText } from "./fs.js";
 import { loadManagedIndex } from "./indexes.js";
 import { hashDirectory } from "./hash.js";
+import { analyzeSkillPortability, evaluateSkillDistributionPolicy, portabilityBlockReason } from "./portability.js";
 import { transportHealth } from "./transport.js";
-import type { DoctorIssue, DoctorReport, RepairAction, SkillctlCatalog, SkillctlConfig } from "./types.js";
+import type { DoctorIssue, DoctorReport, RepairAction, SkillPortabilityReport, SkillctlCatalog, SkillctlConfig } from "./types.js";
 
 export async function runDoctor(repoRoot: string, config: SkillctlConfig, catalog: SkillctlCatalog): Promise<DoctorReport> {
   const issues: DoctorIssue[] = [];
   const repairActions: RepairAction[] = [];
+  const portability: SkillPortabilityReport[] = [];
 
   const transportStatus = await transportHealth(config);
   if (transportStatus.status !== "ok") {
@@ -45,6 +47,19 @@ export async function runDoctor(repoRoot: string, config: SkillctlConfig, catalo
     if (!await fileExists(sourceSkillFile)) {
       continue;
     }
+
+    const portabilityReport = await analyzeSkillPortability(sourceDir, skill);
+    portability.push(portabilityReport);
+    if (portabilityReport.classification === "needs-review") {
+      issues.push({
+        code: "portability-review",
+        status: "warn",
+        detail: `${skill.skill_id} portability requires review: ${portabilityReport.reasons.join("; ")}`,
+        skillId: skill.skill_id,
+        repairable: false,
+      });
+    }
+
     const sourceContent = await readText(sourceSkillFile);
     if (hasMalformedAttributionBlock(sourceContent)) {
       issues.push({
@@ -87,7 +102,20 @@ export async function runDoctor(repoRoot: string, config: SkillctlConfig, catalo
     }
 
     const index = await loadManagedIndex(config.stateDir!, agent);
-    const managedSkills = managedSkillsForAgent(catalog, agent);
+    const managedSkills = [];
+    for (const skill of managedSkillsForAgent(catalog, agent)) {
+      if (!skill.canonical_rel_path) {
+        continue;
+      }
+      const sourceDir = path.resolve(repoRoot, skill.canonical_rel_path);
+      if (!await fileExists(sourceDir)) {
+        continue;
+      }
+      const policy = await evaluateSkillDistributionPolicy(sourceDir, skill);
+      if (policy.allowedTargets.includes(agent)) {
+        managedSkills.push(skill);
+      }
+    }
 
     for (const skill of managedSkills) {
       const skillDir = path.join(installDir, skill.skill_id);
@@ -198,6 +226,33 @@ export async function runDoctor(repoRoot: string, config: SkillctlConfig, catalo
         }
       }
     }
+
+    for (const skill of managedSkillsForAgent(catalog, agent)) {
+      if (!skill.canonical_rel_path) {
+        continue;
+      }
+      const sourceDir = path.resolve(repoRoot, skill.canonical_rel_path);
+      if (!await fileExists(sourceDir)) {
+        continue;
+      }
+      const policy = await evaluateSkillDistributionPolicy(sourceDir, skill);
+      const blockedReason = portabilityBlockReason(policy, agent);
+      if (!blockedReason) {
+        continue;
+      }
+      const blockedDir = path.join(installDir, skill.skill_id);
+      if (await fileExists(blockedDir)) {
+        issues.push({
+          code: "drift",
+          status: "warn",
+          detail: `${agent}:${skill.skill_id} should not be installed (${blockedReason})`,
+          agent,
+          skillId: skill.skill_id,
+          repairable: true,
+        });
+        repairActions.push({ type: "remove-managed-skill", agent, skillId: skill.skill_id, detail: `Remove blocked install of ${skill.skill_id}` });
+      }
+    }
   }
 
   if (await readmeSourceRegistryDrift(repoRoot, catalog)) {
@@ -219,6 +274,7 @@ export async function runDoctor(repoRoot: string, config: SkillctlConfig, catalo
     exitCode: hasHardError ? 2 : hasWarn ? 1 : 0,
     issues,
     probes,
+    portability,
     repairActions,
     catalogSummary: summarizeCatalog(catalog),
   };

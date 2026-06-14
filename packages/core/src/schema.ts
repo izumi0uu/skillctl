@@ -69,6 +69,9 @@ export const catalogSkillSchema = z.object({
   canonical_rel_path: z.string().optional(),
   upstream: upstreamSourceSchema.optional(),
   aliases: z.array(z.string()).optional(),
+  distribution: z.object({
+    portability_allow_targets: z.array(agentIdSchema).optional(),
+  }).optional(),
 });
 
 export const skillctlCatalogSchema = z.object({

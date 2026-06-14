@@ -134,6 +134,12 @@ async function writeManifestSchemas(repoRoot: string): Promise<void> {
             targets: { type: "array", items: { enum: ["claude-code", "codex", "pi", "hermes", "opencode"] } },
             canonical_rel_path: { type: "string" },
             aliases: { type: "array", items: { type: "string" } },
+            distribution: {
+              type: "object",
+              properties: {
+                portability_allow_targets: { type: "array", items: { enum: ["claude-code", "codex", "pi", "hermes", "opencode"] } },
+              },
+            },
             upstream: {
               type: "object",
               properties: {
@@ -231,6 +237,9 @@ async function doctorCommand(repoRoot: string, asJson: boolean): Promise<number>
     console.log(`healthy=${report.healthy} exitCode=${report.exitCode}`);
     for (const issue of report.issues) {
       console.log(`[${issue.status}] ${issue.code}: ${issue.detail}`);
+    }
+    for (const portability of report.portability) {
+      console.log(`[portability:${portability.classification}] ${portability.skillId}: allowed=${portability.allowedTargets.join(",") || "none"} blocked=${portability.blockedTargets.join(",") || "none"}`);
     }
     for (const probe of report.probes) {
       console.log(`[probe:${probe.status}] ${probe.agent}: ${probe.detail}`);

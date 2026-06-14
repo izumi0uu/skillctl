@@ -3,8 +3,9 @@ import path from "node:path";
 import { ensureReadmeSourceRegistry, expectedSkillRenderedHash } from "./attribution.js";
 import { getAdapter } from "./adapters.js";
 import { managedSkillsForAgent } from "./catalog.js";
-import { copyDir, ensureDir, fileExists } from "./fs.js";
+import { copyDir, ensureDir, fileExists, removeDirIfExists } from "./fs.js";
 import { writeManagedIndex } from "./indexes.js";
+import { evaluateSkillDistributionPolicy, portabilityBlockReason } from "./portability.js";
 import type { SkillctlCatalog, SkillctlConfig, SyncResult } from "./types.js";
 import { syncViaSkillsCli } from "./transport.js";
 
@@ -12,7 +13,21 @@ export async function syncCatalog(repoRoot: string, config: SkillctlConfig, cata
   if (config.transport.mode === "skills-cli") {
     const result = await syncViaSkillsCli(repoRoot, config, catalog);
     for (const agent of config.enabledAdapters) {
-      await writeManagedIndex(config.stateDir!, agent, managedSkillsForAgent(catalog, agent));
+      const installable = [];
+      for (const skill of managedSkillsForAgent(catalog, agent)) {
+        if (!skill.canonical_rel_path) {
+          continue;
+        }
+        const sourceDir = path.resolve(repoRoot, skill.canonical_rel_path);
+        if (!await fileExists(sourceDir)) {
+          continue;
+        }
+        const policy = await evaluateSkillDistributionPolicy(sourceDir, skill);
+        if (policy.allowedTargets.includes(agent)) {
+          installable.push(skill);
+        }
+      }
+      await writeManagedIndex(config.stateDir!, agent, installable);
     }
     await ensureReadmeSourceRegistry(repoRoot, catalog);
     return result;
@@ -43,12 +58,34 @@ export async function syncCatalog(repoRoot: string, config: SkillctlConfig, cata
         continue;
       }
 
+       const policy = await evaluateSkillDistributionPolicy(srcDir, skill);
+       const blockedReason = portabilityBlockReason(policy, agent);
+       if (blockedReason) {
+        await removeDirIfExists(path.join(installDir, skill.skill_id));
+        skipped.push({ agent, skillId: skill.skill_id, reason: blockedReason });
+        continue;
+      }
+
       await copyDir(srcDir, path.join(installDir, skill.skill_id));
       await expectedSkillRenderedHash(path.join(installDir, skill.skill_id), skill);
       copied.push({ agent, skillId: skill.skill_id });
     }
 
-    await writeManagedIndex(config.stateDir!, agent, managedSkillsForAgent(catalog, agent));
+    const installable = [];
+    for (const skill of managedSkillsForAgent(catalog, agent)) {
+      if (!skill.canonical_rel_path) {
+        continue;
+      }
+      const sourceDir = path.resolve(repoRoot, skill.canonical_rel_path);
+      if (!await fileExists(sourceDir)) {
+        continue;
+      }
+      const policy = await evaluateSkillDistributionPolicy(sourceDir, skill);
+      if (policy.allowedTargets.includes(agent)) {
+        installable.push(skill);
+      }
+    }
+    await writeManagedIndex(config.stateDir!, agent, installable);
     managedIndexesUpdated.push(agent);
   }
 

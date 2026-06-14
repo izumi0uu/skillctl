@@ -8,6 +8,7 @@ export type UpstreamSourceType = "github" | "git" | "local";
 
 export type ProbePolicy = "off" | "safe";
 export type TransportMode = "skills-cli" | "copy-fallback";
+export type SkillPortabilityClassification = "portable" | "claude-only" | "codex-enhanced" | "needs-review";
 export type SkillCategory =
   | "agent-infra"
   | "knowledge-and-research"
@@ -73,6 +74,9 @@ export interface CatalogSkill {
   canonical_rel_path?: string;
   upstream?: UpstreamSource;
   aliases?: string[];
+  distribution?: {
+    portability_allow_targets?: AgentId[];
+  };
 }
 
 export interface SkillctlCatalog {
@@ -115,6 +119,30 @@ export interface ProbeResult {
   detail: string;
 }
 
+export interface SkillPortabilitySignals {
+  usesStandardSkillMdOnly: boolean;
+  hasClaudeDynamicContext: boolean;
+  hasClaudePluginManifest: boolean;
+  hasClaudePluginDirWithoutManifest: boolean;
+  hasOpenAiManifest: boolean;
+  hasAgentDirWithoutOpenAiManifest: boolean;
+  missingName: boolean;
+  missingDescription: boolean;
+  targetMismatch: boolean;
+}
+
+export interface SkillPortabilityReport {
+  skillId: string;
+  classification: SkillPortabilityClassification;
+  reasons: string[];
+  canonicalRelPath: string | null;
+  targets: AgentId[];
+  allowedTargets: AgentId[];
+  blockedTargets: AgentId[];
+  overrideTargets: AgentId[];
+  signals: SkillPortabilitySignals;
+}
+
 export interface RepairAction {
   type: "create-dir" | "rewrite-skill" | "remove-managed-skill" | "rewrite-index" | "rewrite-footer" | "rewrite-readme";
   agent?: AgentId;
@@ -135,7 +163,8 @@ export interface DoctorIssue {
     | "malformed-footer"
     | "footer-drift"
     | "readme-drift"
-    | "catalog-mismatch";
+    | "catalog-mismatch"
+    | "portability-review";
   status: DoctorStatus;
   detail: string;
   agent?: AgentId;
@@ -148,6 +177,7 @@ export interface DoctorReport {
   exitCode: 0 | 1 | 2;
   issues: DoctorIssue[];
   probes: ProbeResult[];
+  portability: SkillPortabilityReport[];
   repairActions: RepairAction[];
   catalogSummary: {
     managedSkills: number;

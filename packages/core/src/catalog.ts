@@ -11,6 +11,10 @@ export function managedSkillsForAgent(catalog: SkillctlCatalog, agent: AgentId):
   return catalog.skills.filter((skill) => skill.managed && skill.targets.includes(agent));
 }
 
+export function managedSkillIdsForAgent(catalog: SkillctlCatalog, agent: AgentId): string[] {
+  return managedSkillsForAgent(catalog, agent).map((skill) => skill.skill_id);
+}
+
 export function emptyCatalog(): SkillctlCatalog {
   return {
     version: 1,
