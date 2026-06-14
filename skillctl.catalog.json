@@ -17,10 +17,7 @@
       "managed": true,
       "targets": [
         "claude-code",
-        "codex",
-        "pi",
-        "hermes",
-        "opencode"
+        "codex"
       ],
       "canonical_rel_path": "skills/knowledge-and-research/agents-best-practices",
       "upstream": {
@@ -49,10 +46,7 @@
       "managed": true,
       "targets": [
         "claude-code",
-        "codex",
-        "pi",
-        "hermes",
-        "opencode"
+        "codex"
       ],
       "canonical_rel_path": "skills/agent-infra/anyrouter-config"
     },
@@ -71,12 +65,32 @@
       "managed": true,
       "targets": [
         "claude-code",
-        "codex",
-        "pi",
-        "hermes",
-        "opencode"
+        "codex"
       ],
       "canonical_rel_path": "skills/domain-aws-thrive/aws-rds-dump-restore"
+    },
+    {
+      "skill_id": "claude-design",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "e2d3c909c545cf03483a8261ab2c049919a0abee",
+      "managed": true,
+      "targets": [
+        "claude-code"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/claude-design",
+      "upstream": {
+        "repo": "jiji262/claude-design-skill",
+        "ref": "f1ac87c3decb175d99a269f23ca84860786a598b",
+        "skillPath": ".",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/jiji262/claude-design-skill",
+        "imported_at": "2026-06-14T14:01:51.620Z",
+        "last_verified_ref": "f1ac87c3decb175d99a269f23ca84860786a598b",
+        "local_modifications": false
+      }
     },
     {
       "skill_id": "codex-config-health",
@@ -93,10 +107,7 @@
       "managed": true,
       "targets": [
         "claude-code",
-        "codex",
-        "pi",
-        "hermes",
-        "opencode"
+        "codex"
       ],
       "canonical_rel_path": "skills/agent-infra/codex-config-health"
     },
@@ -115,10 +126,7 @@
       "managed": true,
       "targets": [
         "claude-code",
-        "codex",
-        "pi",
-        "hermes",
-        "opencode"
+        "codex"
       ],
       "canonical_rel_path": "skills/agent-infra/codex-session-recovery"
     },
@@ -137,10 +145,7 @@
       "managed": true,
       "targets": [
         "claude-code",
-        "codex",
-        "pi",
-        "hermes",
-        "opencode"
+        "codex"
       ],
       "canonical_rel_path": "skills/deployment-and-platform/deploy-to-vercel",
       "upstream": {
@@ -151,6 +156,76 @@
         "sourceUrl": "https://github.com/vercel-labs/agent-skills",
         "imported_at": "2026-06-14T01:23:45.815Z",
         "last_verified_ref": "main",
+        "local_modifications": true
+      }
+    },
+    {
+      "skill_id": "design-loop",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "454c82c968b6e700f11a08f54dbbc05fdd53a080",
+      "managed": true,
+      "targets": [
+        "claude-code"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/design-loop",
+      "upstream": {
+        "repo": "jezweb/claude-skills",
+        "ref": "0aa0f4437e0e70dda1e4e62df3a9d9cb8170f8ba",
+        "skillPath": "plugins/frontend/skills/design-loop",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/jezweb/claude-skills/tree/main/plugins/frontend/skills/design-loop",
+        "imported_at": "2026-06-14T13:50:12.765Z",
+        "last_verified_ref": "0aa0f4437e0e70dda1e4e62df3a9d9cb8170f8ba",
+        "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "design-system",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "18757aeb9a264456a9df6f3d72546dec677e69b4",
+      "managed": true,
+      "targets": [
+        "claude-code"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/design-system",
+      "upstream": {
+        "repo": "jezweb/claude-skills",
+        "ref": "0aa0f4437e0e70dda1e4e62df3a9d9cb8170f8ba",
+        "skillPath": "plugins/frontend/skills/design-system",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/jezweb/claude-skills/tree/main/plugins/frontend/skills/design-system",
+        "imported_at": "2026-06-14T13:50:12.556Z",
+        "last_verified_ref": "0aa0f4437e0e70dda1e4e62df3a9d9cb8170f8ba",
+        "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "electron",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "d14456736004b9144c94ac69b77c38d8d6b8c91f",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/electron",
+      "upstream": {
+        "repo": "full-statck-skills/electron-skills",
+        "ref": "088a6d7ed27356a121730535abf76a35c70225a3",
+        "skillPath": "skills/electron",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/full-statck-skills/electron-skills/tree/main/skills/electron",
+        "imported_at": "2026-06-14T14:30:00.404Z",
+        "last_verified_ref": "088a6d7ed27356a121730535abf76a35c70225a3",
         "local_modifications": true
       }
     },
@@ -184,6 +259,102 @@
         "imported_at": "2026-06-14T15:05:00.000Z",
         "last_verified_ref": "main",
         "local_modifications": true
+      }
+    },
+    {
+      "skill_id": "extract-design-system",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "a1d1121f302419268ad8566a28291e289a90fa8d",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/extract-design-system",
+      "upstream": {
+        "repo": "arvindrk/extract-design-system",
+        "ref": "main",
+        "skillPath": "skills/extract-design-system",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/arvindrk/extract-design-system/tree/main/skills/extract-design-system",
+        "imported_at": "2026-06-14T14:17:07.153Z",
+        "last_verified_ref": "main",
+        "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "find-skills",
+      "category": "agent-infra",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "8cf760bb56bac80fddd6a9c7633777bcfc0c520d",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex"
+      ],
+      "canonical_rel_path": "skills/agent-infra/find-skills",
+      "upstream": {
+        "repo": "vercel-labs/skills",
+        "ref": "be0dd25b4a8665894a56f45ef582cc02ca802c39",
+        "skillPath": "skills/find-skills",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/vercel-labs/skills/tree/main/skills/find-skills",
+        "imported_at": "2026-06-14T14:37:50.492Z",
+        "last_verified_ref": "be0dd25b4a8665894a56f45ef582cc02ca802c39",
+        "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "frontend-app-builder",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "9745c74c6e88909eb99dc68a9c8c40d50060c9b7",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/frontend-app-builder",
+      "upstream": {
+        "repo": "openai/plugins",
+        "ref": "main",
+        "skillPath": "plugins/build-web-apps/skills/frontend-app-builder",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/openai/plugins/tree/main/plugins/build-web-apps/skills/frontend-app-builder",
+        "imported_at": "2026-06-14T14:16:38.372Z",
+        "last_verified_ref": "main",
+        "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "frontend-testing-debugging",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "7d03d759e45907799489acf9f6b6194874e5856a",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/frontend-testing-debugging",
+      "upstream": {
+        "repo": "openai/plugins",
+        "ref": "main",
+        "skillPath": "plugins/build-web-apps/skills/frontend-testing-debugging",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/openai/plugins/tree/main/plugins/build-web-apps/skills/frontend-testing-debugging",
+        "imported_at": "2026-06-14T14:16:44.029Z",
+        "last_verified_ref": "main",
+        "local_modifications": false
       }
     },
     {
@@ -371,6 +542,76 @@
       "canonical_rel_path": "skills/agent-infra/omx-project-scope-git-isolation"
     },
     {
+      "skill_id": "product-showcase",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "ce665013eca39c9587a3eb943c467ed299106b4d",
+      "managed": true,
+      "targets": [
+        "claude-code"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/product-showcase",
+      "upstream": {
+        "repo": "jezweb/claude-skills",
+        "ref": "0aa0f4437e0e70dda1e4e62df3a9d9cb8170f8ba",
+        "skillPath": "plugins/frontend/skills/product-showcase",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/jezweb/claude-skills/tree/main/plugins/frontend/skills/product-showcase",
+        "imported_at": "2026-06-14T13:50:12.781Z",
+        "last_verified_ref": "0aa0f4437e0e70dda1e4e62df3a9d9cb8170f8ba",
+        "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "react-component-performance",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "db09ff277682484645f8d948a88f17ee60941316",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/react-component-performance",
+      "upstream": {
+        "repo": "dimillian/Skills",
+        "ref": "main",
+        "skillPath": "react-component-performance",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/dimillian/Skills/tree/main/react-component-performance",
+        "imported_at": "2026-06-14T14:19:05.947Z",
+        "last_verified_ref": "main",
+        "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "react-patterns",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "dfb863a0e54468ca4cd47dabb1e4f77f3531e32b",
+      "managed": true,
+      "targets": [
+        "claude-code"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/react-patterns",
+      "upstream": {
+        "repo": "jezweb/claude-skills",
+        "ref": "0aa0f4437e0e70dda1e4e62df3a9d9cb8170f8ba",
+        "skillPath": "plugins/frontend/skills/react-patterns",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/jezweb/claude-skills/tree/main/plugins/frontend/skills/react-patterns",
+        "imported_at": "2026-06-14T13:50:12.782Z",
+        "last_verified_ref": "0aa0f4437e0e70dda1e4e62df3a9d9cb8170f8ba",
+        "local_modifications": false
+      }
+    },
+    {
       "skill_id": "recruitflow-project-ops",
       "category": "domain-aws-thrive",
       "tags": [
@@ -415,6 +656,30 @@
       "canonical_rel_path": "skills/agent-infra/repo-preflight"
     },
     {
+      "skill_id": "scan",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "a6ab871163173d667480a36ee239d70a7061d4d9",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/scan",
+      "upstream": {
+        "repo": "AccessLint/skills",
+        "ref": "main",
+        "skillPath": "plugins/accesslint/skills/scan",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/AccessLint/skills/tree/main/plugins/accesslint/skills/scan",
+        "imported_at": "2026-06-14T14:17:13.393Z",
+        "last_verified_ref": "main",
+        "local_modifications": false
+      }
+    },
+    {
       "skill_id": "shadcn",
       "category": "frontend-and-design",
       "visibility": "public",
@@ -457,6 +722,29 @@
         "opencode"
       ],
       "canonical_rel_path": "skills/agent-infra/skillctl-control-plane"
+    },
+    {
+      "skill_id": "tailwind-theme-builder",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "142ab1806db005d25df12a8b65eb838f97db2d24",
+      "managed": true,
+      "targets": [
+        "claude-code"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/tailwind-theme-builder",
+      "upstream": {
+        "repo": "jezweb/claude-skills",
+        "ref": "0aa0f4437e0e70dda1e4e62df3a9d9cb8170f8ba",
+        "skillPath": "plugins/frontend/skills/tailwind-theme-builder",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/jezweb/claude-skills/tree/main/plugins/frontend/skills/tailwind-theme-builder",
+        "imported_at": "2026-06-14T13:50:12.608Z",
+        "last_verified_ref": "0aa0f4437e0e70dda1e4e62df3a9d9cb8170f8ba",
+        "local_modifications": false
+      }
     },
     {
       "skill_id": "thrive-billing-claim-cleanup-diagnostics",
@@ -523,6 +811,57 @@
         "opencode"
       ],
       "canonical_rel_path": "skills/domain-aws-thrive/thrive-therapy-session-diagnostics"
+    },
+    {
+      "skill_id": "ui-animation",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "005f2cb02ead25e44207dd1a7c7ab814508c8a76",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/ui-animation",
+      "upstream": {
+        "repo": "mblode/agent-skills",
+        "ref": "main",
+        "skillPath": "skills/ui-animation",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/mblode/agent-skills/tree/main/skills/ui-animation",
+        "imported_at": "2026-06-14T14:18:57.918Z",
+        "last_verified_ref": "main",
+        "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "ui-ux-pro-max",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "ee81579418beb37fcbb906cc4628b6361a6dbed8",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/ui-ux-pro-max",
+      "upstream": {
+        "repo": "nextlevelbuilder/ui-ux-pro-max-skill",
+        "ref": "b7e3af80f6e331f6fb456667b82b12cade7c9d35",
+        "skillPath": ".claude/skills/ui-ux-pro-max",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill/tree/main/.claude/skills/ui-ux-pro-max",
+        "imported_at": "2026-06-14T14:45:55.384Z",
+        "last_verified_ref": "b7e3af80f6e331f6fb456667b82b12cade7c9d35",
+        "local_modifications": true
+      }
     },
     {
       "skill_id": "vercel-cli-with-tokens",
