@@ -2,33 +2,21 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { getAdapter } from "./adapters.js";
-import { managedSkillsForAgent } from "./catalog.js";
-import { fileExists } from "./fs.js";
+import { DistributionPolicyCache, installableSkillsForAgent } from "./distribution.js";
 import { loadManagedIndex, writeManagedIndex } from "./indexes.js";
-import { evaluateSkillDistributionPolicy } from "./portability.js";
 import type { PruneResult, SkillctlCatalog, SkillctlConfig } from "./types.js";
 
 export async function pruneManaged(repoRoot: string, config: SkillctlConfig, catalog: SkillctlCatalog): Promise<PruneResult> {
   const removed: PruneResult["removed"] = [];
   const skipped: PruneResult["skipped"] = [];
+  const cache = new DistributionPolicyCache();
 
   for (const agent of config.enabledAdapters) {
     const adapter = getAdapter(agent);
     const keep = new Set<string>();
-    const installable = [];
-    for (const skill of managedSkillsForAgent(catalog, agent)) {
-      if (!skill.canonical_rel_path) {
-        continue;
-      }
-      const sourceDir = path.resolve(repoRoot, skill.canonical_rel_path);
-      if (!await fileExists(sourceDir)) {
-        continue;
-      }
-      const policy = await evaluateSkillDistributionPolicy(sourceDir, skill);
-      if (policy.allowedTargets.includes(agent)) {
-        keep.add(skill.skill_id);
-        installable.push(skill);
-      }
+    const installableSet = await installableSkillsForAgent(repoRoot, catalog, agent, cache);
+    for (const skill of installableSet.installable) {
+      keep.add(skill.skill_id);
     }
     const index = await loadManagedIndex(config.stateDir!, agent);
 
@@ -41,7 +29,7 @@ export async function pruneManaged(repoRoot: string, config: SkillctlConfig, cat
       removed.push({ agent, skillId: entry.skill_id });
     }
 
-    await writeManagedIndex(config.stateDir!, agent, installable);
+    await writeManagedIndex(config.stateDir!, agent, installableSet.installable);
   }
 
   return { removed, skipped };

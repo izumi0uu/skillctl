@@ -41,6 +41,23 @@ describe("skill portability analysis", () => {
     expect(report.blockedTargets).toEqual(["codex", "pi", "hermes", "opencode"]);
   });
 
+  test("does not classify fenced code examples as Claude dynamic injection", async () => {
+    const root = await makeTempDir("skillctl-claude-fenced-");
+    const skillDir = await writeSkill(
+      root,
+      "alpha",
+      [
+        "```bash",
+        "!`date`",
+        "```",
+      ].join("\n"),
+    );
+
+    const report = await analyzeSkillPortability(skillDir, baseSkill("alpha"));
+    expect(report.classification).toBe("portable");
+    expect(report.signals.hasClaudeDynamicContext).toBe(false);
+  });
+
   test("classifies openai manifest as codex-enhanced", async () => {
     const root = await makeTempDir("skillctl-codex-enhanced-");
     const skillDir = await writeSkill(root, "alpha", "portable body");

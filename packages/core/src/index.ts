@@ -4,6 +4,7 @@ export * from "./attribution.js";
 export * from "./catalog.js";
 export * from "./config.js";
 export * from "./discover.js";
+export * from "./distribution.js";
 export * from "./doctor.js";
 export * from "./hash.js";
 export * from "./indexes.js";

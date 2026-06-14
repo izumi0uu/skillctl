@@ -3,11 +3,12 @@ import path from "node:path";
 
 import { applySkillAttribution, hasMalformedAttributionBlock, readmeSourceRegistryDrift, sourceDirForSkill } from "./attribution.js";
 import { getAdapter, runProbe } from "./adapters.js";
-import { managedSkillsForAgent, summarizeCatalog } from "./catalog.js";
+import { summarizeCatalog } from "./catalog.js";
+import { DistributionPolicyCache, installableSkillsForAgent } from "./distribution.js";
 import { fileExists, readText } from "./fs.js";
 import { loadManagedIndex } from "./indexes.js";
 import { hashDirectory } from "./hash.js";
-import { analyzeSkillPortability, evaluateSkillDistributionPolicy, portabilityBlockReason } from "./portability.js";
+import { analyzeSkillPortability } from "./portability.js";
 import { transportHealth } from "./transport.js";
 import type { DoctorIssue, DoctorReport, RepairAction, SkillPortabilityReport, SkillctlCatalog, SkillctlConfig } from "./types.js";
 
@@ -15,6 +16,7 @@ export async function runDoctor(repoRoot: string, config: SkillctlConfig, catalo
   const issues: DoctorIssue[] = [];
   const repairActions: RepairAction[] = [];
   const portability: SkillPortabilityReport[] = [];
+  const cache = new DistributionPolicyCache();
 
   const transportStatus = await transportHealth(config);
   if (transportStatus.status !== "ok") {
@@ -102,20 +104,8 @@ export async function runDoctor(repoRoot: string, config: SkillctlConfig, catalo
     }
 
     const index = await loadManagedIndex(config.stateDir!, agent);
-    const managedSkills = [];
-    for (const skill of managedSkillsForAgent(catalog, agent)) {
-      if (!skill.canonical_rel_path) {
-        continue;
-      }
-      const sourceDir = path.resolve(repoRoot, skill.canonical_rel_path);
-      if (!await fileExists(sourceDir)) {
-        continue;
-      }
-      const policy = await evaluateSkillDistributionPolicy(sourceDir, skill);
-      if (policy.allowedTargets.includes(agent)) {
-        managedSkills.push(skill);
-      }
-    }
+    const installableSet = await installableSkillsForAgent(repoRoot, catalog, agent, cache);
+    const managedSkills = installableSet.installable;
 
     for (const skill of managedSkills) {
       const skillDir = path.join(installDir, skill.skill_id);
@@ -227,25 +217,14 @@ export async function runDoctor(repoRoot: string, config: SkillctlConfig, catalo
       }
     }
 
-    for (const skill of managedSkillsForAgent(catalog, agent)) {
-      if (!skill.canonical_rel_path) {
-        continue;
-      }
-      const sourceDir = path.resolve(repoRoot, skill.canonical_rel_path);
-      if (!await fileExists(sourceDir)) {
-        continue;
-      }
-      const policy = await evaluateSkillDistributionPolicy(sourceDir, skill);
-      const blockedReason = portabilityBlockReason(policy, agent);
-      if (!blockedReason) {
-        continue;
-      }
+    for (const blocked of installableSet.blocked) {
+      const skill = blocked.skill;
       const blockedDir = path.join(installDir, skill.skill_id);
       if (await fileExists(blockedDir)) {
         issues.push({
           code: "drift",
           status: "warn",
-          detail: `${agent}:${skill.skill_id} should not be installed (${blockedReason})`,
+          detail: `${agent}:${skill.skill_id} should not be installed (${blocked.reason})`,
           agent,
           skillId: skill.skill_id,
           repairable: true,
@@ -267,11 +246,11 @@ export async function runDoctor(repoRoot: string, config: SkillctlConfig, catalo
 
   const probes = await Promise.all(config.enabledAdapters.map((agent) => runProbe(agent, config.liveProbePolicy)));
   const hasHardError = issues.some((issue) => issue.status === "error");
-  const hasWarn = issues.some((issue) => issue.status === "warn");
+  const hasRepairableWarn = issues.some((issue) => issue.status === "warn" && issue.repairable);
 
   return {
-    healthy: !hasHardError && !hasWarn,
-    exitCode: hasHardError ? 2 : hasWarn ? 1 : 0,
+    healthy: !hasHardError && !hasRepairableWarn,
+    exitCode: hasHardError ? 2 : hasRepairableWarn ? 1 : 0,
     issues,
     probes,
     portability,

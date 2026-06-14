@@ -1,9 +1,60 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 import type { CatalogSkill, SourceVerificationEntry, SourceVerificationReport, SkillctlCatalog } from "./types.js";
 
 const execFileAsync = promisify(execFile);
+const gitEnv = {
+  ...process.env,
+  GIT_TERMINAL_PROMPT: "0",
+};
+
+function isUnsafeGitRevision(value: string): boolean {
+  return value.trimStart().startsWith("-");
+}
+
+function isExactCommitSha(value: string): boolean {
+  return /^[0-9a-f]{40}$/iu.test(value);
+}
+
+function isCommitLikeRevision(value: string): boolean {
+  return /^[0-9a-f]{7,40}$/iu.test(value);
+}
+
+async function verifyPinnedCommitWithFetch(repoUrl: string, ref: string): Promise<string | null> {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "skillctl-verify-"));
+
+  try {
+    await execFileAsync("git", ["init"], {
+      cwd: tempDir,
+      timeout: 15000,
+      env: gitEnv,
+    });
+    await execFileAsync("git", ["remote", "add", "origin", repoUrl], {
+      cwd: tempDir,
+      timeout: 15000,
+      env: gitEnv,
+    });
+    await execFileAsync("git", ["fetch", "--depth=1", "origin", ref], {
+      cwd: tempDir,
+      timeout: 30000,
+      env: gitEnv,
+    });
+    const { stdout } = await execFileAsync("git", ["rev-parse", "FETCH_HEAD^{commit}"], {
+      cwd: tempDir,
+      timeout: 15000,
+      env: gitEnv,
+    });
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+}
 
 function verifySkillSourceInput(skill: CatalogSkill): SourceVerificationEntry | null {
   if (skill.origin_kind === "local-authored") {
@@ -31,10 +82,18 @@ async function verifyGithubRef(skill: CatalogSkill): Promise<SourceVerificationE
   const ref = upstream.ref!;
   const repoUrl = repo.startsWith("http://") || repo.startsWith("https://") ? repo : `https://github.com/${repo}.git`;
 
+  if (isUnsafeGitRevision(repo) || isUnsafeGitRevision(ref)) {
+    return {
+      skill_id: skill.skill_id,
+      status: "error",
+      detail: "upstream repo or ref begins with '-' and is rejected for git safety",
+    };
+  }
+
   try {
-    const { stdout } = await execFileAsync("git", ["ls-remote", repoUrl, ref], {
+    const { stdout } = await execFileAsync("git", ["ls-remote", "--", repoUrl, ref], {
       timeout: 15000,
-      env: process.env,
+      env: gitEnv,
     });
     const resolved = stdout.trim().split(/\s+/u)[0];
     if (resolved) {
@@ -47,12 +106,24 @@ async function verifyGithubRef(skill: CatalogSkill): Promise<SourceVerificationE
     }
 
     // ls-remote filters by ref name, so a pinned commit SHA never matches above.
-    // Fall back to scanning advertised tips; if the SHA isn't a tip it may still
-    // be a valid history commit, so report skip rather than a false "not found".
-    if (/^[0-9a-f]{7,40}$/iu.test(ref)) {
-      const { stdout: advertised } = await execFileAsync("git", ["ls-remote", repoUrl], {
+    // For exact SHAs, try a shallow fetch into a temp repo to validate the commit
+    // directly before falling back to more advisory outcomes.
+    if (isExactCommitSha(ref)) {
+      const fetched = await verifyPinnedCommitWithFetch(repoUrl, ref);
+      if (fetched && fetched.toLowerCase() === ref.toLowerCase()) {
+        return {
+          skill_id: skill.skill_id,
+          status: "ok",
+          detail: `verified pinned commit ${ref} via shallow fetch from ${repo}`,
+          resolved_ref: fetched,
+        };
+      }
+    }
+
+    if (isCommitLikeRevision(ref)) {
+      const { stdout: advertised } = await execFileAsync("git", ["ls-remote", "--", repoUrl], {
         timeout: 15000,
-        env: process.env,
+        env: gitEnv,
       });
       const needle = ref.toLowerCase();
       const match = advertised
@@ -70,7 +141,9 @@ async function verifyGithubRef(skill: CatalogSkill): Promise<SourceVerificationE
       return {
         skill_id: skill.skill_id,
         status: "skip",
-        detail: `pinned commit ${ref} is not an advertised ref tip on ${repo}; cannot verify via ls-remote without a clone`,
+        detail: isExactCommitSha(ref)
+          ? `pinned commit ${ref} could not be verified as a fetched or advertised commit on ${repo}`
+          : `pinned commit ${ref} is not an advertised ref tip on ${repo}; cannot fully verify short SHA without a clone`,
       };
     }
 

@@ -154,6 +154,59 @@ describe("doctor and repair", () => {
     expect(report.issues.some((issue) => issue.code === "readme-drift")).toBe(true);
   });
 
+  test("advisory warnings do not fail doctor when no repairable issue exists", async () => {
+    const repoRoot = await makeTempDir("skillctl-doctor-advisory-");
+    const skillsDir = path.join(repoRoot, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    const skillDir = await writeSkill(skillsDir, "alpha", "hello");
+    await writeReadme(repoRoot, "# skillctl\n");
+
+    const config: SkillctlConfig = {
+      sourceRoots: [{ path: skillsDir, visibility: "public", managedByDefault: true }],
+      privateRoots: [],
+      enabledAdapters: [],
+      excludeSkills: [],
+      liveProbePolicy: "off",
+      transport: {
+        mode: "copy-fallback",
+        command: "npx",
+        args: ["--yes", "skills"],
+      },
+      stateDir: path.join(repoRoot, ".skillctl-local"),
+    };
+    const catalog: SkillctlCatalog = {
+      version: 1,
+      generatedBy: "test",
+      skills: [{
+        skill_id: "alpha",
+        visibility: "public",
+        source_kind: "upstream",
+        origin_kind: "imported-upstream",
+        hash: await hashDirectory(skillDir),
+        managed: true,
+        targets: ["codex"],
+        canonical_rel_path: path.relative(repoRoot, skillDir),
+        upstream: {
+          repo: "owner/repo",
+          sourceType: "github",
+        },
+      }],
+    };
+
+    await normalizeCatalogArtifacts(repoRoot, catalog);
+
+    const report = await runDoctor(repoRoot, config, catalog);
+    expect(report.healthy).toBe(true);
+    expect(report.exitCode).toBe(0);
+    expect(report.issues).toEqual([
+      expect.objectContaining({
+        code: "missing-provenance",
+        status: "warn",
+        repairable: false,
+      }),
+    ]);
+  });
+
   test("reports portability classification and warns on needs-review", async () => {
     const repoRoot = await makeTempDir("skillctl-doctor-portability-");
     const skillsDir = path.join(repoRoot, "skills");

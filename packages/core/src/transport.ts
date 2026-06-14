@@ -6,9 +6,9 @@ import { promisify } from "node:util";
 import { ensureReadmeSourceRegistry, expectedSkillRenderedHash } from "./attribution.js";
 import { getAdapter } from "./adapters.js";
 import { managedSkillsForAgent } from "./catalog.js";
+import { DistributionPolicyCache, installableSkillsForAgent } from "./distribution.js";
 import { copyDir, ensureDir, fileExists, removeDirIfExists } from "./fs.js";
 import { writeManagedIndex } from "./indexes.js";
-import { evaluateSkillDistributionPolicy, portabilityBlockReason } from "./portability.js";
 import type {
   AgentId,
   BootstrapUpstreamResult,
@@ -177,30 +177,26 @@ export async function syncViaSkillsCli(repoRoot: string, config: SkillctlConfig,
   const managedIndexesUpdated: SyncResult["managedIndexesUpdated"] = [];
   const transportRuns: NonNullable<SyncResult["transportRuns"]> = [];
   const invocation = await resolveTransportInvocation(config);
+  const cache = new DistributionPolicyCache();
 
   for (const agent of config.enabledAdapters) {
     const adapter = getAdapter(agent);
     await ensureDir(adapter.installDir());
-    const installable: CatalogSkill[] = [];
+    const installableSet = await installableSkillsForAgent(repoRoot, catalog, agent, cache);
+    const installable = installableSet.installable.filter((skill) => skill.visibility === "public");
     const privateOnly = managedSkillsForAgent(catalog, agent).filter((skill) => skill.visibility !== "public");
-    for (const skill of managedSkillsForAgent(catalog, agent).filter((skill) => skill.visibility === "public")) {
-      const sourceDir = normalizeSourcePath(repoRoot, skill.canonical_rel_path);
-      if (!sourceDir || !await fileExists(sourceDir)) {
-        if (!sourceDir) {
-          skipped.push({ agent, skillId: skill.skill_id, reason: "missing canonical path" });
-        } else {
-          skipped.push({ agent, skillId: skill.skill_id, reason: `source missing: ${sourceDir}` });
-        }
-        continue;
-      }
-      const policy = await evaluateSkillDistributionPolicy(sourceDir, skill);
-      const blockedReason = portabilityBlockReason(policy, agent);
-      if (blockedReason) {
-        await removeDirIfExists(path.join(adapter.installDir(), skill.skill_id));
-        skipped.push({ agent, skillId: skill.skill_id, reason: blockedReason });
-        continue;
-      }
-      installable.push(skill);
+
+    for (const skill of installableSet.missingCanonicalPath) {
+      skipped.push({ agent, skillId: skill.skill_id, reason: "missing canonical path" });
+    }
+
+    for (const missing of installableSet.missingSourceDir) {
+      skipped.push({ agent, skillId: missing.skill.skill_id, reason: `source missing: ${missing.sourceDir}` });
+    }
+
+    for (const blocked of installableSet.blocked) {
+      await removeDirIfExists(path.join(adapter.installDir(), blocked.skill.skill_id));
+      skipped.push({ agent, skillId: blocked.skill.skill_id, reason: blocked.reason });
     }
 
     for (const skill of privateOnly) {

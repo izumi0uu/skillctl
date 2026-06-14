@@ -53,7 +53,7 @@ export const BUILTIN_ADAPTERS: Record<AgentId, AgentAdapter> = {
   opencode: {
     id: "opencode",
     label: "OpenCode",
-    installDir: (homeDir = home()) => path.join(homeDir, ".opencode", "skills"),
+    installDir: (homeDir = home()) => path.join(homeDir, ".config", "opencode", "skills"),
     canProbe: true,
     skillsCliAgent: "opencode",
     probeCommand: { file: "opencode", args: ["--help"] },

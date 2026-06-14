@@ -117,4 +117,26 @@ describe("discoverCatalog", () => {
     expect(result.catalog.skills[0]?.skill_id).toBe("alpha");
     expect(result.catalog.skills[0]?.canonical_rel_path).toBe(path.relative(repoRoot, alphaDir));
   });
+
+  test("ignores excluded dependency directories while discovering", async () => {
+    const repoRoot = await makeTempDir("skillctl-discover-excluded-");
+    const skillsDir = path.join(repoRoot, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    await writeSkill(skillsDir, "alpha");
+    await writeSkill(path.join(skillsDir, "node_modules"), "ignored-skill");
+
+    const result = await discoverCatalog(repoRoot, {
+      sourceRoots: [{ path: skillsDir, visibility: "public", managedByDefault: true }],
+      privateRoots: [],
+      enabledAdapters: ["codex"],
+      excludeSkills: [],
+      liveProbePolicy: "off",
+      stateDir: path.join(repoRoot, ".skillctl-local"),
+      transport: { mode: "copy-fallback", command: "npx", args: ["--yes", "skills"] },
+    });
+
+    expect(result.conflicts).toEqual([]);
+    expect(result.catalog.skills).toHaveLength(1);
+    expect(result.catalog.skills[0]?.skill_id).toBe("alpha");
+  });
 });

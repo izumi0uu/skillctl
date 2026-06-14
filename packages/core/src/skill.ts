@@ -4,6 +4,7 @@ import { parse } from "yaml";
 
 import { hashDirectory } from "./hash.js";
 import { fileExists } from "./fs.js";
+import { isExcludedSkillEntry } from "./portable-skill-files.js";
 import type { OriginKind, SkillDescriptor, SourceKind, SourceRoot, Visibility } from "./types.js";
 
 export async function parseSkillName(skillFilePath: string): Promise<string> {
@@ -53,7 +54,7 @@ export async function discoverSkillsInRoot(root: SourceRoot): Promise<SkillDescr
     const descriptors: SkillDescriptor[] = [];
 
     for (const entry of entries) {
-      if (!entry.isDirectory() || entry.name.startsWith(".")) {
+      if (!entry.isDirectory() || entry.name.startsWith(".") || isExcludedSkillEntry(entry.name, true)) {
         continue;
       }
       descriptors.push(...await visit(path.join(dirPath, entry.name)));

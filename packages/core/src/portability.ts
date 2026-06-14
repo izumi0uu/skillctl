@@ -47,7 +47,24 @@ async function parseSkillFrontmatter(skillFilePath: string): Promise<ParsedFront
 }
 
 function includesClaudeDynamicContext(rawSkill: string): boolean {
-  return /(^|\n)![`<]/u.test(rawSkill);
+  const lines = rawSkill.split("\n");
+  let inFencedCodeBlock = false;
+
+  for (const line of lines) {
+    const trimmed = line.trimStart();
+    if (/^(```|~~~)/u.test(trimmed)) {
+      inFencedCodeBlock = !inFencedCodeBlock;
+      continue;
+    }
+    if (inFencedCodeBlock) {
+      continue;
+    }
+    if (/^![`<]/u.test(trimmed)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function buildSignals(): SkillPortabilitySignals {
