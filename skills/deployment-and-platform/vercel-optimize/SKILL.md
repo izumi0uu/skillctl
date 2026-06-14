@@ -329,7 +329,7 @@ Use these messages without adding sales copy or process detail.
 - upstream path: skills/vercel-optimize
 - pinned ref: main
 - source type: github
-- source URL: https://github.com/vercel-labs/agent-skills/tree/main/skills/vercel-optimize
+- source URL: https://github.com/vercel-labs/agent-skills
 - imported at: 2026-06-14T01:23:50.251Z
 - last verified ref: main
 - local modifications: true

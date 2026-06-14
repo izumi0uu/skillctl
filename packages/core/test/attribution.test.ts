@@ -83,6 +83,7 @@ describe("attribution", () => {
     const rendered = injectManagedSkillSourcesSection("# skillctl\n", catalog);
     expect(rendered).toContain(README_SOURCES_START);
     expect(rendered).toContain(README_SOURCES_END);
+    expect(rendered).toContain("Source URL");
 
     const registry = buildSourceRegistry(catalog);
     expect(registry.map((entry) => entry.skill_id)).toEqual(["alpha", "beta"]);

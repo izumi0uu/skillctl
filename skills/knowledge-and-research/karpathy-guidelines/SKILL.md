@@ -65,3 +65,17 @@ For multi-step tasks, state a brief plan:
 ```
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+<!-- skillctl:source-attribution:start -->
+## Source Attribution
+
+- origin kind: derived-from-upstream
+- upstream repo: multica-ai/andrej-karpathy-skills
+- upstream path: .
+- pinned ref: main
+- source type: github
+- source URL: https://github.com/multica-ai/andrej-karpathy-skills
+- imported at: 2026-06-14T15:05:00.000Z
+- last verified ref: main
+- local modifications: true
+<!-- skillctl:source-attribution:end -->

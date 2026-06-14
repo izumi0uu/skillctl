@@ -46,7 +46,7 @@ If no files specified, ask the user which files to review.
 - upstream path: skills/web-design-guidelines
 - pinned ref: main
 - source type: github
-- source URL: https://github.com/vercel-labs/agent-skills/tree/main/skills/web-design-guidelines
+- source URL: https://github.com/vercel-labs/agent-skills
 - imported at: 2026-06-14T01:23:51.800Z
 - last verified ref: main
 - local modifications: true

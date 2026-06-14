@@ -242,9 +242,9 @@ export function renderManagedSkillSourcesSection(catalog: SkillctlCatalog): stri
     README_SOURCES_START,
     "## Managed Skill Sources",
     "",
-    "| Skill | Category | Origin | Upstream Repo | Upstream Path | Ref | Local Modifications |",
-    "| --- | --- | --- | --- | --- | --- | --- |",
-    ...entries.map((entry) => `| ${entry.skill_id} | ${entry.category_label} | ${entry.origin_kind} | ${formatNullable(entry.upstream_repo)} | ${formatNullable(entry.upstream_path)} | ${formatNullable(entry.ref)} | ${entry.local_modifications ? "yes" : "no"} |`),
+    "| Skill | Category | Origin | Upstream Repo | Upstream Path | Ref | Source URL | Local Modifications |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ...entries.map((entry) => `| ${entry.skill_id} | ${entry.category_label} | ${entry.origin_kind} | ${formatNullable(entry.upstream_repo)} | ${formatNullable(entry.upstream_path)} | ${formatNullable(entry.ref)} | ${formatNullable(entry.upstream_source_url)} | ${entry.local_modifications ? "yes" : "no"} |`),
     README_SOURCES_END,
   ];
   return `${lines.join("\n")}\n`;

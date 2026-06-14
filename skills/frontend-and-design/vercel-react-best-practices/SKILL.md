@@ -156,7 +156,7 @@ For the complete guide with all rules expanded: `AGENTS.md`
 - upstream path: skills/react-best-practices
 - pinned ref: main
 - source type: github
-- source URL: https://github.com/vercel-labs/agent-skills/tree/main/skills/react-best-practices
+- source URL: https://github.com/vercel-labs/agent-skills
 - imported at: 2026-06-14T01:23:50.524Z
 - last verified ref: main
 - local modifications: true

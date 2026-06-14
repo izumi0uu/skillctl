@@ -128,7 +128,7 @@ For the complete guide with all rules expanded: `AGENTS.md`
 - upstream path: skills/react-native-skills
 - pinned ref: main
 - source type: github
-- source URL: https://github.com/vercel-labs/agent-skills/tree/main/skills/react-native-skills
+- source URL: https://github.com/vercel-labs/agent-skills
 - imported at: 2026-06-14T01:23:51.258Z
 - last verified ref: main
 - local modifications: true

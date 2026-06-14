@@ -113,35 +113,35 @@ This means `~/.agents/skills` is not accidental temporary output. In `skills-cli
 <!-- skillctl:managed-skill-sources:start -->
 ## Managed Skill Sources
 
-| Skill | Category | Origin | Upstream Repo | Upstream Path | Ref | Local Modifications |
-| --- | --- | --- | --- | --- | --- | --- |
-| agents-best-practices | Knowledge And Research | derived-from-upstream | DenisSergeevitch/agents-best-practices | . | main | yes |
-| anyrouter-config | Agent Infra | local-authored | n/a | n/a | n/a | no |
-| aws-rds-dump-restore | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | no |
-| codex-config-health | Agent Infra | local-authored | n/a | n/a | n/a | no |
-| codex-session-recovery | Agent Infra | local-authored | n/a | n/a | n/a | no |
-| deploy-to-vercel | Deployment And Platform | derived-from-upstream | vercel-labs/agent-skills | skills/deploy-to-vercel | main | yes |
-| excalidraw-diagram | Productivity And Artifacts | local-authored | n/a | n/a | n/a | no |
-| google-sheets-editor | Productivity And Artifacts | local-authored | n/a | n/a | n/a | no |
-| hermes-upstream-worktree-fix | Agent Infra | local-authored | n/a | n/a | n/a | no |
-| karpathy-guidelines | Knowledge And Research | local-authored | n/a | n/a | n/a | no |
-| local-portable-demo | System And Demo | local-authored | n/a | n/a | n/a | no |
-| motion-design | Frontend And Design | derived-from-upstream | LottieFiles/motion-design-skill | skills/motion-design | main | yes |
-| obsidian-llm-wiki | Knowledge And Research | derived-from-upstream | https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f.git | . | main | yes |
-| omx-project-scope-git-isolation | Agent Infra | local-authored | n/a | n/a | n/a | no |
-| recruitflow-project-ops | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | no |
-| repo-preflight | Agent Infra | local-authored | n/a | n/a | n/a | no |
-| thrive-billing-claim-cleanup-diagnostics | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | no |
-| thrive-local-db-restore-login | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | no |
-| thrive-therapy-session-diagnostics | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | no |
-| vercel-cli-with-tokens | Deployment And Platform | derived-from-upstream | vercel-labs/agent-skills | skills/vercel-cli-with-tokens | main | yes |
-| vercel-composition-patterns | Frontend And Design | derived-from-upstream | vercel-labs/agent-skills | skills/composition-patterns | main | yes |
-| vercel-optimize | Deployment And Platform | derived-from-upstream | vercel-labs/agent-skills | skills/vercel-optimize | main | yes |
-| vercel-react-best-practices | Frontend And Design | derived-from-upstream | vercel-labs/agent-skills | skills/react-best-practices | main | yes |
-| vercel-react-native-skills | Frontend And Design | derived-from-upstream | vercel-labs/agent-skills | skills/react-native-skills | main | yes |
-| vercel-react-view-transitions | Frontend And Design | derived-from-upstream | vercel-labs/agent-skills | skills/react-view-transitions | main | yes |
-| web-design-guidelines | Frontend And Design | derived-from-upstream | vercel-labs/agent-skills | skills/web-design-guidelines | main | yes |
-| writing-guidelines | Knowledge And Research | derived-from-upstream | vercel-labs/agent-skills | skills/writing-guidelines | main | yes |
+| Skill | Category | Origin | Upstream Repo | Upstream Path | Ref | Source URL | Local Modifications |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| agents-best-practices | Knowledge And Research | derived-from-upstream | DenisSergeevitch/agents-best-practices | . | main | https://github.com/DenisSergeevitch/agents-best-practices | yes |
+| anyrouter-config | Agent Infra | local-authored | n/a | n/a | n/a | n/a | no |
+| aws-rds-dump-restore | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | n/a | no |
+| codex-config-health | Agent Infra | local-authored | n/a | n/a | n/a | n/a | no |
+| codex-session-recovery | Agent Infra | local-authored | n/a | n/a | n/a | n/a | no |
+| deploy-to-vercel | Deployment And Platform | derived-from-upstream | vercel-labs/agent-skills | skills/deploy-to-vercel | main | https://github.com/vercel-labs/agent-skills | yes |
+| excalidraw-diagram | Productivity And Artifacts | derived-from-upstream | coleam00/excalidraw-diagram-skill | . | main | https://github.com/coleam00/excalidraw-diagram-skill | yes |
+| google-sheets-editor | Productivity And Artifacts | local-authored | n/a | n/a | n/a | n/a | no |
+| hermes-upstream-worktree-fix | Agent Infra | local-authored | n/a | n/a | n/a | n/a | no |
+| karpathy-guidelines | Knowledge And Research | derived-from-upstream | multica-ai/andrej-karpathy-skills | . | main | https://github.com/multica-ai/andrej-karpathy-skills | yes |
+| local-portable-demo | System And Demo | local-authored | n/a | n/a | n/a | n/a | no |
+| motion-design | Frontend And Design | derived-from-upstream | lottiefiles/motion-design-skill | skills/motion-design | main | https://github.com/lottiefiles/motion-design-skill | yes |
+| obsidian-llm-wiki | Knowledge And Research | derived-from-upstream | https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f.git | . | main | https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f | yes |
+| omx-project-scope-git-isolation | Agent Infra | local-authored | n/a | n/a | n/a | n/a | no |
+| recruitflow-project-ops | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | n/a | no |
+| repo-preflight | Agent Infra | local-authored | n/a | n/a | n/a | n/a | no |
+| thrive-billing-claim-cleanup-diagnostics | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | n/a | no |
+| thrive-local-db-restore-login | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | n/a | no |
+| thrive-therapy-session-diagnostics | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | n/a | no |
+| vercel-cli-with-tokens | Deployment And Platform | derived-from-upstream | vercel-labs/agent-skills | skills/vercel-cli-with-tokens | main | https://github.com/vercel-labs/agent-skills | yes |
+| vercel-composition-patterns | Frontend And Design | derived-from-upstream | vercel-labs/agent-skills | skills/composition-patterns | main | https://github.com/vercel-labs/agent-skills | yes |
+| vercel-optimize | Deployment And Platform | derived-from-upstream | vercel-labs/agent-skills | skills/vercel-optimize | main | https://github.com/vercel-labs/agent-skills | yes |
+| vercel-react-best-practices | Frontend And Design | derived-from-upstream | vercel-labs/agent-skills | skills/react-best-practices | main | https://github.com/vercel-labs/agent-skills | yes |
+| vercel-react-native-skills | Frontend And Design | derived-from-upstream | vercel-labs/agent-skills | skills/react-native-skills | main | https://github.com/vercel-labs/agent-skills | yes |
+| vercel-react-view-transitions | Frontend And Design | derived-from-upstream | vercel-labs/agent-skills | skills/react-view-transitions | main | https://github.com/vercel-labs/agent-skills | yes |
+| web-design-guidelines | Frontend And Design | derived-from-upstream | vercel-labs/agent-skills | skills/web-design-guidelines | main | https://github.com/vercel-labs/agent-skills | yes |
+| writing-guidelines | Knowledge And Research | derived-from-upstream | vercel-labs/agent-skills | skills/writing-guidelines | main | https://github.com/vercel-labs/agent-skills | yes |
 <!-- skillctl:managed-skill-sources:end -->
 
 <!-- skillctl:managed-skill-taxonomy:start -->

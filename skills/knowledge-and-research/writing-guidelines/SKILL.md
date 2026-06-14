@@ -46,7 +46,7 @@ If no files specified, ask the user which files to review.
 - upstream path: skills/writing-guidelines
 - pinned ref: main
 - source type: github
-- source URL: https://github.com/vercel-labs/agent-skills/tree/main/skills/writing-guidelines
+- source URL: https://github.com/vercel-labs/agent-skills
 - imported at: 2026-06-14T01:23:52.081Z
 - last verified ref: main
 - local modifications: true

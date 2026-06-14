@@ -550,3 +550,17 @@ uv run playwright install chromium
 25. **Arrows land correctly**: Arrows connect to intended elements without crossing others
 26. **Readable at export size**: Text is legible in the rendered PNG
 27. **Balanced composition**: No large empty voids or overcrowded regions
+
+<!-- skillctl:source-attribution:start -->
+## Source Attribution
+
+- origin kind: derived-from-upstream
+- upstream repo: coleam00/excalidraw-diagram-skill
+- upstream path: .
+- pinned ref: main
+- source type: github
+- source URL: https://github.com/coleam00/excalidraw-diagram-skill
+- imported at: 2026-06-14T15:05:00.000Z
+- last verified ref: main
+- local modifications: true
+<!-- skillctl:source-attribution:end -->

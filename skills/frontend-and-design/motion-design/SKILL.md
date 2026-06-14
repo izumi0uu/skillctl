@@ -318,11 +318,11 @@ Select ONE archetype per project. Apply consistently.
 ## Source Attribution
 
 - origin kind: derived-from-upstream
-- upstream repo: LottieFiles/motion-design-skill
+- upstream repo: lottiefiles/motion-design-skill
 - upstream path: skills/motion-design
 - pinned ref: main
 - source type: github
-- source URL: https://github.com/LottieFiles/motion-design-skill/tree/main/skills/motion-design
+- source URL: https://github.com/lottiefiles/motion-design-skill
 - imported at: 2026-06-14T01:23:47.769Z
 - last verified ref: main
 - local modifications: true

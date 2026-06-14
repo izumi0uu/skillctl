@@ -303,7 +303,7 @@ If `vercel login` or `vercel deploy` fails with authentication errors, fall back
 - upstream path: skills/deploy-to-vercel
 - pinned ref: main
 - source type: github
-- source URL: https://github.com/vercel-labs/agent-skills/tree/main/skills/deploy-to-vercel
+- source URL: https://github.com/vercel-labs/agent-skills
 - imported at: 2026-06-14T01:23:45.815Z
 - last verified ref: main
 - local modifications: true

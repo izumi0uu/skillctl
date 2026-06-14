@@ -133,7 +133,7 @@
       "visibility": "public",
       "source_kind": "upstream",
       "origin_kind": "derived-from-upstream",
-      "hash": "25d1cebb0d7774773a91fc365733b925c47b84e0",
+      "hash": "6a5d79fd1340e55e350edbc54eb1f8a4d861a3fc",
       "managed": true,
       "targets": [
         "claude-code",
@@ -148,7 +148,7 @@
         "ref": "main",
         "skillPath": "skills/deploy-to-vercel",
         "sourceType": "github",
-        "sourceUrl": "https://github.com/vercel-labs/agent-skills/tree/main/skills/deploy-to-vercel",
+        "sourceUrl": "https://github.com/vercel-labs/agent-skills",
         "imported_at": "2026-06-14T01:23:45.815Z",
         "last_verified_ref": "main",
         "local_modifications": true
@@ -163,9 +163,9 @@
         "visualization"
       ],
       "visibility": "public",
-      "source_kind": "local-public",
-      "origin_kind": "local-authored",
-      "hash": "71603546903141ff6230e3a3e0452f44fa0e9fe9",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "04bbc2fb6481ba2cf798bcbd962b6594d44bd3df",
       "managed": true,
       "targets": [
         "claude-code",
@@ -174,7 +174,17 @@
         "hermes",
         "opencode"
       ],
-      "canonical_rel_path": "skills/productivity-and-artifacts/excalidraw-diagram"
+      "canonical_rel_path": "skills/productivity-and-artifacts/excalidraw-diagram",
+      "upstream": {
+        "repo": "coleam00/excalidraw-diagram-skill",
+        "ref": "main",
+        "skillPath": ".",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/coleam00/excalidraw-diagram-skill",
+        "imported_at": "2026-06-14T15:05:00.000Z",
+        "last_verified_ref": "main",
+        "local_modifications": true
+      }
     },
     {
       "skill_id": "google-sheets-editor",
@@ -229,9 +239,9 @@
         "reasoning"
       ],
       "visibility": "public",
-      "source_kind": "local-public",
-      "origin_kind": "local-authored",
-      "hash": "638589ea4bb918137cf56457aa48fe73072d733d",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "f49fc7c8d7dffd25885ac4a94f253dd62cd78f06",
       "managed": true,
       "targets": [
         "claude-code",
@@ -240,7 +250,17 @@
         "hermes",
         "opencode"
       ],
-      "canonical_rel_path": "skills/knowledge-and-research/karpathy-guidelines"
+      "canonical_rel_path": "skills/knowledge-and-research/karpathy-guidelines",
+      "upstream": {
+        "repo": "multica-ai/andrej-karpathy-skills",
+        "ref": "main",
+        "skillPath": ".",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/multica-ai/andrej-karpathy-skills",
+        "imported_at": "2026-06-14T15:05:00.000Z",
+        "last_verified_ref": "main",
+        "local_modifications": true
+      }
     },
     {
       "skill_id": "local-portable-demo",
@@ -275,7 +295,7 @@
       "visibility": "public",
       "source_kind": "upstream",
       "origin_kind": "derived-from-upstream",
-      "hash": "311aaef32a4d4fb4b5b45aac2765b48d6d129643",
+      "hash": "0781ba47e04845e6b6f7831dc442ecf2a44cb58c",
       "managed": true,
       "targets": [
         "claude-code",
@@ -286,11 +306,11 @@
       ],
       "canonical_rel_path": "skills/frontend-and-design/motion-design",
       "upstream": {
-        "repo": "LottieFiles/motion-design-skill",
+        "repo": "lottiefiles/motion-design-skill",
         "ref": "main",
         "skillPath": "skills/motion-design",
         "sourceType": "github",
-        "sourceUrl": "https://github.com/LottieFiles/motion-design-skill/tree/main/skills/motion-design",
+        "sourceUrl": "https://github.com/lottiefiles/motion-design-skill",
         "imported_at": "2026-06-14T01:23:47.769Z",
         "last_verified_ref": "main",
         "local_modifications": true
@@ -471,7 +491,7 @@
       "visibility": "public",
       "source_kind": "upstream",
       "origin_kind": "derived-from-upstream",
-      "hash": "0a6e503412479053b489de91cb716ce033ce955e",
+      "hash": "fcff05aeb4762efb72947e3917d36b7e31fa2087",
       "managed": true,
       "targets": [
         "claude-code",
@@ -486,7 +506,7 @@
         "ref": "main",
         "skillPath": "skills/vercel-cli-with-tokens",
         "sourceType": "github",
-        "sourceUrl": "https://github.com/vercel-labs/agent-skills/tree/main/skills/vercel-cli-with-tokens",
+        "sourceUrl": "https://github.com/vercel-labs/agent-skills",
         "imported_at": "2026-06-14T01:23:49.715Z",
         "last_verified_ref": "main",
         "local_modifications": true
@@ -503,7 +523,7 @@
       "visibility": "public",
       "source_kind": "upstream",
       "origin_kind": "derived-from-upstream",
-      "hash": "dde274d80c19d17aed9d46fd3b661f5c4934e06f",
+      "hash": "0a1711600ba25b92c6dd2628d692f3e7c069b69c",
       "managed": true,
       "targets": [
         "claude-code",
@@ -518,7 +538,7 @@
         "ref": "main",
         "skillPath": "skills/composition-patterns",
         "sourceType": "github",
-        "sourceUrl": "https://github.com/vercel-labs/agent-skills/tree/main/skills/composition-patterns",
+        "sourceUrl": "https://github.com/vercel-labs/agent-skills",
         "imported_at": "2026-06-14T01:23:49.965Z",
         "last_verified_ref": "main",
         "local_modifications": true
@@ -535,7 +555,7 @@
       "visibility": "public",
       "source_kind": "upstream",
       "origin_kind": "derived-from-upstream",
-      "hash": "d989b357f596363e074a0b5a08a416ab93f58e3d",
+      "hash": "124d2e28d69a31e8ee854c84064de8d41f6bac30",
       "managed": true,
       "targets": [
         "claude-code",
@@ -550,7 +570,7 @@
         "ref": "main",
         "skillPath": "skills/vercel-optimize",
         "sourceType": "github",
-        "sourceUrl": "https://github.com/vercel-labs/agent-skills/tree/main/skills/vercel-optimize",
+        "sourceUrl": "https://github.com/vercel-labs/agent-skills",
         "imported_at": "2026-06-14T01:23:50.251Z",
         "last_verified_ref": "main",
         "local_modifications": true
@@ -567,7 +587,7 @@
       "visibility": "public",
       "source_kind": "upstream",
       "origin_kind": "derived-from-upstream",
-      "hash": "89f2966f8b4983a8027a2f896804c5427157b5a9",
+      "hash": "772f21c2703afe9c3bb2b4e5cca75cf73e0c7ec2",
       "managed": true,
       "targets": [
         "claude-code",
@@ -582,7 +602,7 @@
         "ref": "main",
         "skillPath": "skills/react-best-practices",
         "sourceType": "github",
-        "sourceUrl": "https://github.com/vercel-labs/agent-skills/tree/main/skills/react-best-practices",
+        "sourceUrl": "https://github.com/vercel-labs/agent-skills",
         "imported_at": "2026-06-14T01:23:50.524Z",
         "last_verified_ref": "main",
         "local_modifications": true
@@ -599,7 +619,7 @@
       "visibility": "public",
       "source_kind": "upstream",
       "origin_kind": "derived-from-upstream",
-      "hash": "17df395136c4d6b04a8c9357392d60de4be46213",
+      "hash": "9f85bcff24421c4fc2f29f6cc5b2f3acaa19e233",
       "managed": true,
       "targets": [
         "claude-code",
@@ -614,7 +634,7 @@
         "ref": "main",
         "skillPath": "skills/react-native-skills",
         "sourceType": "github",
-        "sourceUrl": "https://github.com/vercel-labs/agent-skills/tree/main/skills/react-native-skills",
+        "sourceUrl": "https://github.com/vercel-labs/agent-skills",
         "imported_at": "2026-06-14T01:23:51.258Z",
         "last_verified_ref": "main",
         "local_modifications": true
@@ -631,7 +651,7 @@
       "visibility": "public",
       "source_kind": "upstream",
       "origin_kind": "derived-from-upstream",
-      "hash": "e157cc355d0c91aa22f6bd191931d854b7f09558",
+      "hash": "b1eac171cb205054f7348a1b904c76399692bacb",
       "managed": true,
       "targets": [
         "claude-code",
@@ -646,7 +666,7 @@
         "ref": "main",
         "skillPath": "skills/react-view-transitions",
         "sourceType": "github",
-        "sourceUrl": "https://github.com/vercel-labs/agent-skills/tree/main/skills/react-view-transitions",
+        "sourceUrl": "https://github.com/vercel-labs/agent-skills",
         "imported_at": "2026-06-14T01:23:51.541Z",
         "last_verified_ref": "main",
         "local_modifications": true
@@ -663,7 +683,7 @@
       "visibility": "public",
       "source_kind": "upstream",
       "origin_kind": "derived-from-upstream",
-      "hash": "da7cbce810e58ed50be663548871954d674d94da",
+      "hash": "b84edd8208d08fa4d20473de7bef4c104e16fd78",
       "managed": true,
       "targets": [
         "claude-code",
@@ -678,7 +698,7 @@
         "ref": "main",
         "skillPath": "skills/web-design-guidelines",
         "sourceType": "github",
-        "sourceUrl": "https://github.com/vercel-labs/agent-skills/tree/main/skills/web-design-guidelines",
+        "sourceUrl": "https://github.com/vercel-labs/agent-skills",
         "imported_at": "2026-06-14T01:23:51.800Z",
         "last_verified_ref": "main",
         "local_modifications": true
@@ -695,7 +715,7 @@
       "visibility": "public",
       "source_kind": "upstream",
       "origin_kind": "derived-from-upstream",
-      "hash": "0b8c2702ff87e81a2eaf1c5cb9c56af9e650395d",
+      "hash": "423b907a0b873e16bc46460ac02de26997c6d687",
       "managed": true,
       "targets": [
         "claude-code",
@@ -710,7 +730,7 @@
         "ref": "main",
         "skillPath": "skills/writing-guidelines",
         "sourceType": "github",
-        "sourceUrl": "https://github.com/vercel-labs/agent-skills/tree/main/skills/writing-guidelines",
+        "sourceUrl": "https://github.com/vercel-labs/agent-skills",
         "imported_at": "2026-06-14T01:23:52.081Z",
         "last_verified_ref": "main",
         "local_modifications": true

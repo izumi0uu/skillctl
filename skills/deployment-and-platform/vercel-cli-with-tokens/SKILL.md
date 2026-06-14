@@ -360,7 +360,7 @@ npm install -g vercel
 - upstream path: skills/vercel-cli-with-tokens
 - pinned ref: main
 - source type: github
-- source URL: https://github.com/vercel-labs/agent-skills/tree/main/skills/vercel-cli-with-tokens
+- source URL: https://github.com/vercel-labs/agent-skills
 - imported at: 2026-06-14T01:23:49.715Z
 - last verified ref: main
 - local modifications: true
