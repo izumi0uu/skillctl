@@ -22,6 +22,24 @@ import type {
 
 const execFileAsync = promisify(execFile);
 
+export type SyncStage = "transport" | "start" | "agent" | "skill" | "mirror" | "attribution" | "done";
+export interface SyncProgressEvent {
+  stage: SyncStage;
+  agent?: AgentId;
+  skillId?: string;
+  copied?: number;
+  total?: number;
+  message?: string;
+}
+export type SyncProgressCallback = (event: SyncProgressEvent) => void;
+
+export type BootstrapStage = "deps" | "build" | "resolve" | "done";
+export interface BootstrapProgressEvent {
+  stage: BootstrapStage;
+  message?: string;
+}
+export type BootstrapProgressCallback = (event: BootstrapProgressEvent) => void;
+
 function agentArg(agent: AgentId): string {
   return getAdapter(agent).skillsCliAgent ?? agent;
 }
@@ -96,6 +114,7 @@ async function runSkillsCliForAgent(
   invocation: ResolvedTransportInvocation,
   agent: AgentId,
   skills: CatalogSkill[],
+  onCopied?: (skillId: string) => void,
 ): Promise<{ command: string[]; skipped: SyncResult["skipped"]; copied: SyncResult["copied"] }> {
   const skipped: SyncResult["skipped"] = [];
   const copied: SyncResult["copied"] = [];
@@ -128,6 +147,7 @@ async function runSkillsCliForAgent(
     });
 
     copied.push({ agent, skillId: skill.skill_id });
+    onCopied?.(skill.skill_id);
   }
 
   return {
@@ -171,7 +191,12 @@ async function renderInstalledAttribution(agent: AgentId, skills: CatalogSkill[]
   }
 }
 
-export async function syncViaSkillsCli(repoRoot: string, config: SkillctlConfig, catalog: SkillctlCatalog): Promise<SyncResult> {
+export async function syncViaSkillsCli(
+  repoRoot: string,
+  config: SkillctlConfig,
+  catalog: SkillctlCatalog,
+  onProgress?: SyncProgressCallback,
+): Promise<SyncResult> {
   const copied: SyncResult["copied"] = [];
   const skipped: SyncResult["skipped"] = [];
   const managedIndexesUpdated: SyncResult["managedIndexesUpdated"] = [];
@@ -179,11 +204,30 @@ export async function syncViaSkillsCli(repoRoot: string, config: SkillctlConfig,
   const invocation = await resolveTransportInvocation(config);
   const cache = new DistributionPolicyCache();
 
+  onProgress?.({ stage: "transport", message: invocation.detail });
+
+  type AgentPlan = {
+    agent: AgentId;
+    adapter: ReturnType<typeof getAdapter>;
+    installableSet: Awaited<ReturnType<typeof installableSkillsForAgent>>;
+    installable: CatalogSkill[];
+  };
+
+  const plan: AgentPlan[] = [];
   for (const agent of config.enabledAdapters) {
     const adapter = getAdapter(agent);
     await ensureDir(adapter.installDir());
     const installableSet = await installableSkillsForAgent(repoRoot, catalog, agent, cache);
     const installable = installableSet.installable.filter((skill) => skill.visibility === "public");
+    plan.push({ agent, adapter, installableSet, installable });
+  }
+
+  const total = plan.reduce((sum, entry) => sum + entry.installable.length, 0);
+  onProgress?.({ stage: "start", total, copied: 0 });
+
+  let copiedCount = 0;
+  for (const { agent, adapter, installableSet, installable } of plan) {
+    onProgress?.({ stage: "agent", agent, copied: copiedCount, total });
     const privateOnly = managedSkillsForAgent(catalog, agent).filter((skill) => skill.visibility !== "public");
 
     for (const skill of installableSet.missingCanonicalPath) {
@@ -204,9 +248,13 @@ export async function syncViaSkillsCli(repoRoot: string, config: SkillctlConfig,
     }
 
     if (installable.length > 0) {
-      const result = await runSkillsCliForAgent(repoRoot, invocation, agent, installable);
+      const result = await runSkillsCliForAgent(repoRoot, invocation, agent, installable, (skillId) => {
+        copiedCount += 1;
+        onProgress?.({ stage: "skill", agent, skillId, copied: copiedCount, total });
+      });
       copied.push(...result.copied);
       skipped.push(...result.skipped);
+      onProgress?.({ stage: "mirror", agent, copied: copiedCount, total });
       await mirrorSharedInstallToAdapter(agent, result.copied.map((entry) => entry.skillId));
       await renderInstalledAttribution(agent, installable, result.copied);
       transportRuns.push({
@@ -219,7 +267,9 @@ export async function syncViaSkillsCli(repoRoot: string, config: SkillctlConfig,
     managedIndexesUpdated.push(agent);
   }
 
+  onProgress?.({ stage: "attribution", copied: copiedCount, total });
   await ensureReadmeSourceRegistry(repoRoot, catalog);
+  onProgress?.({ stage: "done", copied: copiedCount, total });
 
   return { copied, skipped, managedIndexesUpdated, transportRuns };
 }
@@ -270,7 +320,10 @@ export async function transportHealth(config: SkillctlConfig): Promise<Transport
   }
 }
 
-export async function bootstrapEmbeddedSkills(config: SkillctlConfig): Promise<BootstrapUpstreamResult> {
+export async function bootstrapEmbeddedSkills(
+  config: SkillctlConfig,
+  onProgress?: BootstrapProgressCallback,
+): Promise<BootstrapUpstreamResult> {
   const embeddedRepo = embeddedRepoPath(config);
   if (!embeddedRepo) {
     throw new Error("transport.embeddedRepoPath is not configured");
@@ -284,6 +337,7 @@ export async function bootstrapEmbeddedSkills(config: SkillctlConfig): Promise<B
   const steps: string[] = [];
 
   if (!await fileExists(path.join(embeddedRepo, "node_modules"))) {
+    onProgress?.({ stage: "deps", message: "installing upstream dependencies" });
     await execFileAsync("pnpm", ["install", "--ignore-workspace", "--reporter", "append-only"], {
       cwd: embeddedRepo,
       env: process.env,
@@ -295,6 +349,7 @@ export async function bootstrapEmbeddedSkills(config: SkillctlConfig): Promise<B
   }
 
   if (!await fileExists(path.join(embeddedRepo, "dist"))) {
+    onProgress?.({ stage: "build", message: "building upstream CLI" });
     await execFileAsync("pnpm", ["run", "build"], {
       cwd: embeddedRepo,
       env: process.env,
@@ -305,7 +360,9 @@ export async function bootstrapEmbeddedSkills(config: SkillctlConfig): Promise<B
     steps.push("upstream CLI build already present");
   }
 
+  onProgress?.({ stage: "resolve", message: "resolving transport" });
   const invocation = await resolveTransportInvocation(config);
+  onProgress?.({ stage: "done" });
   return {
     embeddedRepoPath: embeddedRepo,
     steps,

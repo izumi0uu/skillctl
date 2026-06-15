@@ -3,7 +3,7 @@ import path from "node:path";
 import { readJson, writeJson } from "./fs.js";
 import { CONFIG_FILE, DEFAULT_EMBEDDED_SKILLS_REPO, defaultStateDir, expandHome } from "./paths.js";
 import { skillctlConfigSchema } from "./schema.js";
-import type { SkillctlConfig } from "./types.js";
+import type { AgentId, ProbePolicy, SkillctlConfig } from "./types.js";
 
 function resolveConfigPath(repoRoot: string, inputPath: string): string {
   const expanded = expandHome(inputPath);
@@ -49,4 +49,23 @@ export async function loadConfig(repoRoot: string): Promise<SkillctlConfig> {
 export async function writeDefaultConfig(repoRoot: string): Promise<void> {
   const config = defaultConfig();
   await writeJson(path.join(repoRoot, CONFIG_FILE), config);
+}
+
+export interface ConfigPatch {
+  enabledAdapters?: AgentId[];
+  liveProbePolicy?: ProbePolicy;
+}
+
+// Surgical patch of the on-disk config: reads the raw JSON and only overwrites
+// the given fields, so the file's original relative paths and shape are kept.
+export async function patchConfigFields(repoRoot: string, patch: ConfigPatch): Promise<void> {
+  const filePath = path.join(repoRoot, CONFIG_FILE);
+  const raw = await readJson<Record<string, unknown>>(filePath);
+  if (patch.enabledAdapters) {
+    raw.enabledAdapters = patch.enabledAdapters;
+  }
+  if (patch.liveProbePolicy) {
+    raw.liveProbePolicy = patch.liveProbePolicy;
+  }
+  await writeJson(filePath, raw);
 }

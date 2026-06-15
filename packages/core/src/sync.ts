@@ -7,11 +7,16 @@ import { DistributionPolicyCache, installableSkillsForAgent } from "./distributi
 import { copyDir, ensureDir, fileExists, removeDirIfExists } from "./fs.js";
 import { writeManagedIndex } from "./indexes.js";
 import type { SkillctlCatalog, SkillctlConfig, SyncResult } from "./types.js";
-import { syncViaSkillsCli } from "./transport.js";
+import { syncViaSkillsCli, type SyncProgressCallback } from "./transport.js";
 
-export async function syncCatalog(repoRoot: string, config: SkillctlConfig, catalog: SkillctlCatalog): Promise<SyncResult> {
+export async function syncCatalog(
+  repoRoot: string,
+  config: SkillctlConfig,
+  catalog: SkillctlCatalog,
+  onProgress?: SyncProgressCallback,
+): Promise<SyncResult> {
   if (config.transport.mode === "skills-cli") {
-    const result = await syncViaSkillsCli(repoRoot, config, catalog);
+    const result = await syncViaSkillsCli(repoRoot, config, catalog, onProgress);
     const cache = new DistributionPolicyCache();
     for (const agent of config.enabledAdapters) {
       const { installable } = await installableSkillsForAgent(repoRoot, catalog, agent, cache);
@@ -26,7 +31,11 @@ export async function syncCatalog(repoRoot: string, config: SkillctlConfig, cata
   const managedIndexesUpdated: SyncResult["managedIndexesUpdated"] = [];
   const cache = new DistributionPolicyCache();
 
+  onProgress?.({ stage: "start", copied: 0 });
+  let copiedCount = 0;
+
   for (const agent of config.enabledAdapters) {
+    onProgress?.({ stage: "agent", agent, copied: copiedCount });
     const adapter = getAdapter(agent);
     const installDir = adapter.installDir();
     await ensureDir(installDir);
@@ -58,6 +67,8 @@ export async function syncCatalog(repoRoot: string, config: SkillctlConfig, cata
       await copyDir(srcDir, path.join(installDir, skill.skill_id));
       await expectedSkillRenderedHash(path.join(installDir, skill.skill_id), skill);
       copied.push({ agent, skillId: skill.skill_id });
+      copiedCount += 1;
+      onProgress?.({ stage: "skill", agent, skillId: skill.skill_id, copied: copiedCount });
     }
 
     await writeManagedIndex(config.stateDir!, agent, installableSet.installable);
@@ -65,6 +76,7 @@ export async function syncCatalog(repoRoot: string, config: SkillctlConfig, cata
   }
 
   await ensureReadmeSourceRegistry(repoRoot, catalog);
+  onProgress?.({ stage: "done", copied: copiedCount });
 
   return { copied, skipped, managedIndexesUpdated };
 }
