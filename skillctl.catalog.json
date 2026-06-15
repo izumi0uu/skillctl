@@ -712,7 +712,7 @@
       "visibility": "public",
       "source_kind": "local-public",
       "origin_kind": "local-authored",
-      "hash": "4a93436b9bd82c28bd8f87f6b85687eeaa33a436",
+      "hash": "f530e3efce5034f8ed5aaa15702c32aedd10d413",
       "managed": true,
       "targets": [
         "claude-code",
@@ -722,6 +722,33 @@
         "opencode"
       ],
       "canonical_rel_path": "skills/agent-infra/skillctl-control-plane"
+    },
+    {
+      "skill_id": "tailscale-vps-ops",
+      "category": "deployment-and-platform",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "f91a9d7334c2e889cc23b364c03920bdb434a50f",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/deployment-and-platform/tailscale-vps-ops",
+      "upstream": {
+        "repo": "local://hermes",
+        "ref": "2026-06-10-local-hermes",
+        "skillPath": "devops/tailscale-vps-ops",
+        "sourceType": "local",
+        "sourceUrl": "file:///Users/idah/.hermes/skills/devops/tailscale-vps-ops",
+        "imported_at": "2026-06-15T03:59:44.353Z",
+        "last_verified_ref": "2026-06-10-local-hermes",
+        "local_modifications": true
+      }
     },
     {
       "skill_id": "tailwind-theme-builder",

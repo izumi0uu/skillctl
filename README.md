@@ -42,9 +42,7 @@ pnpm install
 pnpm build
 pnpm bootstrap-upstream
 pnpm --filter skillctl-cli exec tsx src/index.ts init
-pnpm --filter skillctl-cli exec tsx src/index.ts discover
-pnpm --filter skillctl-cli exec tsx src/index.ts sync
-pnpm --filter skillctl-cli exec tsx src/index.ts doctor --json
+pnpm health-suite
 ```
 
 Or after build:
@@ -53,6 +51,38 @@ Or after build:
 node packages/cli/dist/index.js status
 node packages/cli/dist/index.js taxonomy --json
 node packages/cli/dist/index.js sources --json
+```
+
+## Health Suite
+
+`pnpm health-suite` is the canonical local and CI health command.
+
+It runs this sequence in order:
+
+1. `discover`
+2. `sync`
+3. `doctor`
+4. `verify-sources`
+
+The command prints one JSON report with:
+
+- per-step status and exit codes
+- catalog summary
+- discovery conflicts
+- sync copy/skip counts
+- doctor issue summary
+- source verification summary
+
+Exit code contract:
+
+- `0`: healthy
+- `1`: repairable or advisory verification warnings
+- `2`: invalid state, hard errors, or discovery conflicts that need manual resolution
+
+For CI, use:
+
+```bash
+pnpm ci:health
 ```
 
 ## Config Model
@@ -99,6 +129,7 @@ This means `~/.agents/skills` is not accidental temporary output. In `skills-cli
 - `vercel-skills/` is a git submodule pinned to the upstream `vercel-labs/skills` repo.
 - `pnpm bootstrap-upstream` installs that submodule's dependencies with `pnpm install --ignore-workspace` and builds the upstream CLI if `dist/` is missing.
 - `skillctl sync` and `skillctl doctor` prefer the embedded upstream when it is bootstrapped.
+- `pnpm health-suite` is the preferred single-command audit path because it preserves the required `discover -> sync -> doctor -> verify-sources` order.
 - If the submodule exists but is not bootstrapped, `doctor` returns a repairable warning instead of silently drifting.
 - If the submodule is missing entirely, transport falls back to `npx --yes skills`.
 
@@ -154,6 +185,7 @@ This means `~/.agents/skills` is not accidental temporary output. In `skills-cli
 | scan | Frontend And Design | imported-upstream | [AccessLint/skills](https://github.com/AccessLint/skills/tree/main/plugins/accesslint/skills/scan) | [plugins/accesslint/skills/scan](https://github.com/AccessLint/skills/tree/main/plugins/accesslint/skills/scan) | main | [open](https://github.com/AccessLint/skills/tree/main/plugins/accesslint/skills/scan) | no |
 | shadcn | Frontend And Design | imported-upstream | [openai/plugins](https://github.com/openai/plugins/tree/main/plugins/build-web-apps/skills/shadcn-best-practices) | [plugins/build-web-apps/skills/shadcn-best-practices](https://github.com/openai/plugins/tree/main/plugins/build-web-apps/skills/shadcn-best-practices) | main | [open](https://github.com/openai/plugins/tree/main/plugins/build-web-apps/skills/shadcn-best-practices) | no |
 | skillctl-control-plane | Agent Infra | local-authored | n/a | n/a | n/a | n/a | no |
+| tailscale-vps-ops | Deployment And Platform | derived-from-upstream | [local://hermes](file:///Users/idah/.hermes/skills/devops/tailscale-vps-ops) | [devops/tailscale-vps-ops](file:///Users/idah/.hermes/skills/devops/tailscale-vps-ops) | 2026-06-10-local-hermes | [open](file:///Users/idah/.hermes/skills/devops/tailscale-vps-ops) | yes |
 | tailwind-theme-builder | Frontend And Design | imported-upstream | [jezweb/claude-skills](https://github.com/jezweb/claude-skills/tree/main/plugins/frontend/skills/tailwind-theme-builder) | [plugins/frontend/skills/tailwind-theme-builder](https://github.com/jezweb/claude-skills/tree/0aa0f4437e0e70dda1e4e62df3a9d9cb8170f8ba/plugins/frontend/skills/tailwind-theme-builder) | 0aa0f4437e0e70dda1e4e62df3a9d9cb8170f8ba | [open](https://github.com/jezweb/claude-skills/tree/main/plugins/frontend/skills/tailwind-theme-builder) | no |
 | thrive-billing-claim-cleanup-diagnostics | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | n/a | no |
 | thrive-local-db-restore-login | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | n/a | no |
@@ -180,7 +212,7 @@ Canonical skill sources live under `skills/` and are grouped by usage-oriented c
 | Agent Infra | Agent runtime, configuration, recovery, and operational control-plane skills | `anyrouter-config`, `codex-config-health`, `codex-session-recovery`, `find-skills`, `hermes-upstream-worktree-fix`, `omx-project-scope-git-isolation`, `repo-preflight`, `skillctl-control-plane` |
 | Knowledge And Research | Knowledge workflows, learning systems, and reusable research guidance | `agents-best-practices`, `karpathy-guidelines`, `obsidian-llm-wiki`, `writing-guidelines` |
 | Frontend And Design | Frontend architecture, design systems, UI patterns, and motion guidance | `claude-design`, `design-loop`, `design-system`, `electron`, `extract-design-system`, `frontend-app-builder`, `frontend-testing-debugging`, `motion-design`, `product-showcase`, `react-component-performance`, `react-patterns`, `scan`, `shadcn`, `tailwind-theme-builder`, `ui-animation`, `ui-ux-pro-max`, `vercel-composition-patterns`, `vercel-react-best-practices`, `vercel-react-native-skills`, `vercel-react-view-transitions`, `web-design-guidelines` |
-| Deployment And Platform | Deployment, cloud platform, and environment optimization workflows | `deploy-to-vercel`, `vercel-cli-with-tokens`, `vercel-optimize` |
+| Deployment And Platform | Deployment, cloud platform, and environment optimization workflows | `deploy-to-vercel`, `tailscale-vps-ops`, `vercel-cli-with-tokens`, `vercel-optimize` |
 | Productivity And Artifacts | General artifact creation and productivity-oriented tool workflows | `excalidraw-diagram`, `google-sheets-editor` |
 | Domain AWS-Thrive | AWS-Thrive and related domain-specific operational workflows | `aws-rds-dump-restore`, `recruitflow-project-ops`, `thrive-billing-claim-cleanup-diagnostics`, `thrive-local-db-restore-login`, `thrive-therapy-session-diagnostics` |
 | System And Demo | Portable demos, fixtures, and system validation helpers | `local-portable-demo` |
