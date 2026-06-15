@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 
 import { normalizeCatalogArtifacts } from "../src/attribution.js";
+import { setSkillEnabled } from "../src/catalog.js";
 import { hashDirectory } from "../src/hash.js";
 import { pruneManaged } from "../src/prune.js";
 import { syncCatalog } from "../src/sync.js";
@@ -405,5 +406,65 @@ describe("sync and prune", () => {
     });
     await expect(fs.access(path.join(fakeHome, ".codex", "skills", "alpha"))).rejects.toThrow();
     expect(await fs.readFile(path.join(fakeHome, ".claude", "skills", "alpha", "SKILL.md"), "utf8")).toContain("name: alpha");
+  });
+
+  test("disabled skill is removed on sync and reinstalls when re-enabled", async () => {
+    const repoRoot = await makeTempDir("skillctl-sync-disabled-");
+    const skillsDir = path.join(repoRoot, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    const skillPath = await writeSkill(skillsDir, "alpha");
+    await writeReadme(repoRoot, "# skillctl\n");
+    const fakeHome = await makeTempDir("skillctl-home-");
+    process.env.HOME = fakeHome;
+
+    const catalog: SkillctlCatalog = {
+      version: 1,
+      generatedBy: "test",
+      skills: [{
+        skill_id: "alpha",
+        visibility: "public",
+        source_kind: "local-public",
+        origin_kind: "local-authored",
+        hash: "placeholder",
+        managed: true,
+        targets: ["codex"],
+        canonical_rel_path: path.relative(repoRoot, skillPath),
+      }],
+    };
+    const config: SkillctlConfig = {
+      sourceRoots: [{ path: skillsDir, visibility: "public", managedByDefault: true }],
+      privateRoots: [],
+      enabledAdapters: ["codex"],
+      excludeSkills: [],
+      liveProbePolicy: "off",
+      transport: { mode: "copy-fallback", command: "npx", args: ["--yes", "skills"] },
+      stateDir: path.join(repoRoot, ".skillctl-local"),
+    };
+    await normalizeCatalogArtifacts(repoRoot, catalog);
+
+    const codexAlpha = path.join(fakeHome, ".codex", "skills", "alpha");
+
+    // enabled by default -> installed
+    await syncCatalog(repoRoot, config, catalog);
+    expect(await fs.readFile(path.join(codexAlpha, "SKILL.md"), "utf8")).toContain("name: alpha");
+
+    // disable -> next sync removes it and reports it skipped
+    expect(setSkillEnabled(catalog, "alpha", false)).toBe(true);
+    expect(catalog.skills[0]?.enabled).toBe(false);
+    const off = await syncCatalog(repoRoot, config, catalog);
+    expect(off.copied).not.toContainEqual({ agent: "codex", skillId: "alpha" });
+    expect(off.skipped).toContainEqual({ agent: "codex", skillId: "alpha", reason: "skill disabled" });
+    await expect(fs.access(codexAlpha)).rejects.toThrow();
+
+    // re-enable -> reinstalled, flag cleared
+    expect(setSkillEnabled(catalog, "alpha", true)).toBe(true);
+    expect(catalog.skills[0]?.enabled).toBeUndefined();
+    await syncCatalog(repoRoot, config, catalog);
+    expect(await fs.readFile(path.join(codexAlpha, "SKILL.md"), "utf8")).toContain("name: alpha");
+  });
+
+  test("setSkillEnabled returns false for an unknown skill", () => {
+    const catalog: SkillctlCatalog = { version: 1, generatedBy: "test", skills: [] };
+    expect(setSkillEnabled(catalog, "missing", false)).toBe(false);
   });
 });

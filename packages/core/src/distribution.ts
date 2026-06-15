@@ -49,6 +49,13 @@ export async function installableSkillsForAgent(
   const missingSourceDir: InstallableSkillSet["missingSourceDir"] = [];
 
   for (const skill of managedSkillsForAgent(catalog, agent)) {
+    if (skill.enabled === false) {
+      // Toggled off: never install, and route through `blocked` so sync removes
+      // any existing install from the agent directory.
+      blocked.push({ skill, reason: "skill disabled" });
+      continue;
+    }
+
     if (!skill.canonical_rel_path) {
       missingCanonicalPath.push(skill);
       continue;

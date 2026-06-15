@@ -70,6 +70,8 @@ export interface CatalogSkill {
   origin_kind: OriginKind;
   hash: string;
   managed: boolean;
+  // Absent means enabled. When false, sync removes the skill from agent dirs.
+  enabled?: boolean;
   targets: AgentId[];
   canonical_rel_path?: string;
   upstream?: UpstreamSource;

@@ -66,10 +66,26 @@ export function mergeCatalogSkillMetadata(previous: CatalogSkill | undefined, ne
     source_kind: sourceKind,
     origin_kind: originKind,
     managed: previous.managed,
+    enabled: previous.enabled ?? next.enabled,
     targets: previous.targets.length > 0 ? previous.targets : next.targets,
     upstream: originKind === "local-authored" ? next.upstream : previous.upstream ?? next.upstream,
     aliases: previous.aliases ?? next.aliases,
   };
+}
+
+// Toggle a skill on/off. Disabling sets enabled=false; enabling clears the flag
+// (absence == enabled) to keep the catalog tidy. Returns false if not found.
+export function setSkillEnabled(catalog: SkillctlCatalog, skillId: string, enabled: boolean): boolean {
+  const skill = catalog.skills.find((entry) => entry.skill_id === skillId);
+  if (!skill) {
+    return false;
+  }
+  if (enabled) {
+    delete skill.enabled;
+  } else {
+    skill.enabled = false;
+  }
+  return true;
 }
 
 export function summarizeCatalog(catalog: SkillctlCatalog): { managedSkills: number; publicSkills: number; privateSkills: number; upstreamSkills: number } {

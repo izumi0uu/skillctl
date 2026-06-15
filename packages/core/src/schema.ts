@@ -65,6 +65,7 @@ export const catalogSkillSchema = z.object({
   origin_kind: originKindSchema.default("local-authored"),
   hash: z.string().min(1),
   managed: z.boolean(),
+  enabled: z.boolean().optional(),
   targets: z.array(agentIdSchema),
   canonical_rel_path: z.string().optional(),
   upstream: upstreamSourceSchema.optional(),
