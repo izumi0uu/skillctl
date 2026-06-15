@@ -9,6 +9,8 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "cli": "pnpm --filter skillctl-cli exec tsx src/index.ts",
+    "health-suite": "pnpm --filter skillctl-cli exec tsx src/health-suite.ts",
+    "ci:health": "pnpm typecheck && pnpm test && pnpm health-suite",
     "bootstrap-upstream": "pnpm --filter skillctl-cli exec tsx src/index.ts bootstrap-upstream"
   }
 }

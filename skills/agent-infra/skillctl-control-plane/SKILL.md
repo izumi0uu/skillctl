@@ -81,6 +81,8 @@ Treat that shared layer as part of the design, not as accidental temporary outpu
   - verify upstream source metadata
 - `skillctl sync`
   - distribute managed public skills to agent install locations
+- `pnpm health-suite`
+  - canonical end-to-end health suite for local runs and CI
 - `skillctl doctor --json`
   - detect drift, missing dirs, unreadable skills, malformed attribution, README drift, and transport readiness
 - `skillctl repair --json`
@@ -270,7 +272,7 @@ For most real requests, follow this order:
    - existing external skill -> `adopt`
    - state audit -> `status` / `sources` / `taxonomy`
    - distribution -> `sync`
-   - health -> `doctor`
+   - health -> `pnpm health-suite` first, then inspect `doctor --json` or `verify-sources --json` directly only if deeper debugging is needed
    - fix -> `repair`
 3. Re-run health checks after any mutating operation.
 4. Report:
@@ -286,6 +288,23 @@ For most real requests, follow this order:
 - `Adopt this third-party skill with its real upstream source and classify it correctly.`
 - `Rebuild the managed agent copies from the canonical repo.`
 - `Show me what skillctl manages, where each skill came from, and which categories are getting crowded.`
+
+## Standard Health Flow
+
+Prefer this command for a complete health pass:
+
+```bash
+pnpm health-suite
+```
+
+This is the standard ordered flow:
+
+1. `discover`
+2. `sync`
+3. `doctor --json`
+4. `verify-sources --json`
+
+Use direct subcommands when the task is intentionally narrow, but do not invert this sequence for a full estate audit.
 
 ## Success Condition
 
