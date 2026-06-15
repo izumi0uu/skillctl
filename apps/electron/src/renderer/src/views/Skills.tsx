@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { CloudUpload, EditPencil, FolderPlus, Lock, Refresh, WarningTriangle } from "iconoir-react";
+import { CloudUpload, EditPencil, FolderPlus, Lock, Refresh } from "iconoir-react";
 
 import { AdoptWizard } from "../components/AdoptWizard";
 import { SkillReader } from "../components/SkillReader";
 import { Badge, Button, cn, Panel, Spinner, useUi } from "../components/ui";
+import { applyToggle } from "../../../shared/staged-toggles";
 import { api, useAsync } from "../lib/api";
 
 const CATEGORY_DOTS = ["bg-lemon", "bg-blue", "bg-mint", "bg-grape", "bg-pink", "bg-sky", "bg-red"];
@@ -78,16 +79,7 @@ export function Skills({ focusCategory, onFocusHandled }: { focusCategory?: stri
 
   function toggle(skillId: string) {
     const actual = enabledMap.get(skillId) ?? true;
-    const next = !displayedOn(skillId);
-    setPending((prev) => {
-      const map = new Map(prev);
-      if (next === actual) {
-        map.delete(skillId); // back to the saved state -> no longer a pending change
-      } else {
-        map.set(skillId, next);
-      }
-      return map;
-    });
+    setPending((prev) => applyToggle(prev, skillId, displayedOn(skillId), actual));
   }
 
   async function syncNow() {
@@ -142,16 +134,6 @@ export function Skills({ focusCategory, onFocusHandled }: { focusCategory?: stri
           </Button>
         </div>
       </div>
-
-      {pending.size > 0 && (
-        <div className="flex items-center gap-2.5 rounded-2xl border-[3px] border-lemon-ring bg-lemon/20 px-4 py-2.5 text-sm font-bold text-ink">
-          <WarningTriangle className="h-5 w-5 shrink-0" strokeWidth={2.2} />
-          <span>
-            {pending.size} change{pending.size > 1 ? "s" : ""} staged on this page only — hit “Sync now” to apply them. Leaving
-            this page discards them.
-          </span>
-        </div>
-      )}
 
       {taxonomy.data?.categories.map((category, i) => (
         <div key={category.id} id={`cat-${category.id}`} className="scroll-mt-4">

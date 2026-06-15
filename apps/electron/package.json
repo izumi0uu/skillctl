@@ -13,7 +13,7 @@
     "typecheck:web": "tsc -p tsconfig.json --noEmit",
     "typecheck": "pnpm typecheck:node && pnpm typecheck:web",
     "lint": "pnpm typecheck",
-    "test": "node -e \"console.log('No electron tests yet')\""
+    "test": "vitest run"
   },
   "devDependencies": {
     "@skillctl/core": "workspace:*",
@@ -30,7 +30,8 @@
     "react-dom": "^18.3.1",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.9.2",
-    "vite": "^5.4.11"
+    "vite": "^5.4.11",
+    "vitest": "^3.2.6"
   },
   "dependencies": {
     "iconoir-react": "^7.11.0",

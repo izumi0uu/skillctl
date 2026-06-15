@@ -28,10 +28,10 @@ import type { AdoptSkillOptions } from "@skillctl/core";
 import {
   CHANNELS,
   type ConfigPatch,
-  type DiffChange,
   type IpcResult,
   type ProgressEvent,
 } from "../shared/ipc-contract";
+import { diffSkillHashes } from "../shared/skill-diff";
 import { chooseRepoRoot, getRepoRoot, resolveInitialRepoRoot } from "./repo-root";
 
 async function envelope<T>(fn: () => Promise<T>): Promise<IpcResult<T>> {
@@ -186,22 +186,7 @@ export function registerIpcHandlers(): void {
       const config = await loadConfig(repoRoot);
       const current = await loadCatalog(repoRoot);
       const discovered = await discoverCatalog(repoRoot, config, current);
-      const oldMap = new Map(current.skills.map((skill) => [skill.skill_id, skill.hash]));
-      const newMap = new Map(discovered.catalog.skills.map((skill) => [skill.skill_id, skill.hash]));
-      const changes: DiffChange[] = [];
-      for (const [id, hash] of newMap) {
-        const previous = oldMap.get(id);
-        if (!previous) {
-          changes.push({ skill: id, kind: "added" });
-        } else if (previous !== hash) {
-          changes.push({ skill: id, kind: "changed" });
-        }
-      }
-      for (const [id] of oldMap) {
-        if (!newMap.has(id)) {
-          changes.push({ skill: id, kind: "removed" });
-        }
-      }
+      const changes = diffSkillHashes(current.skills, discovered.catalog.skills);
       return { changes, conflicts: discovered.conflicts };
     }),
   );

@@ -7,26 +7,7 @@ import type { SourceRegistryEntry } from "@skillctl/core";
 import { Badge, Button, Spinner, useUi } from "./ui";
 import { GhostLoader } from "./Loaders";
 import { api } from "../lib/api";
-
-function httpUrl(value?: string | null): string | null {
-  return value && /^https?:\/\//u.test(value) ? value : null;
-}
-
-function sourceUrl(entry?: SourceRegistryEntry): string | null {
-  if (!entry) {
-    return null;
-  }
-  // Only ever open real web URLs — never file:// or local:// sources.
-  const direct = httpUrl(entry.upstream_source_url) ?? httpUrl(entry.upstream_repo);
-  if (direct) {
-    return direct;
-  }
-  const repo = entry.upstream_repo;
-  if (repo && !repo.includes("://") && /^[^/\s]+\/[^/\s]+/u.test(repo)) {
-    return `https://github.com/${repo}`;
-  }
-  return null;
-}
+import { sourceUrl } from "../../../shared/source-url";
 
 export function SkillReader({
   skillId,
