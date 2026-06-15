@@ -9,6 +9,7 @@ const api: SkillctlApi = {
   chooseDirectory: () => ipcRenderer.invoke(CHANNELS.chooseDirectory),
   adopt: (options: AdoptSkillOptions) => ipcRenderer.invoke(CHANNELS.adopt, options),
   readSkillDoc: (skillId: string) => ipcRenderer.invoke(CHANNELS.readSkillDoc, skillId),
+  setSkillEnabled: (skillId: string, enabled: boolean) => ipcRenderer.invoke(CHANNELS.setSkillEnabled, skillId, enabled),
   openPath: (target: string) => ipcRenderer.invoke(CHANNELS.openPath, target),
   openExternal: (url: string) => ipcRenderer.invoke(CHANNELS.openExternal, url),
   loadConfig: () => ipcRenderer.invoke(CHANNELS.loadConfig),

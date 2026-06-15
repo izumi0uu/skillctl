@@ -16,6 +16,7 @@ import {
   pruneManaged,
   repairCatalog,
   runDoctor,
+  setSkillEnabled,
   summarizeCatalog,
   summarizeSourceRegistry,
   syncCatalog,
@@ -95,6 +96,18 @@ export function registerIpcHandlers(): void {
         throw new Error(`no canonical path for ${skillId}`);
       }
       return readFile(join(repoRoot, skill.canonical_rel_path, "SKILL.md"), "utf8");
+    }),
+  );
+
+  ipcMain.handle(CHANNELS.setSkillEnabled, (_event, skillId: string, enabled: boolean) =>
+    envelope(async () => {
+      const repoRoot = getRepoRoot();
+      const catalog = await loadCatalog(repoRoot);
+      if (!setSkillEnabled(catalog, skillId, enabled)) {
+        throw new Error(`skill not found: ${skillId}`);
+      }
+      await writeCatalog(repoRoot, catalog);
+      return enabled;
     }),
   );
 

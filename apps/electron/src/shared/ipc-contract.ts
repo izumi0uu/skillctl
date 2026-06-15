@@ -21,6 +21,7 @@ export const CHANNELS = {
   chooseDirectory: "dialog:choose-dir",
   adopt: "adopt:run",
   readSkillDoc: "skill:read-doc",
+  setSkillEnabled: "skill:set-enabled",
   openPath: "shell:open-path",
   openExternal: "shell:open-external",
   loadConfig: "config:load",
@@ -104,6 +105,7 @@ export interface SkillctlApi {
   chooseDirectory(): Promise<IpcResult<string | null>>;
   adopt(options: AdoptSkillOptions): Promise<IpcResult<AdoptSkillResult>>;
   readSkillDoc(skillId: string): Promise<IpcResult<string>>;
+  setSkillEnabled(skillId: string, enabled: boolean): Promise<IpcResult<boolean>>;
   openPath(target: string): Promise<IpcResult<boolean>>;
   openExternal(url: string): Promise<IpcResult<boolean>>;
   loadConfig(): Promise<IpcResult<SkillctlConfig>>;

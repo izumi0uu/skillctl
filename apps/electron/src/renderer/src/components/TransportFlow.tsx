@@ -3,6 +3,7 @@ import { Check, Codepen, Computer, Folder, Packages, Refresh } from "iconoir-rea
 
 import type { ProgressEvent } from "../../../shared/ipc-contract";
 import { Badge, Button, cn, type IconType, Panel, useUi } from "./ui";
+import { CoffeeLoader } from "./Loaders";
 import { api, useAsync } from "../lib/api";
 
 type SyncData = Extract<Awaited<ReturnType<typeof api.sync>>, { ok: true }>["data"];
@@ -35,14 +36,33 @@ export function TransportFlow({ onSynced }: { onSynced?: () => void }) {
   const [result, setResult] = useState<SyncData | null>(null);
 
   useEffect(() => {
+    // React to ANY sync (incl. one triggered from the Skills page), not just a
+    // sync started by this panel's own button.
     return api.onProgress((event: ProgressEvent) => {
-      if (event.op !== "sync" || event.phase !== "step") {
+      if (event.op !== "sync") {
         return;
       }
-      const reach = STAGE_REACH[event.stage ?? ""] ?? 0;
-      setLitUpTo((prev) => Math.max(prev, reach));
-      if (typeof event.current === "number" || typeof event.total === "number") {
-        setProgress((p) => ({ current: event.current ?? p.current, total: event.total ?? p.total }));
+      if (event.phase === "started") {
+        setStatus("running");
+        setLitUpTo(0);
+        setProgress({ current: 0, total: 0 });
+        setResult(null);
+        return;
+      }
+      if (event.phase === "step") {
+        setStatus((prev) => (prev === "running" ? prev : "running"));
+        const reach = STAGE_REACH[event.stage ?? ""] ?? 0;
+        setLitUpTo((prev) => Math.max(prev, reach));
+        if (typeof event.current === "number" || typeof event.total === "number") {
+          setProgress((p) => ({ current: event.current ?? p.current, total: event.total ?? p.total }));
+        }
+        return;
+      }
+      if (event.phase === "finished") {
+        setStatus((prev) => (prev === "running" ? "done" : prev));
+        setLitUpTo(NODES.length);
+      } else if (event.phase === "error") {
+        setStatus((prev) => (prev === "running" ? "idle" : prev));
       }
     });
   }, []);
@@ -101,6 +121,13 @@ export function TransportFlow({ onSynced }: { onSynced?: () => void }) {
           {status === "running" ? "Syncing…" : "Run Sync"}
         </Button>
       </div>
+
+      {status === "running" && (
+        <div className="mb-4 flex items-center gap-3 rounded-2xl border-2 border-ink/8 bg-cream px-4 py-2">
+          <CoffeeLoader />
+          <span className="text-sm font-bold text-ink-soft">brewing — running the upstream CLI…</span>
+        </div>
+      )}
 
       <div className="flex items-center gap-1">
         {NODES.map((node, i) => {
