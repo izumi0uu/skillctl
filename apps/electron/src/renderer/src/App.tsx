@@ -3,6 +3,7 @@ import { Folder, Healthcare, Home, Puzzle, Settings } from "iconoir-react";
 
 import type { ProgressEvent } from "../../shared/ipc-contract";
 import { CoffeeLoader } from "./components/Loaders";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { type IconType, Spinner, Tile } from "./components/ui";
 import { api, useAsync } from "./lib/api";
 import { Dashboard } from "./views/Dashboard";
@@ -116,19 +117,21 @@ export function App() {
           )}
         </header>
         <div className="flex-1 overflow-auto p-6">
-          {view === "dashboard" && (
-            <Dashboard
-              onNavigate={(category) => {
-                setSkillsFocus(category);
-                setView("skills");
-              }}
-            />
-          )}
-          {view === "skills" && (
-            <Skills focusCategory={skillsFocus} onFocusHandled={() => setSkillsFocus(null)} />
-          )}
-          {view === "health" && <Health />}
-          {view === "settings" && <SettingsView onRepoChange={() => repoRoot.reload()} />}
+          <ErrorBoundary key={view}>
+            {view === "dashboard" && (
+              <Dashboard
+                onNavigate={(category) => {
+                  setSkillsFocus(category);
+                  setView("skills");
+                }}
+              />
+            )}
+            {view === "skills" && (
+              <Skills focusCategory={skillsFocus} onFocusHandled={() => setSkillsFocus(null)} />
+            )}
+            {view === "health" && <Health />}
+            {view === "settings" && <SettingsView onRepoChange={() => repoRoot.reload()} />}
+          </ErrorBoundary>
         </div>
       </main>
 
