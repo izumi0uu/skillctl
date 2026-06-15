@@ -11,6 +11,53 @@ const gitEnv = {
   ...process.env,
   GIT_TERMINAL_PROMPT: "0",
 };
+const GIT_RETRYABLE_PATTERNS = [
+  /timed out/iu,
+  /timeout/iu,
+  /could not resolve host/iu,
+  /connection reset/iu,
+  /connection timed out/iu,
+  /failed to connect/iu,
+  /internal server error/iu,
+  /http 5\d\d/iu,
+  /the remote end hung up unexpectedly/iu,
+];
+
+function toText(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Buffer.isBuffer(value)) {
+    return value.toString("utf8");
+  }
+  return "";
+}
+
+function isRetryableGitError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return GIT_RETRYABLE_PATTERNS.some((pattern) => pattern.test(message));
+}
+
+async function execGitWithRetry(args: string[], options: Parameters<typeof execFileAsync>[2], attempts = 2): Promise<{ stdout: string; stderr: string }> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const result = await execFileAsync("git", args, options);
+      return {
+        stdout: toText(result.stdout),
+        stderr: toText(result.stderr),
+      };
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts || !isRetryableGitError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
 
 function isUnsafeGitRevision(value: string): boolean {
   return value.trimStart().startsWith("-");
@@ -38,7 +85,7 @@ async function verifyPinnedCommitWithFetch(repoUrl: string, ref: string): Promis
       timeout: 15000,
       env: gitEnv,
     });
-    await execFileAsync("git", ["fetch", "--depth=1", "origin", ref], {
+    await execGitWithRetry(["fetch", "--depth=1", "origin", ref], {
       cwd: tempDir,
       timeout: 30000,
       env: gitEnv,
@@ -91,7 +138,7 @@ async function verifyGithubRef(skill: CatalogSkill): Promise<SourceVerificationE
   }
 
   try {
-    const { stdout } = await execFileAsync("git", ["ls-remote", "--", repoUrl, ref], {
+    const { stdout } = await execGitWithRetry(["ls-remote", "--", repoUrl, ref], {
       timeout: 15000,
       env: gitEnv,
     });
@@ -121,7 +168,7 @@ async function verifyGithubRef(skill: CatalogSkill): Promise<SourceVerificationE
     }
 
     if (isCommitLikeRevision(ref)) {
-      const { stdout: advertised } = await execFileAsync("git", ["ls-remote", "--", repoUrl], {
+      const { stdout: advertised } = await execGitWithRetry(["ls-remote", "--", repoUrl], {
         timeout: 15000,
         env: gitEnv,
       });
@@ -153,6 +200,14 @@ async function verifyGithubRef(skill: CatalogSkill): Promise<SourceVerificationE
       detail: `ref not found on remote ${repo}`,
     };
   } catch (error) {
+    if (isRetryableGitError(error)) {
+      return {
+        skill_id: skill.skill_id,
+        status: "skip",
+        detail: `verification skipped for ${repo}: temporary remote connectivity failure`,
+      };
+    }
+
     return {
       skill_id: skill.skill_id,
       status: "error",

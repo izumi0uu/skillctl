@@ -95,4 +95,90 @@ describe("verifyCatalogSources", () => {
       }),
     ]);
   });
+
+  test("retries transient ls-remote failures before succeeding", async () => {
+    let calls = 0;
+    execFileAsyncMock.mockImplementation(async (_file: string, args: string[]) => {
+      if (args[0] === "ls-remote" && args.length === 4) {
+        calls += 1;
+        if (calls === 1) {
+          throw new Error("fatal: unable to access remote: Operation timed out");
+        }
+        return { stdout: "0123456789abcdef0123456789abcdef01234567\trefs/heads/main\n" };
+      }
+      throw new Error(`unexpected git invocation: ${args.join(" ")}`);
+    });
+
+    const { verifyCatalogSources } = await import("../src/source-verification.js");
+    const report = await verifyCatalogSources({
+      version: 1,
+      generatedBy: "test",
+      skills: [{
+        skill_id: "alpha",
+        visibility: "public",
+        source_kind: "upstream",
+        origin_kind: "imported-upstream",
+        hash: "placeholder",
+        managed: true,
+        targets: ["codex"],
+        canonical_rel_path: "skills/test/alpha",
+        upstream: {
+          repo: "owner/repo",
+          ref: "main",
+          skillPath: "skills/alpha",
+          sourceType: "github",
+        },
+      }],
+    });
+
+    expect(calls).toBe(2);
+    expect(report.ok).toBe(true);
+    expect(report.results).toEqual([
+      expect.objectContaining({
+        skill_id: "alpha",
+        status: "ok",
+        resolved_ref: "0123456789abcdef0123456789abcdef01234567",
+      }),
+    ]);
+  });
+
+  test("treats exhausted connectivity failures as skip instead of hard error", async () => {
+    execFileAsyncMock.mockImplementation(async (_file: string, args: string[]) => {
+      if (args[0] === "ls-remote") {
+        throw new Error("fatal: unable to access remote: Failed to connect to host");
+      }
+      throw new Error(`unexpected git invocation: ${args.join(" ")}`);
+    });
+
+    const { verifyCatalogSources } = await import("../src/source-verification.js");
+    const report = await verifyCatalogSources({
+      version: 1,
+      generatedBy: "test",
+      skills: [{
+        skill_id: "alpha",
+        visibility: "public",
+        source_kind: "upstream",
+        origin_kind: "imported-upstream",
+        hash: "placeholder",
+        managed: true,
+        targets: ["codex"],
+        canonical_rel_path: "skills/test/alpha",
+        upstream: {
+          repo: "owner/repo",
+          ref: "main",
+          skillPath: "skills/alpha",
+          sourceType: "github",
+        },
+      }],
+    });
+
+    expect(report.ok).toBe(true);
+    expect(report.results).toEqual([
+      {
+        skill_id: "alpha",
+        status: "skip",
+        detail: "verification skipped for owner/repo: temporary remote connectivity failure",
+      },
+    ]);
+  });
 });
