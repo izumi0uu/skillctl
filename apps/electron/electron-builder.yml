@@ -1,0 +1,15 @@
+appId: com.skillctl.controlpanel
+productName: skillctl
+directories:
+  output: release
+files:
+  - out/**/*
+  - package.json
+npmRebuild: false
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.developer-tools
+  # Local unsigned build: no Apple Developer identity / notarization in v1.
+  identity: null

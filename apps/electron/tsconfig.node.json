@@ -4,15 +4,15 @@
     "noEmit": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": ["ES2023"],
     "types": ["node"],
-    "jsx": "react-jsx",
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "verbatimModuleSyntax": false
   },
   "include": [
-    "src/renderer/**/*.ts",
-    "src/renderer/**/*.tsx",
+    "src/main/**/*.ts",
+    "src/preload/**/*.ts",
     "src/shared/**/*.ts",
-    "src/preload/index.d.ts"
+    "electron.vite.config.ts"
   ]
 }
