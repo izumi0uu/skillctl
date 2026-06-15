@@ -1,6 +1,6 @@
-export function GhostLoader({ variant = "blue" }: { variant?: "blue" | "red" }) {
+export function GhostLoader({ mini }: { mini?: boolean }) {
   return (
-    <div className="ghost-loader" data-variant={variant}>
+    <div className={mini ? "ghost-loader mini" : "ghost-loader"}>
       <div className="gl-ghost">
         <div className="gl-red">
           <div className="gl-pupil" />
@@ -36,13 +36,6 @@ export function GhostLoader({ variant = "blue" }: { variant?: "blue" | "red" }) 
           <div className="gl-an16 gl-flick1" />
           <div className="gl-an17 gl-flick1" />
           <div className="gl-an18 gl-flick0" />
-          <div className="gl-mouthstart" />
-          <div className="gl-mouth1" />
-          <div className="gl-mouth2" />
-          <div className="gl-mouth3" />
-          <div className="gl-mouth4" />
-          <div className="gl-mouth5" />
-          <div className="gl-mouthend" />
         </div>
         <div className="gl-shadow" />
       </div>

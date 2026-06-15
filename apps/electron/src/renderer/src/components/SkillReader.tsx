@@ -4,22 +4,25 @@ import remarkGfm from "remark-gfm";
 import { OpenInBrowser } from "iconoir-react";
 import type { SourceRegistryEntry } from "@skillctl/core";
 
-import { Badge, Button, useUi } from "./ui";
+import { Badge, Button, Spinner, useUi } from "./ui";
 import { GhostLoader } from "./Loaders";
 import { api } from "../lib/api";
+
+function httpUrl(value?: string | null): string | null {
+  return value && /^https?:\/\//u.test(value) ? value : null;
+}
 
 function sourceUrl(entry?: SourceRegistryEntry): string | null {
   if (!entry) {
     return null;
   }
-  if (entry.upstream_source_url) {
-    return entry.upstream_source_url;
+  // Only ever open real web URLs — never file:// or local:// sources.
+  const direct = httpUrl(entry.upstream_source_url) ?? httpUrl(entry.upstream_repo);
+  if (direct) {
+    return direct;
   }
   const repo = entry.upstream_repo;
-  if (repo && /^https?:\/\//u.test(repo)) {
-    return repo;
-  }
-  if (repo) {
+  if (repo && !repo.includes("://") && /^[^/\s]+\/[^/\s]+/u.test(repo)) {
     return `https://github.com/${repo}`;
   }
   return null;
@@ -93,7 +96,10 @@ export function SkillReader({
       >
         <div className="flex items-center gap-3 border-b-2 border-ink/8 px-6 py-4">
           <div className="min-w-0">
-            <h2 className="truncate text-xl font-black">{skillId}</h2>
+            <div className="flex items-center gap-2">
+              <GhostLoader mini />
+              <h2 className="truncate text-xl font-black">{skillId}</h2>
+            </div>
             {entry && (
               <div className="mt-1 flex flex-wrap gap-1.5">
                 <Badge tone="blue">{entry.category_label}</Badge>
@@ -118,8 +124,8 @@ export function SkillReader({
         <div className="flex-1 overflow-auto px-6 py-5">
           {loading ? (
             <div className="flex flex-col items-center gap-4 py-12">
-              <GhostLoader variant="blue" />
-              <p className="font-bold text-ink-soft">conjuring the doc…</p>
+              <Spinner />
+              <p className="font-bold text-ink-soft">loading…</p>
             </div>
           ) : error ? (
             <p className="font-bold text-red">{error}</p>
