@@ -181,4 +181,52 @@ describe("verifyCatalogSources", () => {
       },
     ]);
   });
+
+  test("treats timed out git child termination as skip instead of hard error", async () => {
+    execFileAsyncMock.mockImplementation(async (_file: string, args: string[]) => {
+      if (args[0] === "ls-remote") {
+        const error = new Error("Command failed: git ls-remote -- https://github.com/owner/repo.git main");
+        Object.assign(error, {
+          killed: true,
+          signal: "SIGTERM",
+          code: null,
+          stdout: "",
+          stderr: "",
+        });
+        throw error;
+      }
+      throw new Error(`unexpected git invocation: ${args.join(" ")}`);
+    });
+
+    const { verifyCatalogSources } = await import("../src/source-verification.js");
+    const report = await verifyCatalogSources({
+      version: 1,
+      generatedBy: "test",
+      skills: [{
+        skill_id: "alpha",
+        visibility: "public",
+        source_kind: "upstream",
+        origin_kind: "imported-upstream",
+        hash: "placeholder",
+        managed: true,
+        targets: ["codex"],
+        canonical_rel_path: "skills/test/alpha",
+        upstream: {
+          repo: "owner/repo",
+          ref: "main",
+          skillPath: "skills/alpha",
+          sourceType: "github",
+        },
+      }],
+    });
+
+    expect(report.ok).toBe(true);
+    expect(report.results).toEqual([
+      {
+        skill_id: "alpha",
+        status: "skip",
+        detail: "verification skipped for owner/repo: temporary remote connectivity failure",
+      },
+    ]);
+  });
 });

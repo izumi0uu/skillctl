@@ -35,7 +35,23 @@ function toText(value: unknown): string {
 
 function isRetryableGitError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return GIT_RETRYABLE_PATTERNS.some((pattern) => pattern.test(message));
+  if (GIT_RETRYABLE_PATTERNS.some((pattern) => pattern.test(message))) {
+    return true;
+  }
+
+  if (
+    error !== null &&
+    typeof error === "object" &&
+    "killed" in error &&
+    "signal" in error &&
+    error.killed === true &&
+    typeof error.signal === "string" &&
+    error.signal.toUpperCase() === "SIGTERM"
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 async function execGitWithRetry(args: string[], options: Parameters<typeof execFileAsync>[2], attempts = 2): Promise<{ stdout: string; stderr: string }> {
