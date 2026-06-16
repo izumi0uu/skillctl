@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 import { CHANNELS, type ConfigPatch, type ProgressEvent, type SkillctlApi } from "../shared/ipc-contract";
-import type { AdoptSkillOptions } from "@skillctl/core";
+import type { AdoptSkillOptions, SkillMetaPatch } from "@skillctl/core";
 
 const api: SkillctlApi = {
   repoRoot: () => ipcRenderer.invoke(CHANNELS.repoRoot),
@@ -27,6 +27,11 @@ const api: SkillctlApi = {
   repair: () => ipcRenderer.invoke(CHANNELS.repair),
   prune: () => ipcRenderer.invoke(CHANNELS.prune),
   bootstrap: () => ipcRenderer.invoke(CHANNELS.bootstrap),
+  init: () => ipcRenderer.invoke(CHANNELS.init),
+  repoStatus: () => ipcRenderer.invoke(CHANNELS.repoStatus),
+  setSkillMeta: (skillId: string, patch: SkillMetaPatch) => ipcRenderer.invoke(CHANNELS.setSkillMeta, skillId, patch),
+  publish: () => ipcRenderer.invoke(CHANNELS.publish),
+  skillInstalls: (skillId: string) => ipcRenderer.invoke(CHANNELS.skillInstalls, skillId),
   onProgress: (cb: (event: ProgressEvent) => void) => {
     const listener = (_event: unknown, payload: ProgressEvent) => cb(payload);
     ipcRenderer.on(CHANNELS.progress, listener);

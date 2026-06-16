@@ -22,6 +22,7 @@ export function SkillReader({
   const [doc, setDoc] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [installs, setInstalls] = useState<string[]>([]);
 
   useEffect(() => {
     if (!skillId) {
@@ -41,6 +42,20 @@ export function SkillReader({
       .finally(() => {
         if (active) setLoading(false);
       });
+    return () => {
+      active = false;
+    };
+  }, [skillId]);
+
+  useEffect(() => {
+    if (!skillId) {
+      setInstalls([]);
+      return;
+    }
+    let active = true;
+    api.skillInstalls(skillId).then((res) => {
+      if (active) setInstalls(res.ok ? res.data : []);
+    });
     return () => {
       active = false;
     };
@@ -89,6 +104,18 @@ export function SkillReader({
                 {entry.local_modifications && <Badge tone="grape">modified</Badge>}
               </div>
             )}
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs font-bold text-ink-soft">
+              installed:
+              {installs.length > 0 ? (
+                installs.map((agent) => (
+                  <Badge key={agent} tone="mint">
+                    {agent}
+                  </Badge>
+                ))
+              ) : (
+                <Badge tone="neutral">nowhere yet</Badge>
+              )}
+            </div>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2">
             {url && (

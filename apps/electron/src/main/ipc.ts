@@ -23,7 +23,8 @@ import {
   verifyCatalogSources,
   writeCatalog,
 } from "@skillctl/core";
-import type { AdoptSkillOptions } from "@skillctl/core";
+import { initRepo, loadManagedIndex, setSkillMeta } from "@skillctl/core";
+import type { AdoptSkillOptions, AgentId, SkillMetaPatch } from "@skillctl/core";
 
 import {
   CHANNELS,
@@ -293,5 +294,61 @@ export function registerIpcHandlers(): void {
         });
       }),
     ),
+  );
+
+  ipcMain.handle(CHANNELS.init, () => envelope(() => initRepo(getRepoRoot())));
+
+  ipcMain.handle(CHANNELS.repoStatus, () =>
+    envelope(async () => {
+      const repoRoot = await resolveInitialRepoRoot();
+      try {
+        await loadConfig(repoRoot);
+        await loadCatalog(repoRoot);
+        return { initialized: true, repoRoot };
+      } catch {
+        return { initialized: false, repoRoot };
+      }
+    }),
+  );
+
+  ipcMain.handle(CHANNELS.setSkillMeta, (_event, skillId: string, patch: SkillMetaPatch) =>
+    envelope(async () => {
+      const repoRoot = getRepoRoot();
+      const catalog = await loadCatalog(repoRoot);
+      if (!setSkillMeta(catalog, skillId, patch)) {
+        throw new Error(`skill not found: ${skillId}`);
+      }
+      await writeCatalog(repoRoot, catalog);
+      return true;
+    }),
+  );
+
+  ipcMain.handle(CHANNELS.publish, () =>
+    envelope(async () => {
+      const catalog = await loadCatalog(getRepoRoot());
+      return catalog.skills
+        .filter((skill) => skill.visibility === "public" && skill.source_kind !== "local-private")
+        .map((skill) => ({
+          skill_id: skill.skill_id,
+          origin_kind: skill.origin_kind,
+          hash: skill.hash,
+          canonical_rel_path: skill.canonical_rel_path ?? null,
+        }));
+    }),
+  );
+
+  ipcMain.handle(CHANNELS.skillInstalls, (_event, skillId: string) =>
+    envelope(async () => {
+      const repoRoot = getRepoRoot();
+      const config = await loadConfig(repoRoot);
+      const agents: AgentId[] = [];
+      for (const agent of config.enabledAdapters) {
+        const index = await loadManagedIndex(config.stateDir!, agent);
+        if (index.entries.some((entry) => entry.skill_id === skillId)) {
+          agents.push(agent);
+        }
+      }
+      return agents;
+    }),
   );
 }

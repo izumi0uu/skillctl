@@ -5,8 +5,10 @@ import type {
   BootstrapUpstreamResult,
   DoctorReport,
   ManagedSkillTaxonomy,
+  OriginKind,
   ProbePolicy,
   PruneResult,
+  SkillMetaPatch,
   SkillctlConfig,
   SkillctlCatalog,
   SourceRegistryEntry,
@@ -39,6 +41,11 @@ export const CHANNELS = {
   repair: "repair:run",
   prune: "prune:run",
   bootstrap: "bootstrap:run",
+  init: "repo:init",
+  repoStatus: "repo:status",
+  setSkillMeta: "skill:set-meta",
+  publish: "publish:get",
+  skillInstalls: "skill:installs",
   progress: "op:progress",
 } as const;
 
@@ -99,6 +106,18 @@ export interface ConfigPatch {
   liveProbePolicy?: ProbePolicy;
 }
 
+export interface RepoStatus {
+  initialized: boolean;
+  repoRoot: string;
+}
+
+export interface PublishedSkill {
+  skill_id: string;
+  origin_kind: OriginKind;
+  hash: string;
+  canonical_rel_path: string | null;
+}
+
 export interface SkillctlApi {
   repoRoot(): Promise<IpcResult<string>>;
   chooseRepo(): Promise<IpcResult<string | null>>;
@@ -123,5 +142,10 @@ export interface SkillctlApi {
   repair(): Promise<IpcResult<DoctorReport>>;
   prune(): Promise<IpcResult<PruneResult>>;
   bootstrap(): Promise<IpcResult<BootstrapUpstreamResult>>;
+  init(): Promise<IpcResult<unknown>>;
+  repoStatus(): Promise<IpcResult<RepoStatus>>;
+  setSkillMeta(skillId: string, patch: SkillMetaPatch): Promise<IpcResult<boolean>>;
+  publish(): Promise<IpcResult<PublishedSkill[]>>;
+  skillInstalls(skillId: string): Promise<IpcResult<AgentId[]>>;
   onProgress(cb: (event: ProgressEvent) => void): () => void;
 }

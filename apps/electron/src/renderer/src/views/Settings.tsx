@@ -39,6 +39,7 @@ export function Settings({ onRepoChange }: { onRepoChange: () => void }) {
   const { notify } = useUi();
   const config = useAsync(() => api.loadConfig());
   const adapters = useAsync(() => api.adapters());
+  const publishable = useAsync(() => api.publish());
   const [verify, setVerify] = useState<{ loading: boolean; report: VerifyReport | null }>({
     loading: false,
     report: null,
@@ -245,6 +246,25 @@ export function Settings({ onRepoChange }: { onRepoChange: () => void }) {
                 </div>
               );
             })}
+          </div>
+        )}
+      </Panel>
+
+      <Panel>
+        <h3 className="mb-3 text-lg font-black">Publishable skills · {publishable.data?.length ?? 0}</h3>
+        {publishable.loading ? (
+          <Spinner />
+        ) : (
+          <div className="flex max-h-72 flex-col gap-1.5 overflow-auto text-sm">
+            {publishable.data?.map((skill) => (
+              <div key={skill.skill_id} className="flex items-center gap-2">
+                <Badge tone="mint">{skill.origin_kind}</Badge>
+                <span className="font-bold">{skill.skill_id}</span>
+                <span className="ml-auto truncate text-xs font-semibold text-ink-soft">
+                  {skill.canonical_rel_path}
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </Panel>

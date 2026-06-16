@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Folder, Healthcare, Home, Puzzle, Settings } from "iconoir-react";
 
 import type { ProgressEvent } from "../../shared/ipc-contract";
 import { CoffeeLoader } from "./components/Loaders";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { InitGate } from "./components/InitGate";
 import { type IconType, Spinner, Tile } from "./components/ui";
 import { api, useAsync } from "./lib/api";
 import { Dashboard } from "./views/Dashboard";
@@ -44,6 +45,26 @@ export function App() {
       }
     });
   }, []);
+
+  const [ready, setReady] = useState<boolean | null>(null);
+  const recheck = useCallback(() => {
+    setReady(null);
+    api.repoStatus().then((res) => setReady(res.ok ? res.data.initialized : false));
+  }, []);
+  useEffect(() => {
+    recheck();
+  }, [recheck]);
+
+  if (ready === null) {
+    return (
+      <div className="grid h-screen w-screen place-items-center bg-cream">
+        <Spinner />
+      </div>
+    );
+  }
+  if (!ready) {
+    return <InitGate onReady={recheck} />;
+  }
 
   return (
     <div className="flex h-screen w-screen overflow-hidden text-ink">
