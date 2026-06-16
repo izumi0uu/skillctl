@@ -78,7 +78,12 @@ export function Dashboard({ onNavigate }: { onNavigate: (category: string) => vo
   const taxonomy = useAsync(() => api.taxonomy());
   const doctor = useAsync(() => api.doctor());
   const diff = useAsync(() => api.diff());
+  const config = useAsync(() => api.loadConfig());
   const [running, setRunning] = useState<MutatingKey | null>(null);
+
+  const actions = config.data?.transport.mode === "skills-cli"
+    ? ACTIONS
+    : ACTIONS.filter((action) => action.key !== "bootstrap");
 
   async function runAction(action: ActionDef) {
     let preview: ReactNode;
@@ -144,9 +149,13 @@ export function Dashboard({ onNavigate }: { onNavigate: (category: string) => vo
       <section className="grid grid-cols-3 gap-4">
         <Panel className="col-span-2">
           <h2 className="mb-1 text-lg font-black">What do you want to do?</h2>
-          <p className="mb-4 text-sm font-semibold text-ink-soft">Bootstrap spawns pnpm/node — it takes a beat.</p>
+          <p className="mb-4 text-sm font-semibold text-ink-soft">
+            {config.data?.transport.mode === "skills-cli"
+              ? "Bootstrap spawns pnpm/node for the embedded upstream CLI — it takes a beat."
+              : "This workspace is using direct copy sync, so no embedded upstream bootstrap is needed."}
+          </p>
           <div className="flex flex-wrap gap-3">
-            {ACTIONS.map((action) => (
+            {actions.map((action) => (
               <Button
                 key={action.key}
                 variant={action.variant}

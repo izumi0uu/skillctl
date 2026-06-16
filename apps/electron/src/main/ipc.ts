@@ -296,7 +296,20 @@ export function registerIpcHandlers(): void {
     ),
   );
 
-  ipcMain.handle(CHANNELS.init, () => envelope(() => initRepo(getRepoRoot())));
+  ipcMain.handle(CHANNELS.init, () =>
+    envelope(async () => {
+      const repoRoot = getRepoRoot();
+      const result = await initRepo(repoRoot);
+      if (process.env.NODE_ENV !== "development") {
+        await patchConfigFields(repoRoot, {
+          transport: {
+            mode: "copy-fallback",
+          },
+        });
+      }
+      return result;
+    }),
+  );
 
   ipcMain.handle(CHANNELS.repoStatus, () =>
     envelope(async () => {

@@ -10,9 +10,7 @@ async function exists(target: string): Promise<boolean> {
   return access(target).then(() => true).catch(() => false);
 }
 
-// Inlined here (rather than imported from @skillctl/core) so the desktop shell
-// depends only on core's built dist, not on core source edits.
-async function findWorkspaceRoot(startDir: string): Promise<string> {
+async function findMonorepoRoot(startDir: string): Promise<string> {
   let current = startDir;
   while (true) {
     const hasWorkspace = await exists(join(current, "pnpm-workspace.yaml"));
@@ -50,16 +48,62 @@ async function isSkillctlRepo(root: string): Promise<boolean> {
   return exists(join(root, "skillctl.catalog.json"));
 }
 
+async function findNearestSkillctlRoot(startDir: string): Promise<string | null> {
+  let current = startDir;
+  while (true) {
+    if (await isSkillctlRepo(current)) {
+      return current;
+    }
+    const parent = dirname(current);
+    if (parent === current) {
+      return null;
+    }
+    current = parent;
+  }
+}
+
+async function pickWorkspaceFolder(): Promise<string | null> {
+  const result = await dialog.showOpenDialog({
+    properties: ["openDirectory"],
+    title: "Select a skillctl workspace folder",
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+  const selected = result.filePaths[0];
+  return (await findNearestSkillctlRoot(selected)) ?? selected;
+}
+
+function defaultPackagedWorkspace(): string {
+  return join(app.getPath("documents"), "skillctl-workspace");
+}
+
+export const __repoRootInternals = {
+  findMonorepoRoot,
+  defaultPackagedWorkspace,
+  resetForTests() {
+    currentRepoRoot = null;
+  },
+};
+
 export async function resolveInitialRepoRoot(): Promise<string> {
   if (currentRepoRoot) {
     return currentRepoRoot;
   }
+
+  if (!app.isPackaged) {
+    currentRepoRoot = await findMonorepoRoot(app.getAppPath());
+    return currentRepoRoot;
+  }
+
   const persisted = await readPersistedRoot();
-  if (persisted && (await isSkillctlRepo(persisted))) {
+  if (persisted) {
     currentRepoRoot = persisted;
     return persisted;
   }
-  currentRepoRoot = await findWorkspaceRoot(app.getAppPath());
+
+  currentRepoRoot = defaultPackagedWorkspace();
+  await persistRoot(currentRepoRoot);
   return currentRepoRoot;
 }
 
@@ -71,20 +115,17 @@ export function getRepoRoot(): string {
 }
 
 export async function chooseRepoRoot(): Promise<string | null> {
-  const result = await dialog.showOpenDialog({
-    properties: ["openDirectory"],
-    title: "Select a skillctl repository",
-  });
-  if (result.canceled || result.filePaths.length === 0) {
+  const picked = await pickWorkspaceFolder();
+  if (!picked) {
     return null;
   }
-  const picked = await findWorkspaceRoot(result.filePaths[0]);
-  if (!(await isSkillctlRepo(picked))) {
-    throw new Error(`Not a skillctl repo (missing skillctl.catalog.json): ${picked}`);
-  }
-  // Validate the catalog parses before switching.
-  await loadCatalog(picked);
+
   currentRepoRoot = picked;
   await persistRoot(picked);
+
+  if (await isSkillctlRepo(picked)) {
+    await loadCatalog(picked);
+  }
+
   return picked;
 }

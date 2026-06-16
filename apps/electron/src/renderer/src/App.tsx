@@ -51,6 +51,10 @@ export function App() {
     setReady(null);
     api.repoStatus().then((res) => setReady(res.ok ? res.data.initialized : false));
   }, []);
+  function refreshWorkspaceState() {
+    repoRoot.reload();
+    recheck();
+  }
   useEffect(() => {
     recheck();
   }, [recheck]);
@@ -77,15 +81,15 @@ export function App() {
     );
   }
   if (!ready) {
-    return <InitGate onReady={recheck} />;
+    return <InitGate onReady={refreshWorkspaceState} />;
   }
 
   return (
     <div className="flex h-screen w-screen overflow-hidden text-ink">
       <aside className="flex w-60 flex-col border-r-[3px] border-ink/10 bg-cloud/70">
         <div className="window-drag flex items-center gap-2.5 px-5 pb-5 pt-7">
-          <span className="grid h-9 w-9 place-items-center rounded-[1.1rem] border-[3px] border-lemon-ring bg-lemon text-ink shadow-puff-sm animate-float">
-            <Puzzle className="h-[1.15rem] w-[1.15rem]" strokeWidth={2.4} />
+          <span className="grid h-8 w-8 place-items-center rounded-[1rem] border-2 border-lemon-ring/75 bg-lemon text-ink shadow-puff-sm animate-float">
+            <Puzzle className="h-[1.05rem] w-[1.05rem]" strokeWidth={2.25} />
           </span>
           <div>
             <div className="text-xl font-black leading-none">skillctl</div>
@@ -130,7 +134,7 @@ export function App() {
         <header className="window-drag relative flex items-center gap-3 border-b-[3px] border-ink/10 px-6 py-3">
           <span className="flex min-w-0 items-center gap-2 rounded-full border-[3px] border-ink/10 bg-cloud px-3 py-1.5 shadow-puff-sm">
             <Folder className="h-4 w-4 shrink-0 text-ink-soft" strokeWidth={2.2} />
-            <span className="truncate text-sm font-bold text-ink/70">{repoRoot.data ?? "finding repo…"}</span>
+            <span className="truncate text-sm font-bold text-ink/70">{repoRoot.data ?? "finding workspace…"}</span>
           </span>
           {running && (
             <span className="text-xs font-bold text-ink-soft">
@@ -165,7 +169,7 @@ export function App() {
               <Skills focusCategory={skillsFocus} onFocusHandled={() => setSkillsFocus(null)} />
             )}
             {view === "health" && <Health />}
-            {view === "settings" && <SettingsView onRepoChange={() => repoRoot.reload()} />}
+            {view === "settings" && <SettingsView onRepoChange={refreshWorkspaceState} />}
           </ErrorBoundary>
         </div>
       </main>

@@ -73,7 +73,7 @@ pnpm release:mac   # output under apps/electron/release/
 If Apple signing / notarization secrets are not present, the build is **unsigned**, so Gatekeeper may block a plain double-click. To open it anyway:
 
 - Right-click the app in Finder → **Open** → **Open** in the dialog, or
-- Clear the quarantine flag: `xattr -dr com.apple.quarantine /Applications/skillctl.app`
+- Clear the quarantine flag: `sudo xattr -r -d com.apple.quarantine /Applications/skillctl.app`
 
 CI builds arm64 + x64 artifacts via `.github/workflows/release-mac.yml`. If the Apple secrets below are configured, the app is signed and notarized; otherwise CI falls back to an unsigned build. Pushing a `v*` tag attaches the artifacts to a GitHub release with auto-generated notes.
 

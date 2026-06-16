@@ -49,6 +49,7 @@ function PathRow({ label, value, onOpen }: { label: string; value?: string | nul
 
 export function Settings({ onRepoChange }: { onRepoChange: () => void }) {
   const { notify } = useUi();
+  const workspace = useAsync(() => api.repoRoot());
   const config = useAsync(() => api.loadConfig());
   const adapters = useAsync(() => api.adapters());
   const publishable = useAsync(() => api.publish());
@@ -82,8 +83,9 @@ export function Settings({ onRepoChange }: { onRepoChange: () => void }) {
       return;
     }
     if (res.data) {
-      notify("success", `Repo set to ${res.data}`);
+      notify("success", `Workspace set to ${res.data}`);
       onRepoChange();
+      workspace.reload();
       config.reload();
       adapters.reload();
     }
@@ -156,7 +158,7 @@ export function Settings({ onRepoChange }: { onRepoChange: () => void }) {
 
       <div className="flex gap-3">
         <Button variant="blue" icon={Folder} onClick={chooseRepo}>
-          Choose repo
+          Choose workspace
         </Button>
       </div>
 
@@ -168,8 +170,11 @@ export function Settings({ onRepoChange }: { onRepoChange: () => void }) {
           <span className="font-bold text-red">{config.error}</span>
         ) : (
           <div className="flex flex-col gap-2">
+            <PathRow label="Workspace folder" value={workspace.data} onOpen={openFolder} />
             <Row label="Transport mode" value={config.data?.transport.mode} />
-            <PathRow label="Embedded repo" value={config.data?.transport.embeddedRepoPath} onOpen={openFolder} />
+            {config.data?.transport.mode === "skills-cli" && (
+              <PathRow label="Embedded upstream repo" value={config.data?.transport.embeddedRepoPath} onOpen={openFolder} />
+            )}
             <PathRow label="State dir" value={config.data?.stateDir} onOpen={openFolder} />
           </div>
         )}
