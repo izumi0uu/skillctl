@@ -2,6 +2,8 @@
   "name": "skillctl-electron-shell",
   "version": "0.1.0",
   "private": true,
+  "description": "skillctl — portable skills control plane (macOS desktop shell)",
+  "author": "izumi0uu",
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {

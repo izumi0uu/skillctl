@@ -27,7 +27,7 @@ It is intentionally a control-plane wrapper around `vercel-labs/skills`, not a f
 ```text
 packages/core      # Catalog, schema, adapters, doctor/repair engine, transport integration
 packages/cli       # CLI entrypoint and repo-root resolution
-apps/electron      # Future macOS shell; no duplicate core logic
+apps/electron      # macOS desktop control panel (thin shell over core)
 skills/            # Public-safe managed skills committed to Git
 manifests/         # Schemas and tracked metadata
 vercel-skills/      # Embedded upstream skills CLI submodule
@@ -52,6 +52,30 @@ node packages/cli/dist/index.js status
 node packages/cli/dist/index.js taxonomy --json
 node packages/cli/dist/index.js sources --json
 ```
+
+## Desktop app (macOS)
+
+A cartoon-styled control panel lives in `apps/electron` (electron-vite + React). It is a thin shell over `@skillctl/core`: catalog / doctor / sync / repair / prune / discover / bootstrap / adopt all run through the same engine the CLI uses, exposed over a typed IPC bridge.
+
+Run it in development:
+
+```bash
+pnpm --filter @skillctl/core build        # core dist must exist first
+pnpm --filter skillctl-electron-shell dev
+```
+
+Build an unsigned distributable (`.dmg` + `.zip`) for the current architecture:
+
+```bash
+pnpm --filter skillctl-electron-shell package:mac   # output under apps/electron/release/
+```
+
+The build is **unsigned** (no Apple Developer ID / notarization yet), so Gatekeeper blocks a plain double-click. To open it anyway:
+
+- Right-click the app in Finder → **Open** → **Open** in the dialog, or
+- Clear the quarantine flag: `xattr -dr com.apple.quarantine /Applications/skillctl.app`
+
+CI builds unsigned arm64 + x64 artifacts via `.github/workflows/release-mac.yml` — push a `v*` tag (or run the workflow manually) to attach them to a GitHub release.
 
 ## Health Suite
 
