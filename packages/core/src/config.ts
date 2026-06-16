@@ -3,7 +3,7 @@ import path from "node:path";
 import { readJson, writeJson } from "./fs.js";
 import { CONFIG_FILE, DEFAULT_EMBEDDED_SKILLS_REPO, defaultStateDir, expandHome } from "./paths.js";
 import { skillctlConfigSchema } from "./schema.js";
-import type { AgentId, ProbePolicy, SkillctlConfig } from "./types.js";
+import type { AgentId, ProbePolicy, SkillctlConfig, TransportMode } from "./types.js";
 
 function resolveConfigPath(repoRoot: string, inputPath: string): string {
   const expanded = expandHome(inputPath);
@@ -54,6 +54,9 @@ export async function writeDefaultConfig(repoRoot: string): Promise<void> {
 export interface ConfigPatch {
   enabledAdapters?: AgentId[];
   liveProbePolicy?: ProbePolicy;
+  excludeSkills?: string[];
+  privateRoots?: string[];
+  transport?: { mode?: TransportMode; command?: string; args?: string[] };
 }
 
 // Surgical patch of the on-disk config: reads the raw JSON and only overwrites
@@ -66,6 +69,25 @@ export async function patchConfigFields(repoRoot: string, patch: ConfigPatch): P
   }
   if (patch.liveProbePolicy) {
     raw.liveProbePolicy = patch.liveProbePolicy;
+  }
+  if (patch.excludeSkills) {
+    raw.excludeSkills = patch.excludeSkills;
+  }
+  if (patch.privateRoots) {
+    raw.privateRoots = patch.privateRoots;
+  }
+  if (patch.transport) {
+    const transport = raw.transport && typeof raw.transport === "object" ? (raw.transport as Record<string, unknown>) : {};
+    if (patch.transport.mode) {
+      transport.mode = patch.transport.mode;
+    }
+    if (patch.transport.command) {
+      transport.command = patch.transport.command;
+    }
+    if (patch.transport.args) {
+      transport.args = patch.transport.args;
+    }
+    raw.transport = transport;
   }
   await writeJson(filePath, raw);
 }

@@ -4,7 +4,7 @@ import { readJson, writeJson } from "./fs.js";
 import { CATALOG_FILE } from "./paths.js";
 import { skillctlCatalogSchema } from "./schema.js";
 import { inferSkillCategoryFromRelPath } from "./taxonomy.js";
-import type { AgentId, CatalogSkill, SkillDescriptor, SkillctlCatalog } from "./types.js";
+import type { AgentId, CatalogSkill, SkillCategory, SkillDescriptor, SkillctlCatalog, Visibility } from "./types.js";
 import { inferSourceKind } from "./skill.js";
 
 export function managedSkillsForAgent(catalog: SkillctlCatalog, agent: AgentId): CatalogSkill[] {
@@ -84,6 +84,38 @@ export function setSkillEnabled(catalog: SkillctlCatalog, skillId: string, enabl
     delete skill.enabled;
   } else {
     skill.enabled = false;
+  }
+  return true;
+}
+
+export interface SkillMetaPatch {
+  targets?: AgentId[];
+  visibility?: Visibility;
+  category?: SkillCategory;
+  tags?: string[];
+  portabilityAllowTargets?: AgentId[];
+}
+
+// Edit a managed skill's catalog metadata in place. Returns false if not found.
+export function setSkillMeta(catalog: SkillctlCatalog, skillId: string, patch: SkillMetaPatch): boolean {
+  const skill = catalog.skills.find((entry) => entry.skill_id === skillId);
+  if (!skill) {
+    return false;
+  }
+  if (patch.targets) {
+    skill.targets = patch.targets;
+  }
+  if (patch.visibility) {
+    skill.visibility = patch.visibility;
+  }
+  if (patch.category) {
+    skill.category = patch.category;
+  }
+  if (patch.tags) {
+    skill.tags = patch.tags;
+  }
+  if (patch.portabilityAllowTargets) {
+    skill.distribution = { ...skill.distribution, portability_allow_targets: patch.portabilityAllowTargets };
   }
   return true;
 }
