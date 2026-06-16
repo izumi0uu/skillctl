@@ -11,5 +11,6 @@ mac:
     - dmg
     - zip
   category: public.app-category.developer-tools
+  icon: build/icon.png
   # Local unsigned build: no Apple Developer identity / notarization in v1.
   identity: null

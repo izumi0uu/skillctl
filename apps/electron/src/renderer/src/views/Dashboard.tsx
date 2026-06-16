@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { CheckCircle, CloudUpload, Compass, Globe, Lock, Packages, Rocket, Tools, Trash, WarningTriangle } from "iconoir-react";
 
 import type { DiffChange, IpcResult, SkillConflictLite } from "../../../shared/ipc-contract";
@@ -78,6 +78,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (category: string) => vo
   const taxonomy = useAsync(() => api.taxonomy());
   const doctor = useAsync(() => api.doctor());
   const diff = useAsync(() => api.diff());
+  const [running, setRunning] = useState<MutatingKey | null>(null);
 
   async function runAction(action: ActionDef) {
     let preview: ReactNode;
@@ -97,7 +98,9 @@ export function Dashboard({ onNavigate }: { onNavigate: (category: string) => vo
     if (!ok) {
       return;
     }
+    setRunning(action.key);
     const res = await ACTION_API[action.key]();
+    setRunning(null);
     if (res.ok) {
       notify("success", `${action.label} done!`);
       summary.reload();
@@ -144,8 +147,14 @@ export function Dashboard({ onNavigate }: { onNavigate: (category: string) => vo
           <p className="mb-4 text-sm font-semibold text-ink-soft">Bootstrap spawns pnpm/node — it takes a beat.</p>
           <div className="flex flex-wrap gap-3">
             {ACTIONS.map((action) => (
-              <Button key={action.key} variant={action.variant} icon={action.icon} onClick={() => runAction(action)}>
-                {action.label}
+              <Button
+                key={action.key}
+                variant={action.variant}
+                icon={action.icon}
+                disabled={running !== null}
+                onClick={() => runAction(action)}
+              >
+                {running === action.key ? "Running…" : action.label}
               </Button>
             ))}
           </div>

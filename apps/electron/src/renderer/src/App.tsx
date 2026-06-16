@@ -55,6 +55,20 @@ export function App() {
     recheck();
   }, [recheck]);
 
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key >= "1" && event.key <= "4") {
+        const target = NAV[Number(event.key) - 1];
+        if (target) {
+          event.preventDefault();
+          setView(target.id);
+        }
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   if (ready === null) {
     return (
       <div className="grid h-screen w-screen place-items-center bg-cream">
