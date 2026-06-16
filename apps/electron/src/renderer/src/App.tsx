@@ -83,7 +83,7 @@ export function App() {
   return (
     <div className="flex h-screen w-screen overflow-hidden text-ink">
       <aside className="flex w-60 flex-col border-r-[3px] border-ink/10 bg-cloud/70">
-        <div className="flex items-center gap-2.5 px-5 pb-5 pt-7">
+        <div className="window-drag flex items-center gap-2.5 px-5 pb-5 pt-7">
           <span className="grid h-11 w-11 place-items-center rounded-2xl border-[3px] border-lemon-ring bg-lemon text-ink shadow-puff-sm animate-float">
             <Puzzle className="h-6 w-6" strokeWidth={2.4} />
           </span>
@@ -127,7 +127,7 @@ export function App() {
       </aside>
 
       <main className="flex flex-1 flex-col overflow-hidden">
-        <header className="relative flex items-center gap-3 border-b-[3px] border-ink/10 px-6 py-3">
+        <header className="window-drag relative flex items-center gap-3 border-b-[3px] border-ink/10 px-6 py-3">
           <span className="flex min-w-0 items-center gap-2 rounded-full border-[3px] border-ink/10 bg-cloud px-3 py-1.5 shadow-puff-sm">
             <Folder className="h-4 w-4 shrink-0 text-ink-soft" strokeWidth={2.2} />
             <span className="truncate text-sm font-bold text-ink/70">{repoRoot.data ?? "finding repo…"}</span>
