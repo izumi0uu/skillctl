@@ -7,6 +7,8 @@ import { Badge, Button, cn, Panel, Spinner, useUi } from "../components/ui";
 import { applyToggle } from "../../../shared/staged-toggles";
 import { api, useAsync } from "../lib/api";
 
+type SyncResultData = Extract<Awaited<ReturnType<typeof api.sync>>, { ok: true }>["data"];
+
 const CATEGORY_DOTS = ["bg-lemon", "bg-blue", "bg-mint", "bg-grape", "bg-pink", "bg-sky", "bg-red"];
 
 function Switch({ on, onToggle, title }: { on: boolean; onToggle: () => void; title: string }) {
@@ -45,6 +47,9 @@ export function Skills({ focusCategory, onFocusHandled }: { focusCategory?: stri
   // the page (or quitting) drops them; nothing is written until "Sync now".
   const [pending, setPending] = useState<Map<string, boolean>>(new Map());
   const [syncing, setSyncing] = useState(false);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "on" | "off">("all");
+  const [lastSync, setLastSync] = useState<SyncResultData | null>(null);
 
   const sourceMap = useMemo(() => {
     const map = new Map<string, NonNullable<typeof sources.data>["sources"][number]>();
@@ -95,6 +100,7 @@ export function Skills({ focusCategory, onFocusHandled }: { focusCategory?: stri
       const result = await api.sync();
       if (result.ok) {
         notify("success", `Synced — ${pending.size} change(s) applied`);
+        setLastSync(result.data);
         setPending(new Map());
         catalog.reload();
         taxonomy.reload();
@@ -119,6 +125,19 @@ export function Skills({ focusCategory, onFocusHandled }: { focusCategory?: stri
     );
   }
 
+  const q = query.trim().toLowerCase();
+  const filteredCategories = (taxonomy.data?.categories ?? [])
+    .map((category) => ({
+      category,
+      skills: category.skills.filter((skill) => {
+        if (q && !skill.skill_id.toLowerCase().includes(q)) return false;
+        if (filter === "on" && !displayedOn(skill.skill_id)) return false;
+        if (filter === "off" && displayedOn(skill.skill_id)) return false;
+        return true;
+      }),
+    }))
+    .filter((entry) => entry.skills.length > 0);
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-3">
@@ -135,15 +154,65 @@ export function Skills({ focusCategory, onFocusHandled }: { focusCategory?: stri
         </div>
       </div>
 
-      {taxonomy.data?.categories.map((category, i) => (
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search skills…"
+          className="w-56 rounded-full border-2 border-ink/15 bg-cloud px-4 py-2 text-sm font-semibold text-ink focus:outline-none focus-visible:ring-4 focus-visible:ring-blue/40"
+        />
+        {(["all", "on", "off"] as const).map((option) => (
+          <Button key={option} variant={filter === option ? "blue" : "ghost"} onClick={() => setFilter(option)}>
+            {option === "all" ? "All" : option === "on" ? "Enabled" : "Disabled"}
+          </Button>
+        ))}
+      </div>
+
+      {lastSync && (
+        <Panel>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-lg font-black">Last sync</h3>
+            <button
+              type="button"
+              onClick={() => setLastSync(null)}
+              className="rounded text-sm font-bold text-ink-soft underline focus:outline-none focus-visible:ring-4 focus-visible:ring-blue/40"
+            >
+              dismiss
+            </button>
+          </div>
+          <div className="mb-2 flex flex-wrap gap-2">
+            <Badge tone="mint">{lastSync.copied.length} copied</Badge>
+            {lastSync.skipped.length > 0 && <Badge tone="lemon">{lastSync.skipped.length} skipped</Badge>}
+          </div>
+          {lastSync.skipped.length > 0 && (
+            <ul className="flex max-h-40 flex-col gap-1 overflow-auto text-sm">
+              {lastSync.skipped.map((entry, index) => (
+                <li key={`${entry.agent}-${entry.skillId}-${index}`} className="flex items-center gap-2">
+                  <Badge tone="neutral">{entry.agent}</Badge>
+                  <span className="font-bold">{entry.skillId}</span>
+                  <span className="truncate text-xs font-semibold text-ink-soft">{entry.reason}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      )}
+
+      {filteredCategories.length === 0 && (
+        <Panel>
+          <p className="font-bold text-ink-soft">No skills match your search.</p>
+        </Panel>
+      )}
+
+      {filteredCategories.map(({ category, skills }, i) => (
         <div key={category.id} id={`cat-${category.id}`} className="scroll-mt-4">
           <div className="mb-2.5 flex items-center gap-2.5">
             <span className={cn("h-5 w-5 rounded-lg", CATEGORY_DOTS[i % CATEGORY_DOTS.length])} />
             <h3 className="text-lg font-black">{category.label}</h3>
-            <Badge tone="neutral">{category.skillCount}</Badge>
+            <Badge tone="neutral">{skills.length}</Badge>
           </div>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
-            {category.skills.map((skill) => {
+            {skills.map((skill) => {
               const on = displayedOn(skill.skill_id);
               const staged = pending.has(skill.skill_id);
               return (

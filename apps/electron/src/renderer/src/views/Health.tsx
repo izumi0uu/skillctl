@@ -94,6 +94,22 @@ export function Health() {
         )}
       </Panel>
 
+      {report.repairActions.length > 0 && (
+        <Panel>
+          <h3 className="mb-3 text-lg font-black">Planned fixes · {report.repairActions.length}</h3>
+          <ul className="flex flex-col gap-1.5 text-sm">
+            {report.repairActions.map((action, index) => (
+              <li key={`${action.type}-${index}`} className="flex items-center gap-2">
+                <Badge tone="grape">{action.type}</Badge>
+                <span className="font-bold text-ink/75">{action.skillId ?? action.agent ?? ""}</span>
+                <span className="truncate text-xs font-semibold text-ink-soft">{action.detail}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs font-semibold text-ink-soft">Run Repair to apply these.</p>
+        </Panel>
+      )}
+
       <div className="grid grid-cols-2 gap-5">
         <Panel>
           <h3 className="mb-3 text-lg font-black">Portability · {report.portability.length}</h3>
