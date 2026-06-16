@@ -13,6 +13,7 @@
     "release:check": "pnpm typecheck && pnpm test && pnpm health-suite",
     "release:mac": "pnpm --filter @skillctl/core build && pnpm --filter skillctl-electron-shell package:mac",
     "cli": "pnpm --filter skillctl-cli exec tsx src/index.ts",
+    "benchmark:sync": "pnpm --filter skillctl-cli exec tsx src/benchmark-sync.ts",
     "health-suite": "pnpm --filter skillctl-cli exec tsx src/health-suite.ts",
     "ci:health": "pnpm typecheck && pnpm test && pnpm health-suite",
     "bootstrap-upstream": "pnpm --filter skillctl-cli exec tsx src/index.ts bootstrap-upstream"

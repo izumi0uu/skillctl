@@ -151,12 +151,17 @@ describe("sync and prune", () => {
         'import path from "node:path";',
         'const args = process.argv.slice(2);',
         'const sourceDir = args[args.indexOf("add") + 1];',
-        'const sIndex = args.indexOf("-s");',
-        'const skillId = sIndex !== -1 ? args[sIndex + 1] : path.basename(sourceDir);',
-        'const dest = path.join(os.homedir(), ".agents", "skills", skillId);',
-        'rmSync(dest, { recursive: true, force: true });',
-        'mkdirSync(path.dirname(dest), { recursive: true });',
-        'cpSync(sourceDir, dest, { recursive: true });',
+        'const skillIds = [];',
+        'for (let i = 0; i < args.length; i += 1) {',
+        '  if (args[i] === "-s" && args[i + 1]) skillIds.push(args[i + 1]);',
+        '}',
+        'for (const skillId of skillIds.length > 0 ? skillIds : [path.basename(sourceDir)]) {',
+        '  const dest = path.join(os.homedir(), ".agents", "skills", skillId);',
+        '  const skillSource = path.join(sourceDir, skillId);',
+        '  rmSync(dest, { recursive: true, force: true });',
+        '  mkdirSync(path.dirname(dest), { recursive: true });',
+        '  cpSync(skillIds.length > 0 ? skillSource : sourceDir, dest, { recursive: true });',
+        '}',
         "",
       ].join("\n"),
       "utf8",
@@ -203,6 +208,122 @@ describe("sync and prune", () => {
     const installed = await fs.readFile(path.join(fakeHome, ".codex", "skills", "alpha", "SKILL.md"), "utf8");
     expect(installed).toContain("## Source Attribution");
     expect(installed).toContain("imported-upstream");
+  });
+
+  test("skills-cli batches sibling skills into a single transport run per agent", async () => {
+    const repoRoot = await makeTempDir("skillctl-sync-cli-batch-");
+    const skillsDir = path.join(repoRoot, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    const alphaPath = await writeSkill(skillsDir, "alpha");
+    const betaPath = await writeSkill(skillsDir, "beta");
+    await writeReadme(repoRoot, "# skillctl\n");
+    const fakeHome = await makeTempDir("skillctl-home-");
+    process.env.HOME = fakeHome;
+
+    const logFile = path.join(repoRoot, "transport-runs.log");
+    const fakeCli = path.join(repoRoot, "fake-skills.mjs");
+    await fs.writeFile(
+      fakeCli,
+      [
+        'import { appendFileSync, cpSync, mkdirSync, readFileSync, rmSync } from "node:fs";',
+        'import os from "node:os";',
+        'import path from "node:path";',
+        'const args = process.argv.slice(2);',
+        'appendFileSync(process.env.SKILLCTL_TEST_LOG, `${JSON.stringify(args)}\\n`);',
+        'const sourceDir = args[args.indexOf("add") + 1];',
+        'const skillIds = [];',
+        'for (let i = 0; i < args.length; i += 1) {',
+        '  if (args[i] === "-s" && args[i + 1]) skillIds.push(args[i + 1]);',
+        '}',
+        'for (const skillId of skillIds) {',
+        '  const dest = path.join(os.homedir(), ".agents", "skills", skillId);',
+        '  const skillSource = path.join(sourceDir, skillId);',
+        '  rmSync(dest, { recursive: true, force: true });',
+        '  mkdirSync(path.dirname(dest), { recursive: true });',
+        '  cpSync(skillSource, dest, { recursive: true });',
+        '}',
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const originalLog = process.env.SKILLCTL_TEST_LOG;
+    process.env.SKILLCTL_TEST_LOG = logFile;
+    try {
+      const catalog: SkillctlCatalog = {
+        version: 1,
+        generatedBy: "test",
+        skills: [
+          {
+            skill_id: "alpha",
+            visibility: "public",
+            source_kind: "local-public",
+            origin_kind: "local-authored",
+            hash: "placeholder",
+            managed: true,
+            targets: ["codex"],
+            canonical_rel_path: path.relative(repoRoot, alphaPath),
+          },
+          {
+            skill_id: "beta",
+            visibility: "public",
+            source_kind: "local-public",
+            origin_kind: "local-authored",
+            hash: "placeholder",
+            managed: true,
+            targets: ["codex"],
+            canonical_rel_path: path.relative(repoRoot, betaPath),
+          },
+        ],
+      };
+      const config: SkillctlConfig = {
+        sourceRoots: [{ path: skillsDir, visibility: "public", managedByDefault: true }],
+        privateRoots: [],
+        enabledAdapters: ["codex"],
+        excludeSkills: [],
+        liveProbePolicy: "off",
+        transport: {
+          mode: "skills-cli",
+          command: "node",
+          args: [fakeCli],
+        },
+        stateDir: path.join(repoRoot, ".skillctl-local"),
+      };
+
+      const result = await syncCatalog(repoRoot, config, catalog);
+      expect(result.copied).toEqual([
+        { agent: "codex", skillId: "alpha" },
+        { agent: "codex", skillId: "beta" },
+      ]);
+      expect(result.transportRuns).toHaveLength(1);
+      expect(result.transportRuns?.[0]?.command).toEqual([
+        "node",
+        fakeCli,
+        "add",
+        skillsDir,
+        "-g",
+        "-a",
+        "codex",
+        "--copy",
+        "-y",
+        "-s",
+        "alpha",
+        "-s",
+        "beta",
+      ]);
+
+      const transportLog = (await fs.readFile(logFile, "utf8")).trim().split("\n").filter(Boolean);
+      expect(transportLog).toHaveLength(1);
+      expect(transportLog[0]).toContain(`"add","${skillsDir}"`);
+      expect(transportLog[0]).toContain(`"-s","alpha"`);
+      expect(transportLog[0]).toContain(`"-s","beta"`);
+    } finally {
+      if (originalLog === undefined) {
+        delete process.env.SKILLCTL_TEST_LOG;
+      } else {
+        process.env.SKILLCTL_TEST_LOG = originalLog;
+      }
+    }
   });
 
   test("prune removes only previously managed directories", async () => {
@@ -358,12 +479,17 @@ describe("sync and prune", () => {
         'import path from "node:path";',
         'const args = process.argv.slice(2);',
         'const sourceDir = args[args.indexOf("add") + 1];',
-        'const sIndex = args.indexOf("-s");',
-        'const skillId = sIndex !== -1 ? args[sIndex + 1] : path.basename(sourceDir);',
-        'const dest = path.join(os.homedir(), ".agents", "skills", skillId);',
-        'rmSync(dest, { recursive: true, force: true });',
-        'mkdirSync(path.dirname(dest), { recursive: true });',
-        'cpSync(sourceDir, dest, { recursive: true });',
+        'const skillIds = [];',
+        'for (let i = 0; i < args.length; i += 1) {',
+        '  if (args[i] === "-s" && args[i + 1]) skillIds.push(args[i + 1]);',
+        '}',
+        'for (const skillId of skillIds.length > 0 ? skillIds : [path.basename(sourceDir)]) {',
+        '  const dest = path.join(os.homedir(), ".agents", "skills", skillId);',
+        '  const skillSource = path.join(sourceDir, skillId);',
+        '  rmSync(dest, { recursive: true, force: true });',
+        '  mkdirSync(path.dirname(dest), { recursive: true });',
+        '  cpSync(skillIds.length > 0 ? skillSource : sourceDir, dest, { recursive: true });',
+        '}',
         "",
       ].join("\n"),
       "utf8",

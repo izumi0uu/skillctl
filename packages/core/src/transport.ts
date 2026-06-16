@@ -76,6 +76,15 @@ function invocationEnv(invocation: ResolvedTransportInvocation): NodeJS.ProcessE
   return invocation.env ? { ...process.env, ...invocation.env } : process.env;
 }
 
+interface SkillsCliBatch {
+  sourceDir: string;
+  skills: CatalogSkill[];
+}
+
+function batchTimeoutMs(skillCount: number): number {
+  return Math.max(30_000, Math.min(300_000, skillCount * 10_000));
+}
+
 async function resolveTransportInvocation(config: SkillctlConfig): Promise<ResolvedTransportInvocation> {
   const embeddedRepo = embeddedRepoPath(config);
   if (embeddedRepo) {
@@ -136,43 +145,68 @@ async function runSkillsCliForAgent(
   agent: AgentId,
   skills: CatalogSkill[],
   onCopied?: (skillId: string) => void,
-): Promise<{ command: string[]; skipped: SyncResult["skipped"]; copied: SyncResult["copied"] }> {
+): Promise<{ commands: string[][]; skipped: SyncResult["skipped"]; copied: SyncResult["copied"] }> {
   const skipped: SyncResult["skipped"] = [];
   const copied: SyncResult["copied"] = [];
-  const transportCommand = [invocation.command, ...invocation.args];
+  const commands: string[][] = [];
 
-  for (const skill of skills) {
+  const resolved = skills.flatMap((skill) => {
     const sourceDir = normalizeSourcePath(repoRoot, skill.canonical_rel_path);
     if (!sourceDir) {
       skipped.push({ agent, skillId: skill.skill_id, reason: "missing canonical path" });
-      continue;
+      return [];
     }
+    return [{ skill, sourceDir }];
+  });
 
+  const sharedSkillsRoot = path.join(repoRoot, "skills");
+  const allUnderSharedRoot = resolved.length > 0
+    && resolved.every(({ sourceDir }) => sourceDir === sharedSkillsRoot || sourceDir.startsWith(`${sharedSkillsRoot}${path.sep}`));
+
+  const batches: SkillsCliBatch[] = [];
+  if (allUnderSharedRoot) {
+    batches.push({ sourceDir: sharedSkillsRoot, skills: resolved.map(({ skill }) => skill) });
+  } else {
+    const byParent = new Map<string, CatalogSkill[]>();
+    for (const entry of resolved) {
+      const parentDir = path.dirname(entry.sourceDir);
+      const group = byParent.get(parentDir) ?? [];
+      group.push(entry.skill);
+      byParent.set(parentDir, group);
+    }
+    for (const [sourceDir, groupedSkills] of byParent) {
+      batches.push({ sourceDir, skills: groupedSkills });
+    }
+  }
+
+  for (const batch of batches) {
     const args = [
       ...invocation.args,
       "add",
-      sourceDir,
+      batch.sourceDir,
       "-g",
       "-a",
       agentArg(agent),
-      "-s",
-      skill.skill_id,
       "--copy",
       "-y",
+      ...batch.skills.flatMap((skill) => ["-s", skill.skill_id]),
     ];
 
     await execFileAsync(invocation.command, args, {
       cwd: invocation.cwd,
       env: invocationEnv(invocation),
-      timeout: 30000,
+      timeout: batchTimeoutMs(batch.skills.length),
     });
 
-    copied.push({ agent, skillId: skill.skill_id });
-    onCopied?.(skill.skill_id);
+    commands.push([invocation.command, ...args]);
+    for (const skill of batch.skills) {
+      copied.push({ agent, skillId: skill.skill_id });
+      onCopied?.(skill.skill_id);
+    }
   }
 
   return {
-    command: transportCommand,
+    commands,
     skipped,
     copied,
   };
@@ -183,13 +217,13 @@ async function mirrorSharedInstallToAdapter(agent: AgentId, copiedSkills: string
   const installDir = getAdapter(agent).installDir();
   await ensureDir(installDir);
 
-  for (const skillId of copiedSkills) {
+  await Promise.all(copiedSkills.map(async (skillId) => {
     const sharedSkillDir = path.join(sharedRoot, skillId);
     if (!await fileExists(sharedSkillDir)) {
-      continue;
+      return;
     }
     await copyDir(sharedSkillDir, path.join(installDir, skillId));
-  }
+  }));
 }
 
 // Apply the source-attribution footer to each skill's final per-agent install
@@ -201,15 +235,15 @@ async function renderInstalledAttribution(agent: AgentId, skills: CatalogSkill[]
   const copiedIds = new Set(copied.map((entry) => entry.skillId));
   const installRoot = getAdapter(agent).installDir();
 
-  for (const skill of skills) {
+  await Promise.all(skills.map(async (skill) => {
     if (!copiedIds.has(skill.skill_id)) {
-      continue;
+      return;
     }
     const installedDir = path.join(installRoot, skill.skill_id);
     if (await fileExists(installedDir)) {
       await expectedSkillRenderedHash(installedDir, skill);
     }
-  }
+  }));
 }
 
 export async function syncViaSkillsCli(
@@ -278,10 +312,9 @@ export async function syncViaSkillsCli(
       onProgress?.({ stage: "mirror", agent, copied: copiedCount, total });
       await mirrorSharedInstallToAdapter(agent, result.copied.map((entry) => entry.skillId));
       await renderInstalledAttribution(agent, installable, result.copied);
-      transportRuns.push({
-        agent,
-        command: [invocation.command, ...invocation.args],
-      });
+      for (const command of result.commands) {
+        transportRuns.push({ agent, command });
+      }
     }
 
     await writeManagedIndex(config.stateDir!, agent, installable);
