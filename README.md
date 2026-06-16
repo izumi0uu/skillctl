@@ -2,9 +2,25 @@
 
 Portable skills control plane for Claude Code, Codex, Pi Agent, Hermes, and OpenCode.
 
-`skillctl` treats a Git-tracked catalog as the source of truth for public-safe local skills, then delegates install/sync transport to the upstream `vercel-labs/skills` CLI through an embedded git submodule by default while keeping local ownership, health checks, and repair policy.
+`skillctl` keeps a Git-tracked catalog as the source of truth for public-safe local skills, then uses the upstream `vercel-labs/skills` CLI as its default transport while preserving local policy, health checks, and repair behavior.
 
-It is intentionally a control-plane wrapper around `vercel-labs/skills`, not a fork of `vercel-labs/agent-skills`. Skill content repositories remain upstream sources; `skillctl` owns policy, cataloging, health checks, and safe multi-agent mirroring.
+It is a control-plane wrapper around `vercel-labs/skills`, not a fork of `vercel-labs/agent-skills`.
+
+## Highlights
+
+- Git-backed skill catalog and provenance
+- Embedded upstream transport by default
+- Multi-adapter sync for 5 built-in targets
+- Health checks, drift detection, and repair
+- macOS desktop control panel for day-to-day operations
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/images/skillctl/dashboard-sync.png" alt="Dashboard sync status" width="32%" />
+  <img src="docs/images/skillctl/skills-grid.png" alt="Skills grid" width="32%" />
+  <img src="docs/images/skillctl/skill-reader.png" alt="Skill reader" width="32%" />
+</p>
 
 ## What It Does
 

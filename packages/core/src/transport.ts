@@ -55,12 +55,34 @@ function embeddedRepoPath(config: SkillctlConfig): string | null {
   return config.transport.embeddedRepoPath ?? null;
 }
 
+function runtimeInvocation(scriptPath: string): Pick<ResolvedTransportInvocation, "command" | "args" | "env"> {
+  if (process.versions.electron) {
+    return {
+      command: process.execPath,
+      args: [scriptPath],
+      env: {
+        ELECTRON_RUN_AS_NODE: "1",
+      },
+    };
+  }
+
+  return {
+    command: process.execPath,
+    args: [scriptPath],
+  };
+}
+
+function invocationEnv(invocation: ResolvedTransportInvocation): NodeJS.ProcessEnv {
+  return invocation.env ? { ...process.env, ...invocation.env } : process.env;
+}
+
 async function resolveTransportInvocation(config: SkillctlConfig): Promise<ResolvedTransportInvocation> {
   const embeddedRepo = embeddedRepoPath(config);
   if (embeddedRepo) {
     const packageJson = path.join(embeddedRepo, "package.json");
     const sourceCli = path.join(embeddedRepo, "src", "cli.ts");
     const builtCli = path.join(embeddedRepo, "bin", "cli.mjs");
+    const distCli = path.join(embeddedRepo, "dist", "cli.mjs");
     const nodeModules = path.join(embeddedRepo, "node_modules");
     const dist = path.join(embeddedRepo, "dist");
 
@@ -69,24 +91,23 @@ async function resolveTransportInvocation(config: SkillctlConfig): Promise<Resol
       const hasSourceCli = await fileExists(sourceCli);
       const hasDist = await fileExists(dist);
       const hasBuiltCli = await fileExists(builtCli);
+      const hasDistCli = await fileExists(distCli);
 
-      if (hasNodeModules && hasSourceCli) {
+      if (hasDist && hasDistCli) {
         return {
-          command: "node",
-          args: [sourceCli],
-          cwd: embeddedRepo,
-          source: "embedded-source",
-          detail: `embedded skills repo ready at ${embeddedRepo}`,
-        };
-      }
-
-      if (hasBuiltCli && hasDist) {
-        return {
-          command: "node",
-          args: [builtCli],
+          ...runtimeInvocation(hasBuiltCli ? builtCli : distCli),
           cwd: embeddedRepo,
           source: "embedded-dist",
           detail: `embedded skills build ready at ${embeddedRepo}`,
+        };
+      }
+
+      if (hasNodeModules && hasSourceCli) {
+        return {
+          ...runtimeInvocation(sourceCli),
+          cwd: embeddedRepo,
+          source: "embedded-source",
+          detail: `embedded skills repo ready at ${embeddedRepo}`,
         };
       }
 
@@ -142,7 +163,7 @@ async function runSkillsCliForAgent(
 
     await execFileAsync(invocation.command, args, {
       cwd: invocation.cwd,
-      env: process.env,
+      env: invocationEnv(invocation),
       timeout: 30000,
     });
 
@@ -303,7 +324,7 @@ export async function transportHealth(config: SkillctlConfig): Promise<Transport
   try {
     await execFileAsync(invocation.command, [...invocation.args, "--help"], {
       cwd: invocation.cwd,
-      env: process.env,
+      env: invocationEnv(invocation),
       timeout: 10000,
     });
     return {

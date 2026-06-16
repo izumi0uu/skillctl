@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import type { Components } from "react-markdown";
 import { EditPencil, OpenInBrowser } from "iconoir-react";
 import type { AgentId, CatalogSkill, SkillCategory, SkillMetaPatch, SourceRegistryEntry } from "@skillctl/core";
 
@@ -32,6 +33,22 @@ interface MetaForm {
 
 function toggleAgent(list: AgentId[], agent: AgentId): AgentId[] {
   return list.includes(agent) ? list.filter((value) => value !== agent) : [...list, agent];
+}
+
+function resolveExternalUrl(href?: string, baseUrl?: string | null): string | null {
+  const trimmed = href?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    if (baseUrl) {
+      return new URL(trimmed, baseUrl).toString();
+    }
+    return new URL(trimmed).toString();
+  } catch {
+    return null;
+  }
 }
 
 export function SkillReader({
@@ -107,24 +124,76 @@ export function SkillReader({
     }
   }, [skill]);
 
+  const url = useMemo(() => sourceUrl(entry), [entry]);
+
+  const openExternalLink = useCallback(async (targetUrl: string) => {
+    const ok = await confirm({ title: "Open in browser?", body: targetUrl, confirmLabel: "Open ↗" });
+    if (!ok) {
+      return;
+    }
+    const res = await api.openExternal(targetUrl);
+    if (!res.ok) {
+      notify("error", res.error);
+    }
+  }, [confirm, notify]);
+
+  const markdownComponents = useMemo<Components>(() => ({
+    a: ({ href, children, ...props }) => {
+      const resolved = resolveExternalUrl(href, url);
+
+      return (
+        <a
+          {...props}
+          href={resolved ?? href}
+          onClick={(event) => {
+            event.preventDefault();
+            if (!resolved) {
+              notify("error", href?.trim() ? `Cannot open link: ${href}` : "Cannot open this link");
+              return;
+            }
+            void openExternalLink(resolved);
+          }}
+        >
+          {children}
+        </a>
+      );
+    },
+  }), [notify, openExternalLink, url]);
+
+  useEffect(() => {
+    if (!skillId) {
+      return;
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented) {
+        return;
+      }
+      if (event.key !== "Escape") {
+        return;
+      }
+      const target = event.target;
+      if (
+        target instanceof HTMLElement
+        && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+      ) {
+        return;
+      }
+      event.preventDefault();
+      onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [skillId, onClose]);
+
   if (!skillId) {
     return null;
   }
-
-  const url = sourceUrl(entry);
 
   async function openSource() {
     if (!url) {
       return;
     }
-    const ok = await confirm({ title: "Open in browser?", body: url, confirmLabel: "Open ↗" });
-    if (!ok) {
-      return;
-    }
-    const res = await api.openExternal(url);
-    if (!res.ok) {
-      notify("error", res.error);
-    }
+    await openExternalLink(url);
   }
 
   async function saveMeta() {
@@ -299,7 +368,7 @@ export function SkillReader({
             <p className="font-bold text-red">{error}</p>
           ) : (
             <div className="md-body">
-              <Markdown remarkPlugins={[remarkGfm]}>{doc ?? ""}</Markdown>
+              <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{doc ?? ""}</Markdown>
             </div>
           )}
         </div>

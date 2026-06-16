@@ -227,7 +227,7 @@ export function Skills({ focusCategory, onFocusHandled }: { focusCategory?: stri
                   <button
                     type="button"
                     onClick={() => setSelected(skill.skill_id)}
-                    className="block w-full rounded text-left focus:outline-none focus-visible:ring-4 focus-visible:ring-blue/40"
+                    className="block h-full w-full rounded text-left focus:outline-none focus-visible:ring-4 focus-visible:ring-blue/40"
                   >
                     <div className="truncate font-extrabold">{skill.skill_id}</div>
                     <div className="mt-1.5 flex flex-wrap gap-1">

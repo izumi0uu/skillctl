@@ -205,6 +205,7 @@ export interface ResolvedTransportInvocation {
   command: string;
   args: string[];
   cwd: string;
+  env?: Record<string, string | undefined>;
   source: "embedded-source" | "embedded-dist" | "fallback";
   detail: string;
 }

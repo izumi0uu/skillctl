@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ComponentType,
@@ -297,6 +298,22 @@ export function UiProvider({ children }: { children: ReactNode }) {
       return null;
     });
   }, []);
+
+  useEffect(() => {
+    if (!confirmState) {
+      return;
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      closeConfirm(false);
+    }
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [closeConfirm, confirmState]);
 
   const value = useMemo(() => ({ notify, confirm }), [notify, confirm]);
 
