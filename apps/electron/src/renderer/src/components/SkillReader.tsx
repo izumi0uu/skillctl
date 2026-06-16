@@ -1,28 +1,59 @@
 import { useEffect, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { OpenInBrowser } from "iconoir-react";
-import type { SourceRegistryEntry } from "@skillctl/core";
+import { EditPencil, OpenInBrowser } from "iconoir-react";
+import type { AgentId, CatalogSkill, SkillCategory, SkillMetaPatch, SourceRegistryEntry } from "@skillctl/core";
 
-import { Badge, Button, Spinner, useUi } from "./ui";
+import { Badge, Button, cn, Spinner, useUi } from "./ui";
 import { GhostLoader } from "./Loaders";
 import { api } from "../lib/api";
 import { sourceUrl } from "../../../shared/source-url";
 
+const AGENTS: AgentId[] = ["claude-code", "codex", "pi", "hermes", "opencode"];
+const CATEGORIES: SkillCategory[] = [
+  "agent-infra",
+  "knowledge-and-research",
+  "frontend-and-design",
+  "deployment-and-platform",
+  "productivity-and-artifacts",
+  "domain-aws-thrive",
+  "system-and-demo",
+];
+const metaInputCls =
+  "w-full rounded-2xl border-2 border-ink/15 bg-cloud px-3 py-2 text-sm font-semibold text-ink focus:outline-none focus-visible:ring-4 focus-visible:ring-blue/40";
+
+interface MetaForm {
+  targets: AgentId[];
+  visibility: "public" | "private";
+  category: SkillCategory | "";
+  tags: string;
+  portability: AgentId[];
+}
+
+function toggleAgent(list: AgentId[], agent: AgentId): AgentId[] {
+  return list.includes(agent) ? list.filter((value) => value !== agent) : [...list, agent];
+}
+
 export function SkillReader({
   skillId,
   entry,
+  skill,
   onClose,
+  onSaved,
 }: {
   skillId: string | null;
   entry?: SourceRegistryEntry;
+  skill?: CatalogSkill;
   onClose: () => void;
+  onSaved?: () => void;
 }) {
   const { confirm, notify } = useUi();
   const [doc, setDoc] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [installs, setInstalls] = useState<string[]>([]);
+  const [editing, setEditing] = useState(false);
+  const [meta, setMeta] = useState<MetaForm | null>(null);
 
   useEffect(() => {
     if (!skillId) {
@@ -61,6 +92,21 @@ export function SkillReader({
     };
   }, [skillId]);
 
+  useEffect(() => {
+    setEditing(false);
+    if (skill) {
+      setMeta({
+        targets: skill.targets,
+        visibility: skill.visibility,
+        category: skill.category ?? "",
+        tags: (skill.tags ?? []).join(", "),
+        portability: skill.distribution?.portability_allow_targets ?? [],
+      });
+    } else {
+      setMeta(null);
+    }
+  }, [skill]);
+
   if (!skillId) {
     return null;
   }
@@ -77,6 +123,27 @@ export function SkillReader({
     }
     const res = await api.openExternal(url);
     if (!res.ok) {
+      notify("error", res.error);
+    }
+  }
+
+  async function saveMeta() {
+    if (!skillId || !meta) {
+      return;
+    }
+    const patch: SkillMetaPatch = {
+      targets: meta.targets,
+      visibility: meta.visibility,
+      category: meta.category || undefined,
+      tags: meta.tags.split(",").map((value) => value.trim()).filter(Boolean),
+      portabilityAllowTargets: meta.portability,
+    };
+    const res = await api.setSkillMeta(skillId, patch);
+    if (res.ok) {
+      notify("success", "Metadata saved");
+      setEditing(false);
+      onSaved?.();
+    } else {
       notify("error", res.error);
     }
   }
@@ -118,6 +185,15 @@ export function SkillReader({
             </div>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            {skill && (
+              <Button
+                variant={editing ? "blue" : "ghost"}
+                icon={EditPencil}
+                onClick={() => setEditing((value) => !value)}
+              >
+                Edit
+              </Button>
+            )}
             {url && (
               <Button variant="blue" icon={OpenInBrowser} onClick={openSource}>
                 Source
@@ -130,7 +206,91 @@ export function SkillReader({
         </div>
 
         <div className="flex-1 overflow-auto px-6 py-5">
-          {loading ? (
+          {editing && meta ? (
+            <div className="flex flex-col gap-4">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold text-ink-soft">Targets</span>
+                <div className="flex flex-wrap gap-2">
+                  {AGENTS.map((agent) => (
+                    <button
+                      key={agent}
+                      type="button"
+                      onClick={() => setMeta({ ...meta, targets: toggleAgent(meta.targets, agent) })}
+                      className={cn(
+                        "rounded-full border-2 px-3 py-1 text-sm font-bold focus:outline-none focus-visible:ring-4 focus-visible:ring-blue/40",
+                        meta.targets.includes(agent) ? "border-mint-ring bg-mint/15 text-ink" : "border-ink/15 text-ink-soft",
+                      )}
+                    >
+                      {agent}
+                    </button>
+                  ))}
+                </div>
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold text-ink-soft">Visibility</span>
+                <div className="flex gap-2">
+                  {(["public", "private"] as const).map((value) => (
+                    <Button
+                      key={value}
+                      variant={meta.visibility === value ? "blue" : "ghost"}
+                      onClick={() => setMeta({ ...meta, visibility: value })}
+                    >
+                      {value}
+                    </Button>
+                  ))}
+                </div>
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold text-ink-soft">Category</span>
+                <select
+                  className={metaInputCls}
+                  value={meta.category}
+                  onChange={(event) => setMeta({ ...meta, category: event.target.value as SkillCategory | "" })}
+                >
+                  <option value="">(unset)</option>
+                  {CATEGORIES.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold text-ink-soft">Tags (comma-separated)</span>
+                <input
+                  className={metaInputCls}
+                  value={meta.tags}
+                  onChange={(event) => setMeta({ ...meta, tags: event.target.value })}
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold text-ink-soft">Portability override — allow targets</span>
+                <div className="flex flex-wrap gap-2">
+                  {AGENTS.map((agent) => (
+                    <button
+                      key={agent}
+                      type="button"
+                      onClick={() => setMeta({ ...meta, portability: toggleAgent(meta.portability, agent) })}
+                      className={cn(
+                        "rounded-full border-2 px-3 py-1 text-sm font-bold focus:outline-none focus-visible:ring-4 focus-visible:ring-blue/40",
+                        meta.portability.includes(agent) ? "border-grape-ring bg-grape/15 text-ink" : "border-ink/15 text-ink-soft",
+                      )}
+                    >
+                      {agent}
+                    </button>
+                  ))}
+                </div>
+              </label>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => setEditing(false)}>
+                  Cancel
+                </Button>
+                <Button variant="mint" onClick={saveMeta}>
+                  Save metadata
+                </Button>
+              </div>
+            </div>
+          ) : loading ? (
             <div className="flex flex-col items-center gap-4 py-12">
               <Spinner />
               <p className="font-bold text-ink-soft">loading…</p>

@@ -255,7 +255,13 @@ export function Skills({ focusCategory, onFocusHandled }: { focusCategory?: stri
       <SkillReader
         skillId={selected}
         entry={selected ? sourceMap.get(selected) : undefined}
+        skill={selected ? catalog.data?.skills.find((entry) => entry.skill_id === selected) : undefined}
         onClose={() => setSelected(null)}
+        onSaved={() => {
+          catalog.reload();
+          taxonomy.reload();
+          sources.reload();
+        }}
       />
       <AdoptWizard
         open={wizardOpen}

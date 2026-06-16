@@ -15,6 +15,7 @@ import type {
   SourceRegistrySummary,
   SourceVerificationReport,
   SyncResult,
+  TransportMode,
 } from "@skillctl/core";
 
 export const CHANNELS = {
@@ -104,6 +105,9 @@ export interface ProgressEvent {
 export interface ConfigPatch {
   enabledAdapters?: AgentId[];
   liveProbePolicy?: ProbePolicy;
+  excludeSkills?: string[];
+  privateRoots?: string[];
+  transport?: { mode?: TransportMode; command?: string; args?: string[] };
 }
 
 export interface RepoStatus {

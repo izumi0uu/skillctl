@@ -1,9 +1,21 @@
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Computer, Folder, Search } from "iconoir-react";
 import type { AgentId } from "@skillctl/core";
 
 import { Badge, Button, cn, Panel, Row, Spinner, useUi } from "../components/ui";
 import { api, useAsync } from "../lib/api";
+
+const inputCls =
+  "w-full rounded-2xl border-2 border-ink/15 bg-cloud px-3 py-2 text-sm font-semibold text-ink focus:outline-none focus-visible:ring-4 focus-visible:ring-blue/40";
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs font-bold text-ink-soft">{label}</span>
+      {children}
+    </label>
+  );
+}
 
 type VerifyReport = Extract<Awaited<ReturnType<typeof api.verifySources>>, { ok: true }>["data"];
 type VerifyStatus = VerifyReport["results"][number]["status"];
@@ -40,6 +52,20 @@ export function Settings({ onRepoChange }: { onRepoChange: () => void }) {
   const config = useAsync(() => api.loadConfig());
   const adapters = useAsync(() => api.adapters());
   const publishable = useAsync(() => api.publish());
+  const [form, setForm] = useState<{ mode: "skills-cli" | "copy-fallback"; command: string; args: string; exclude: string } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (config.data) {
+      setForm({
+        mode: config.data.transport.mode,
+        command: config.data.transport.command,
+        args: config.data.transport.args.join(" "),
+        exclude: config.data.excludeSkills.join(", "),
+      });
+    }
+  }, [config.data]);
   const [verify, setVerify] = useState<{ loading: boolean; report: VerifyReport | null }>({
     loading: false,
     report: null,
@@ -108,6 +134,22 @@ export function Settings({ onRepoChange }: { onRepoChange: () => void }) {
     }
   }
 
+  async function saveConfig() {
+    if (!form) {
+      return;
+    }
+    const res = await api.updateConfig({
+      transport: { mode: form.mode, command: form.command, args: form.args.split(/\s+/u).filter(Boolean) },
+      excludeSkills: form.exclude.split(",").map((value) => value.trim()).filter(Boolean),
+    });
+    if (res.ok) {
+      notify("success", "Config saved");
+      config.reload();
+    } else {
+      notify("error", res.error);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <h1 className="text-3xl font-black">Settings</h1>
@@ -129,6 +171,41 @@ export function Settings({ onRepoChange }: { onRepoChange: () => void }) {
             <Row label="Transport mode" value={config.data?.transport.mode} />
             <PathRow label="Embedded repo" value={config.data?.transport.embeddedRepoPath} onOpen={openFolder} />
             <PathRow label="State dir" value={config.data?.stateDir} onOpen={openFolder} />
+          </div>
+        )}
+      </Panel>
+
+      <Panel>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-lg font-black">Transport &amp; excludes</h3>
+          <Button variant="mint" onClick={saveConfig} disabled={!form}>
+            Save
+          </Button>
+        </div>
+        {form && (
+          <div className="flex flex-col gap-3">
+            <Field label="Transport mode">
+              <div className="flex gap-2">
+                {(["skills-cli", "copy-fallback"] as const).map((mode) => (
+                  <Button
+                    key={mode}
+                    variant={form.mode === mode ? "blue" : "ghost"}
+                    onClick={() => setForm({ ...form, mode })}
+                  >
+                    {mode}
+                  </Button>
+                ))}
+              </div>
+            </Field>
+            <Field label="Command">
+              <input className={inputCls} value={form.command} onChange={(e) => setForm({ ...form, command: e.target.value })} />
+            </Field>
+            <Field label="Args (space-separated)">
+              <input className={inputCls} value={form.args} onChange={(e) => setForm({ ...form, args: e.target.value })} />
+            </Field>
+            <Field label="Excluded skills (comma-separated)">
+              <input className={inputCls} value={form.exclude} onChange={(e) => setForm({ ...form, exclude: e.target.value })} />
+            </Field>
           </div>
         )}
       </Panel>
