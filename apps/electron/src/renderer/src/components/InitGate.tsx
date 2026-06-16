@@ -34,8 +34,8 @@ export function InitGate({ onReady }: { onReady: () => void }) {
 
   return (
     <div className="flex h-screen w-screen flex-col items-center justify-center gap-5 bg-cream p-8 text-center text-ink">
-      <span className="grid h-20 w-20 place-items-center rounded-3xl border-[3px] border-lemon-ring bg-lemon shadow-puff animate-float">
-        <Puzzle className="h-10 w-10" strokeWidth={2.2} />
+      <span className="grid h-18 w-18 place-items-center rounded-[1.4rem] border-[3px] border-lemon-ring bg-lemon shadow-puff animate-float">
+        <Puzzle className="h-9 w-9" strokeWidth={2.2} />
       </span>
       <h1 className="text-2xl font-black">This folder isn’t a skillctl repo yet</h1>
       <p className="max-w-lg break-words font-semibold text-ink-soft">{repoRoot.data ?? "…"}</p>

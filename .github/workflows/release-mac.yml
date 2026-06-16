@@ -1,8 +1,8 @@
 name: Release macOS app
 
-# Builds the unsigned skillctl desktop app (.dmg + .zip) for Apple Silicon and
-# Intel. Runs on a version tag (v*) or manually. No code signing / notarization
-# yet — see the README for how to open an unsigned build.
+# Builds the skillctl desktop app (.dmg + .zip) for Apple Silicon and Intel.
+# If Apple signing/notarization secrets are present, the release is signed and
+# notarized. Otherwise CI falls back to an unsigned build.
 
 on:
   push:
@@ -16,6 +16,8 @@ permissions:
 jobs:
   build-mac:
     runs-on: macos-14
+    env:
+      BUILD_MAC_SIGNED: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_API_KEY_BASE64 != '' && secrets.APPLE_API_KEY_ID != '' && secrets.APPLE_API_ISSUER != '' && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,18 +35,57 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG_VERSION" ]; then
+            echo "Tag version ($TAG) does not match package.json version ($PKG_VERSION)"
+            exit 1
+          fi
+          ELECTRON_VERSION="$(node -p "require('./apps/electron/package.json').version")"
+          if [ "$TAG" != "$ELECTRON_VERSION" ]; then
+            echo "Tag version ($TAG) does not match apps/electron/package.json version ($ELECTRON_VERSION)"
+            exit 1
+          fi
+          CORE_VERSION="$(node -p "require('./packages/core/package.json').version")"
+          if [ "$TAG" != "$CORE_VERSION" ]; then
+            echo "Tag version ($TAG) does not match packages/core/package.json version ($CORE_VERSION)"
+            exit 1
+          fi
+          CLI_VERSION="$(node -p "require('./packages/cli/package.json').version")"
+          if [ "$TAG" != "$CLI_VERSION" ]; then
+            echo "Tag version ($TAG) does not match packages/cli/package.json version ($CLI_VERSION)"
+            exit 1
+          fi
+
       - name: Build core
         run: pnpm --filter @skillctl/core build
 
       - name: Build renderer & main
         run: pnpm --filter skillctl-electron-shell build
 
-      - name: Package unsigned dmg + zip (arm64 + x64)
-        # identity is already null in electron-builder.yml; this env makes the
-        # "no signing" explicit so CI never tries to auto-discover a certificate.
+      - name: Prepare signing assets
+        if: env.BUILD_MAC_SIGNED == 'true'
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/apple"
+          echo "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/apple/cert.p12"
+          echo "$APPLE_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/apple/AuthKey.p8"
+
+      - name: Package dmg + zip (arm64 + x64)
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: pnpm --filter skillctl-electron-shell exec electron-builder --mac --arm64 --x64
+          CSC_LINK: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 != '' && format('file://{0}/apple/cert.p12', runner.temp) || '' }}
+          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_BASE64 != '' && format('{0}/apple/AuthKey.p8', runner.temp) || '' }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: pnpm --filter skillctl-electron-shell exec electron-builder --config electron-builder.config.mjs --mac --arm64 --x64
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -59,6 +100,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          generate_release_notes: true
           files: |
             apps/electron/release/*.dmg
             apps/electron/release/*.zip

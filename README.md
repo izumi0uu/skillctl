@@ -64,18 +64,59 @@ pnpm --filter @skillctl/core build        # core dist must exist first
 pnpm --filter skillctl-electron-shell dev
 ```
 
-Build an unsigned distributable (`.dmg` + `.zip`) for the current architecture:
+Build a distributable (`.dmg` + `.zip`) for the current architecture:
 
 ```bash
-pnpm --filter skillctl-electron-shell package:mac   # output under apps/electron/release/
+pnpm release:mac   # output under apps/electron/release/
 ```
 
-The build is **unsigned** (no Apple Developer ID / notarization yet), so Gatekeeper blocks a plain double-click. To open it anyway:
+If Apple signing / notarization secrets are not present, the build is **unsigned**, so Gatekeeper may block a plain double-click. To open it anyway:
 
 - Right-click the app in Finder → **Open** → **Open** in the dialog, or
 - Clear the quarantine flag: `xattr -dr com.apple.quarantine /Applications/skillctl.app`
 
-CI builds unsigned arm64 + x64 artifacts via `.github/workflows/release-mac.yml` — push a `v*` tag (or run the workflow manually) to attach them to a GitHub release.
+CI builds arm64 + x64 artifacts via `.github/workflows/release-mac.yml`. If the Apple secrets below are configured, the app is signed and notarized; otherwise CI falls back to an unsigned build. Pushing a `v*` tag attaches the artifacts to a GitHub release with auto-generated notes.
+
+## Release flow
+
+1. Create the release commit + local tag in one step:
+
+```bash
+pnpm release:tag 0.2.0
+```
+
+This command:
+
+- updates all workspace package versions
+- refreshes `pnpm-lock.yaml`
+- runs `pnpm release:check`
+- creates a Lore-format release commit
+- creates a local `v0.2.0` tag
+
+2. Push the release commit and tag:
+
+```bash
+git push origin main --tags
+```
+
+3. GitHub Actions builds the release artifacts and attaches them to the GitHub release.
+
+If you want the older manual flow, you can still run `pnpm version:set 0.2.0` followed by `pnpm release:check`, commit manually, and then tag manually.
+
+### Optional: signed + notarized macOS releases
+
+To turn on signing/notarization in CI, add these GitHub Actions secrets:
+
+- `APPLE_CERTIFICATE_P12_BASE64`: base64-encoded `.p12` Developer ID Application certificate
+- `APPLE_CERTIFICATE_PASSWORD`: password for that `.p12`
+- `APPLE_TEAM_ID`: your Apple Developer Team ID
+- `APPLE_API_KEY_BASE64`: base64-encoded App Store Connect API key `.p8`
+- `APPLE_API_KEY_ID`: App Store Connect API key ID
+- `APPLE_API_ISSUER`: App Store Connect issuer ID
+
+When all six secrets are present, the release workflow signs and notarizes automatically. If any are missing, it still produces unsigned `.dmg` + `.zip` artifacts.
+
+Detailed setup checklist: [docs/macos-release-secrets.md](/Users/idah/projects/skillctl/docs/macos-release-secrets.md:1)
 
 ## Health Suite
 

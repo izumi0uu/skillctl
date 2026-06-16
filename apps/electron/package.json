@@ -1,6 +1,6 @@
 {
   "name": "skillctl-electron-shell",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "skillctl — portable skills control plane (macOS desktop shell)",
   "author": "izumi0uu",
@@ -10,7 +10,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "package:mac": "electron-vite build && electron-builder --mac",
+    "package:mac": "electron-vite build && electron-builder --config electron-builder.config.mjs --mac",
     "typecheck:node": "tsc -p tsconfig.node.json --noEmit",
     "typecheck:web": "tsc -p tsconfig.json --noEmit",
     "typecheck": "pnpm typecheck:node && pnpm typecheck:web",
@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@skillctl/core": "workspace:*",
+    "@electron/notarize": "^2.5.0",
     "@types/node": "^24.3.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",

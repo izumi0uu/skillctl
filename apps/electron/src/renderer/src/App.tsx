@@ -84,8 +84,8 @@ export function App() {
     <div className="flex h-screen w-screen overflow-hidden text-ink">
       <aside className="flex w-60 flex-col border-r-[3px] border-ink/10 bg-cloud/70">
         <div className="window-drag flex items-center gap-2.5 px-5 pb-5 pt-7">
-          <span className="grid h-11 w-11 place-items-center rounded-2xl border-[3px] border-lemon-ring bg-lemon text-ink shadow-puff-sm animate-float">
-            <Puzzle className="h-6 w-6" strokeWidth={2.4} />
+          <span className="grid h-9 w-9 place-items-center rounded-[1.1rem] border-[3px] border-lemon-ring bg-lemon text-ink shadow-puff-sm animate-float">
+            <Puzzle className="h-[1.15rem] w-[1.15rem]" strokeWidth={2.4} />
           </span>
           <div>
             <div className="text-xl font-black leading-none">skillctl</div>
