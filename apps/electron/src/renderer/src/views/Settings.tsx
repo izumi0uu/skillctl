@@ -1,8 +1,19 @@
+import { useState } from "react";
 import { Computer, Folder, Search } from "iconoir-react";
 import type { AgentId } from "@skillctl/core";
 
-import { Button, cn, Panel, Row, Spinner, useUi } from "../components/ui";
+import { Badge, Button, cn, Panel, Row, Spinner, useUi } from "../components/ui";
 import { api, useAsync } from "../lib/api";
+
+type VerifyReport = Extract<Awaited<ReturnType<typeof api.verifySources>>, { ok: true }>["data"];
+type VerifyStatus = VerifyReport["results"][number]["status"];
+
+function verifyTone(status: VerifyStatus): "mint" | "lemon" | "red" | "neutral" {
+  if (status === "ok") return "mint";
+  if (status === "warn") return "lemon";
+  if (status === "error") return "red";
+  return "neutral";
+}
 
 function PathRow({ label, value, onOpen }: { label: string; value?: string | null; onOpen: (value: string) => void }) {
   return (
@@ -28,6 +39,11 @@ export function Settings({ onRepoChange }: { onRepoChange: () => void }) {
   const { notify } = useUi();
   const config = useAsync(() => api.loadConfig());
   const adapters = useAsync(() => api.adapters());
+  const [verify, setVerify] = useState<{ loading: boolean; report: VerifyReport | null }>({
+    loading: false,
+    report: null,
+  });
+  const verifyReport = verify.report;
 
   const enabled = new Set<AgentId>(config.data?.enabledAdapters ?? []);
   const probePolicy = config.data?.liveProbePolicy;
@@ -47,11 +63,14 @@ export function Settings({ onRepoChange }: { onRepoChange: () => void }) {
   }
 
   async function verifySources() {
+    setVerify({ loading: true, report: null });
     const res = await api.verifySources();
     if (!res.ok) {
+      setVerify({ loading: false, report: null });
       notify("error", res.error);
       return;
     }
+    setVerify({ loading: false, report: res.data });
     notify(res.data.ok ? "success" : "info", res.data.ok ? "All sources verified" : "Some sources need a look");
   }
 
@@ -96,9 +115,6 @@ export function Settings({ onRepoChange }: { onRepoChange: () => void }) {
         <Button variant="blue" icon={Folder} onClick={chooseRepo}>
           Choose repo
         </Button>
-        <Button variant="grape" icon={Search} onClick={verifySources}>
-          Verify sources
-        </Button>
       </div>
 
       <Panel>
@@ -113,6 +129,54 @@ export function Settings({ onRepoChange }: { onRepoChange: () => void }) {
             <PathRow label="Embedded repo" value={config.data?.transport.embeddedRepoPath} onOpen={openFolder} />
             <PathRow label="State dir" value={config.data?.stateDir} onOpen={openFolder} />
           </div>
+        )}
+      </Panel>
+
+      <Panel>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h3 className="text-lg font-black">Source verification</h3>
+          <Button variant="grape" icon={Search} onClick={verifySources} disabled={verify.loading}>
+            {verify.loading ? "Verifying…" : "Verify sources"}
+          </Button>
+        </div>
+        {verify.loading ? (
+          <div className="flex items-center gap-2 text-sm font-bold text-ink-soft">
+            <Spinner /> checking upstream refs…
+          </div>
+        ) : verifyReport ? (
+          <div className="flex flex-col gap-2.5">
+            <div className="flex flex-wrap gap-2">
+              <Badge tone={verifyReport.ok ? "mint" : "lemon"}>
+                {verifyReport.ok ? "all good" : "needs attention"}
+              </Badge>
+              {(["ok", "warn", "error", "skip"] as const).map((status) => {
+                const count = verifyReport.results.filter((entry) => entry.status === status).length;
+                return count > 0 ? (
+                  <Badge key={status} tone={verifyTone(status)}>
+                    {count} {status}
+                  </Badge>
+                ) : null;
+              })}
+            </div>
+            <div className="flex max-h-80 flex-col gap-1.5 overflow-auto">
+              {verifyReport.results.map((entry) => (
+                <div key={entry.skill_id} className="flex items-start gap-2 rounded-2xl border-2 border-ink/8 p-2 text-sm">
+                  <Badge tone={verifyTone(entry.status)}>{entry.status}</Badge>
+                  <div className="min-w-0">
+                    <span className="font-extrabold">{entry.skill_id}</span>
+                    <span className="font-semibold text-ink-soft"> — {entry.detail}</span>
+                    {entry.resolved_ref && (
+                      <span className="ml-1 text-xs font-semibold text-ink-soft">({entry.resolved_ref})</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm font-semibold text-ink-soft">
+            Check that each upstream skill still resolves to its pinned ref. This hits the network.
+          </p>
         )}
       </Panel>
 
