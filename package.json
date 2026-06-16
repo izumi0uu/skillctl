@@ -1,7 +1,7 @@
 {
   "name": "skillctl-workspace",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "packageManager": "pnpm@10.33.2",
   "scripts": {
     "build": "pnpm -r build",
