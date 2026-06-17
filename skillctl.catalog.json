@@ -380,6 +380,222 @@
       "canonical_rel_path": "skills/productivity-and-artifacts/google-sheets-editor"
     },
     {
+      "skill_id": "gsap-core",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "312ee7cbc0649178a9ea8bd39a5ed3a9cefa767f",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/gsap-core",
+      "upstream": {
+        "repo": "greensock/gsap-skills",
+        "ref": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+        "skillPath": "skills/gsap-core",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/greensock/gsap-skills",
+        "imported_at": "2026-06-17T07:28:24.340Z",
+        "last_verified_ref": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+        "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "gsap-frameworks",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "e6fa2f0192a9c2cd0a1ed50dd89015fc6e75a640",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/gsap-frameworks",
+      "upstream": {
+        "repo": "greensock/gsap-skills",
+        "ref": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+        "skillPath": "skills/gsap-frameworks",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/greensock/gsap-skills",
+        "imported_at": "2026-06-17T07:28:25.038Z",
+        "last_verified_ref": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+        "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "gsap-performance",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "b0b84a19d3bf507e9d513c9c2e3d5fea9c765342",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/gsap-performance",
+      "upstream": {
+        "repo": "greensock/gsap-skills",
+        "ref": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+        "skillPath": "skills/gsap-performance",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/greensock/gsap-skills",
+        "imported_at": "2026-06-17T07:28:25.609Z",
+        "last_verified_ref": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+        "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "gsap-plugins",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "30078de150ceb2b803edee38f0816c1c83033218",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/gsap-plugins",
+      "upstream": {
+        "repo": "greensock/gsap-skills",
+        "ref": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+        "skillPath": "skills/gsap-plugins",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/greensock/gsap-skills",
+        "imported_at": "2026-06-17T07:28:26.330Z",
+        "last_verified_ref": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+        "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "gsap-react",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "4846d3a47059a1fe3f07cde11844082572807ab8",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/gsap-react",
+      "upstream": {
+        "repo": "greensock/gsap-skills",
+        "ref": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+        "skillPath": "skills/gsap-react",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/greensock/gsap-skills",
+        "imported_at": "2026-06-17T07:28:27.465Z",
+        "last_verified_ref": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+        "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "gsap-scrolltrigger",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "ca88ad238752089e43cf57a183bed02aaf3bad0c",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/gsap-scrolltrigger",
+      "upstream": {
+        "repo": "greensock/gsap-skills",
+        "ref": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+        "skillPath": "skills/gsap-scrolltrigger",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/greensock/gsap-skills",
+        "imported_at": "2026-06-17T07:28:28.401Z",
+        "last_verified_ref": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+        "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "gsap-timeline",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "231ded8aa32de03dc1ce00d8faaaaaccd4530a7c",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/gsap-timeline",
+      "upstream": {
+        "repo": "greensock/gsap-skills",
+        "ref": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+        "skillPath": "skills/gsap-timeline",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/greensock/gsap-skills",
+        "imported_at": "2026-06-17T07:28:29.288Z",
+        "last_verified_ref": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+        "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "gsap-utils",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "6c6fae30d1e517ca89abe8d2d9e50bc40a61dd9b",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/gsap-utils",
+      "upstream": {
+        "repo": "greensock/gsap-skills",
+        "ref": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+        "skillPath": "skills/gsap-utils",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/greensock/gsap-skills",
+        "imported_at": "2026-06-17T07:28:30.034Z",
+        "last_verified_ref": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+        "local_modifications": false
+      }
+    },
+    {
       "skill_id": "hermes-upstream-worktree-fix",
       "category": "agent-infra",
       "tags": [
