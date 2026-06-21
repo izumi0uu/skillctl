@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub Issues Dashboard Ops"
+  short_description: "Operate and ship the GitHub Issues Dashboard"
+  default_prompt: "Use $github-issues-dashboard-ops to develop, deploy, or diagnose the GitHub Issues Dashboard across local and VPS environments."

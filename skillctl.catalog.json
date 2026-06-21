@@ -358,6 +358,23 @@
       }
     },
     {
+      "skill_id": "github-issues-dashboard-ops",
+      "category": "deployment-and-platform",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "163743d89cf351932c6891c370517dc6e5da263a",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/deployment-and-platform/github-issues-dashboard-ops"
+    },
+    {
       "skill_id": "google-sheets-editor",
       "category": "productivity-and-artifacts",
       "tags": [
