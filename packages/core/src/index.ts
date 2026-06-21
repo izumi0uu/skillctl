@@ -12,6 +12,7 @@ export * from "./init.js";
 export * from "./paths.js";
 export * from "./prune.js";
 export * from "./repair.js";
+export * from "./repo-references.js";
 export * from "./schema.js";
 export * from "./skill.js";
 export * from "./source-verification.js";

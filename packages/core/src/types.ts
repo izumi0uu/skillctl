@@ -18,6 +18,8 @@ export type SkillCategory =
   | "domain-aws-thrive"
   | "system-and-demo";
 export type ManagedSkillCategoryId = SkillCategory | "uncategorized";
+export type RepoReferenceMode = "reference-only";
+export type RepoReferenceSourceType = "github" | "git" | "local";
 
 export type DoctorStatus = "ok" | "warn" | "error";
 
@@ -85,6 +87,28 @@ export interface SkillctlCatalog {
   version: number;
   generatedBy: string;
   skills: CatalogSkill[];
+}
+
+export interface RepoReferenceEntry {
+  id: string;
+  display_name?: string;
+  category?: SkillCategory;
+  tags?: string[];
+  mode: RepoReferenceMode;
+  repo?: string;
+  ref?: string;
+  sourceType: RepoReferenceSourceType;
+  sourceUrl: string;
+  primarySkillPaths: string[];
+  referencePaths?: string[];
+  why: string;
+  notes?: string;
+}
+
+export interface RepoReferenceRegistry {
+  version: number;
+  generatedBy: string;
+  references: RepoReferenceEntry[];
 }
 
 export interface ManagedSkillIndexEntry {

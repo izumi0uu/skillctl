@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { skillctlCatalogSchema, skillctlConfigSchema } from "../src/schema.js";
+import { repoReferenceRegistrySchema, skillctlCatalogSchema, skillctlConfigSchema } from "../src/schema.js";
 
 describe("schema", () => {
   test("accepts valid config", () => {
@@ -65,5 +65,28 @@ describe("schema", () => {
       }],
     });
     expect(parsed.skills[0]?.upstream?.repo).toBe("owner/repo");
+  });
+
+  test("accepts repo reference registry", () => {
+    const parsed = repoReferenceRegistrySchema.parse({
+      version: 1,
+      generatedBy: "skillctl",
+      references: [{
+        id: "adhd",
+        display_name: "ADHD",
+        category: "knowledge-and-research",
+        mode: "reference-only",
+        repo: "UditAkhourii/adhd",
+        ref: "main",
+        sourceType: "github",
+        sourceUrl: "https://github.com/UditAkhourii/adhd",
+        primarySkillPaths: ["skills/adhd"],
+        referencePaths: ["README.md", "SOURCE-SPEC.md", "documentation/"],
+        why: "Track a repo-form methodology reference without treating it as a managed installable skill.",
+      }],
+    });
+
+    expect(parsed.references[0]?.mode).toBe("reference-only");
+    expect(parsed.references[0]?.primarySkillPaths).toEqual(["skills/adhd"]);
   });
 });

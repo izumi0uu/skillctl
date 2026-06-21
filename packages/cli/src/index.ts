@@ -6,6 +6,7 @@ import process from "node:process";
 import {
   CATALOG_FILE,
   CONFIG_FILE,
+  REPO_REFERENCES_FILE,
   adoptSkill,
   buildManagedSkillTaxonomy,
   buildSourceRegistry,
@@ -18,13 +19,16 @@ import {
   bootstrapEmbeddedSkills,
   loadCatalog,
   loadConfig,
+  loadRepoReferenceRegistry,
   normalizeCatalogArtifacts,
   pruneManaged,
   repairCatalog,
   runDoctor,
   summarizeCatalog,
   syncCatalog,
+  upsertRepoReference,
   writeCatalog,
+  writeRepoReferenceRegistry,
 } from "@skillctl/core";
 import { findWorkspaceRoot } from "./repo-root.js";
 
@@ -45,6 +49,8 @@ function usage(): string {
   skillctl sources [--json]
   skillctl taxonomy [--json]
   skillctl verify-sources [--json]
+  skillctl refs [--json]
+  skillctl refs add --id <id> --source-url <url> --source-type <github|git|local> --why <reason> [--display-name <name>] [--category <category>] [--repo <owner/repo>] [--ref <ref>] [--primary-skill-path <path> ...] [--reference-path <path> ...] [--tag <tag> ...] [--notes <text>] [--replace]
   skillctl adapters
 
 Notes:
@@ -159,8 +165,52 @@ async function writeManifestSchemas(repoRoot: string): Promise<void> {
     },
   };
 
+  const repoReferencesSchema = {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    title: "skillctl repo references",
+    type: "object",
+    required: ["version", "generatedBy", "references"],
+    properties: {
+      version: { type: "integer", minimum: 1 },
+      generatedBy: { type: "string" },
+      references: {
+        type: "array",
+        items: {
+          type: "object",
+          required: ["id", "mode", "sourceType", "sourceUrl", "primarySkillPaths", "why"],
+          properties: {
+            id: { type: "string" },
+            display_name: { type: "string" },
+            category: {
+              enum: [
+                "agent-infra",
+                "knowledge-and-research",
+                "frontend-and-design",
+                "deployment-and-platform",
+                "productivity-and-artifacts",
+                "domain-aws-thrive",
+                "system-and-demo",
+              ],
+            },
+            tags: { type: "array", items: { type: "string" } },
+            mode: { enum: ["reference-only"] },
+            repo: { type: "string" },
+            ref: { type: "string" },
+            sourceType: { enum: ["github", "git", "local"] },
+            sourceUrl: { type: "string" },
+            primarySkillPaths: { type: "array", items: { type: "string" }, minItems: 1 },
+            referencePaths: { type: "array", items: { type: "string" } },
+            why: { type: "string" },
+            notes: { type: "string" },
+          },
+        },
+      },
+    },
+  };
+
   await fs.writeFile(path.join(schemasDir, "skillctl.config.schema.json"), `${JSON.stringify(configSchema, null, 2)}\n`);
   await fs.writeFile(path.join(schemasDir, "skillctl.catalog.schema.json"), `${JSON.stringify(catalogSchema, null, 2)}\n`);
+  await fs.writeFile(path.join(schemasDir, "skillctl.repo-references.schema.json"), `${JSON.stringify(repoReferencesSchema, null, 2)}\n`);
 }
 
 async function ensureInitialized(repoRoot: string): Promise<void> {
@@ -180,6 +230,7 @@ async function discoverAndPersist(repoRoot: string): Promise<{ conflicts: Array<
 async function statusCommand(repoRoot: string): Promise<void> {
   const config = await loadConfig(repoRoot);
   const catalog = await loadCatalog(repoRoot);
+  const repoReferences = await loadRepoReferenceRegistry(repoRoot);
   const summary = summarizeCatalog(catalog);
   const taxonomy = buildManagedSkillTaxonomy(catalog);
   const sources = buildSourceRegistry(catalog);
@@ -193,6 +244,10 @@ async function statusCommand(repoRoot: string): Promise<void> {
       installDir: getAdapter(agent).installDir(),
     })),
     summary,
+    repoReferenceSummary: {
+      total: repoReferences.references.length,
+      referenceOnly: repoReferences.references.filter((reference) => reference.mode === "reference-only").length,
+    },
     taxonomySummary: taxonomy.summary,
     sourceSummary,
   }, null, 2));
@@ -304,6 +359,20 @@ function hasFlag(args: string[], flag: string): boolean {
   return args.includes(flag);
 }
 
+function readMultiFlag(args: string[], flag: string): string[] {
+  const values: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === flag) {
+      const value = args[index + 1];
+      if (value === undefined || value.startsWith("--")) {
+        throw new Error(`${flag} requires a value`);
+      }
+      values.push(value);
+    }
+  }
+  return values;
+}
+
 function parseEnumFlag<T extends string>(args: string[], flag: string, allowed: readonly T[]): T | undefined {
   const value = readFlag(args, flag);
   if (value === undefined) {
@@ -400,93 +469,184 @@ async function adaptersCommand(): Promise<void> {
   console.log(JSON.stringify(listAdapters(), null, 2));
 }
 
-async function main(): Promise<void> {
-  const [command, ...args] = process.argv.slice(2);
-  const repoRoot = await repoRootFromCwd();
+async function refsCommand(repoRoot: string, args: string[]): Promise<void> {
+  const [subcommand, ...subArgs] = args;
+  const registry = await loadRepoReferenceRegistry(repoRoot);
+
+  if (!subcommand) {
+    console.log(JSON.stringify({
+      repoRoot,
+      file: path.join(repoRoot, REPO_REFERENCES_FILE),
+      references: registry.references,
+    }, null, 2));
+    return;
+  }
+
+  if (subcommand === "add") {
+    const id = readFlag(subArgs, "--id");
+    if (!id) {
+      throw new Error("refs add requires --id <id>");
+    }
+
+    const sourceUrl = readFlag(subArgs, "--source-url");
+    if (!sourceUrl) {
+      throw new Error("refs add requires --source-url <url>");
+    }
+
+    const sourceType = parseEnumFlag(subArgs, "--source-type", ["github", "git", "local"] as const);
+    if (!sourceType) {
+      throw new Error("refs add requires --source-type <github|git|local>");
+    }
+
+    const why = readFlag(subArgs, "--why");
+    if (!why) {
+      throw new Error("refs add requires --why <reason>");
+    }
+
+    const category = parseEnumFlag(subArgs, "--category", [
+      "agent-infra",
+      "knowledge-and-research",
+      "frontend-and-design",
+      "deployment-and-platform",
+      "productivity-and-artifacts",
+      "domain-aws-thrive",
+      "system-and-demo",
+    ] as const);
+
+    const primarySkillPaths = readMultiFlag(subArgs, "--primary-skill-path");
+    if (primarySkillPaths.length === 0) {
+      throw new Error("refs add requires at least one --primary-skill-path <path>");
+    }
+    const referencePaths = readMultiFlag(subArgs, "--reference-path");
+    const tags = readMultiFlag(subArgs, "--tag");
+    const result = upsertRepoReference(registry, {
+      id,
+      display_name: readFlag(subArgs, "--display-name"),
+      category,
+      tags: tags.length > 0 ? tags : undefined,
+      mode: "reference-only",
+      repo: readFlag(subArgs, "--repo"),
+      ref: readFlag(subArgs, "--ref"),
+      sourceType,
+      sourceUrl,
+      primarySkillPaths,
+      referencePaths: referencePaths.length > 0 ? referencePaths : undefined,
+      why,
+      notes: readFlag(subArgs, "--notes"),
+    }, { replace: hasFlag(subArgs, "--replace") });
+    await writeRepoReferenceRegistry(repoRoot, registry);
+    console.log(JSON.stringify({
+      created: result.created,
+      file: path.join(repoRoot, REPO_REFERENCES_FILE),
+      reference: result.entry,
+    }, null, 2));
+    return;
+  }
+
+  if (subcommand === "--json") {
+    console.log(JSON.stringify({
+      repoRoot,
+      file: path.join(repoRoot, REPO_REFERENCES_FILE),
+      references: registry.references,
+    }, null, 2));
+    return;
+  }
+
+  throw new Error(`unknown refs subcommand: ${subcommand}`);
+}
+
+export async function runCli(argv: string[], cwd = process.cwd()): Promise<number> {
+  const [command, ...args] = argv;
+  const repoRoot = await findWorkspaceRoot(cwd);
 
   switch (command) {
     case "init": {
       const result = await initRepo(repoRoot);
       await writeManifestSchemas(repoRoot);
       console.log(JSON.stringify(result, null, 2));
-      return;
+      return 0;
     }
     case "discover":
     case "import": {
       await ensureInitialized(repoRoot);
       const result = await discoverAndPersist(repoRoot);
       console.log(JSON.stringify(result, null, 2));
-      process.exitCode = result.conflicts.length > 0 ? 2 : 0;
-      return;
+      return result.conflicts.length > 0 ? 2 : 0;
     }
     case "adopt": {
       await ensureInitialized(repoRoot);
       await adoptCommand(repoRoot, args);
-      return;
+      return 0;
     }
     case "sync": {
       await ensureInitialized(repoRoot);
       await syncCommand(repoRoot);
-      return;
+      return 0;
     }
     case "bootstrap-upstream": {
       await ensureInitialized(repoRoot);
       await bootstrapUpstreamCommand(repoRoot);
-      return;
+      return 0;
     }
     case "status": {
       await ensureInitialized(repoRoot);
       await statusCommand(repoRoot);
-      return;
+      return 0;
     }
     case "diff": {
       await ensureInitialized(repoRoot);
-      process.exitCode = await diffCommand(repoRoot);
-      return;
+      return diffCommand(repoRoot);
     }
     case "doctor": {
       await ensureInitialized(repoRoot);
-      process.exitCode = await doctorCommand(repoRoot, args.includes("--json"));
-      return;
+      return doctorCommand(repoRoot, args.includes("--json"));
     }
     case "repair": {
       await ensureInitialized(repoRoot);
-      process.exitCode = await repairCommand(repoRoot, args.includes("--json"));
-      return;
+      return repairCommand(repoRoot, args.includes("--json"));
     }
     case "prune": {
       await ensureInitialized(repoRoot);
       await pruneCommand(repoRoot);
-      return;
+      return 0;
     }
     case "publish": {
       await ensureInitialized(repoRoot);
       await publishCommand(repoRoot);
-      return;
+      return 0;
     }
     case "sources": {
       await ensureInitialized(repoRoot);
       await sourcesCommand(repoRoot, args.includes("--json"));
-      return;
+      return 0;
     }
     case "taxonomy": {
       await ensureInitialized(repoRoot);
       await taxonomyCommand(repoRoot, args.includes("--json"));
-      return;
+      return 0;
     }
     case "verify-sources": {
       await ensureInitialized(repoRoot);
-      process.exitCode = await verifySourcesCommand(repoRoot, args.includes("--json"));
-      return;
+      return verifySourcesCommand(repoRoot, args.includes("--json"));
+    }
+    case "refs": {
+      await ensureInitialized(repoRoot);
+      await refsCommand(repoRoot, args);
+      return 0;
     }
     case "adapters": {
       await adaptersCommand();
-      return;
+      return 0;
     }
     default: {
       console.log(usage());
+      return 0;
     }
   }
+}
+
+async function main(): Promise<void> {
+  process.exitCode = await runCli(process.argv.slice(2));
 }
 
 main().catch((error) => {

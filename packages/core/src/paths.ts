@@ -5,6 +5,7 @@ import type { AgentId } from "./types.js";
 
 export const CONFIG_FILE = "skillctl.config.json";
 export const CATALOG_FILE = "skillctl.catalog.json";
+export const REPO_REFERENCES_FILE = "skillctl.repo-references.json";
 export const DEFAULT_EMBEDDED_SKILLS_REPO = "vercel-skills";
 export const README_FILE = "README.md";
 

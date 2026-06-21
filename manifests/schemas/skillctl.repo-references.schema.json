@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "skillctl repo references",
+  "type": "object",
+  "required": [
+    "version",
+    "generatedBy",
+    "references"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "generatedBy": {
+      "type": "string"
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "mode",
+          "sourceType",
+          "sourceUrl",
+          "primarySkillPaths",
+          "why"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "category": {
+            "enum": [
+              "agent-infra",
+              "knowledge-and-research",
+              "frontend-and-design",
+              "deployment-and-platform",
+              "productivity-and-artifacts",
+              "domain-aws-thrive",
+              "system-and-demo"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mode": {
+            "enum": [
+              "reference-only"
+            ]
+          },
+          "repo": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "sourceType": {
+            "enum": [
+              "github",
+              "git",
+              "local"
+            ]
+          },
+          "sourceUrl": {
+            "type": "string"
+          },
+          "primarySkillPaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "referencePaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "why": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

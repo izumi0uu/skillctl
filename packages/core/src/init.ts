@@ -2,14 +2,16 @@ import path from "node:path";
 
 import { fileExists, writeJson, ensureDir } from "./fs.js";
 import { writeDefaultConfig } from "./config.js";
-import { CATALOG_FILE, CONFIG_FILE, defaultStateDir } from "./paths.js";
+import { CATALOG_FILE, CONFIG_FILE, REPO_REFERENCES_FILE, defaultStateDir } from "./paths.js";
 import { emptyCatalog } from "./catalog.js";
+import { emptyRepoReferenceRegistry } from "./repo-references.js";
 
 export async function initRepo(repoRoot: string): Promise<{ created: string[]; skipped: string[] }> {
   const created: string[] = [];
   const skipped: string[] = [];
   const configPath = path.join(repoRoot, CONFIG_FILE);
   const catalogPath = path.join(repoRoot, CATALOG_FILE);
+  const repoReferencesPath = path.join(repoRoot, REPO_REFERENCES_FILE);
   const stateDir = defaultStateDir(repoRoot);
 
   if (!await fileExists(configPath)) {
@@ -24,6 +26,13 @@ export async function initRepo(repoRoot: string): Promise<{ created: string[]; s
     created.push(CATALOG_FILE);
   } else {
     skipped.push(CATALOG_FILE);
+  }
+
+  if (!await fileExists(repoReferencesPath)) {
+    await writeJson(repoReferencesPath, emptyRepoReferenceRegistry());
+    created.push(REPO_REFERENCES_FILE);
+  } else {
+    skipped.push(REPO_REFERENCES_FILE);
   }
 
   const dirEntries = [

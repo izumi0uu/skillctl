@@ -81,6 +81,31 @@ export const skillctlCatalogSchema = z.object({
   skills: z.array(catalogSkillSchema),
 });
 
+export const repoReferenceModeSchema = z.enum(["reference-only"]);
+export const repoReferenceSourceTypeSchema = z.enum(["github", "git", "local"]);
+
+export const repoReferenceEntrySchema = z.object({
+  id: z.string().min(1),
+  display_name: z.string().min(1).optional(),
+  category: skillCategorySchema.optional(),
+  tags: z.array(z.string().min(1)).optional(),
+  mode: repoReferenceModeSchema.default("reference-only"),
+  repo: z.string().min(1).optional(),
+  ref: z.string().min(1).optional(),
+  sourceType: repoReferenceSourceTypeSchema,
+  sourceUrl: z.string().min(1),
+  primarySkillPaths: z.array(z.string().min(1)).min(1),
+  referencePaths: z.array(z.string().min(1)).optional(),
+  why: z.string().min(1),
+  notes: z.string().min(1).optional(),
+});
+
+export const repoReferenceRegistrySchema = z.object({
+  version: z.number().int().positive(),
+  generatedBy: z.string().min(1),
+  references: z.array(repoReferenceEntrySchema),
+});
+
 export const managedSkillIndexEntrySchema = z.object({
   skill_id: z.string().min(1),
   hash: z.string().min(1),

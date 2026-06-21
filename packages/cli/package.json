@@ -7,7 +7,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run",
+    "test": "pnpm --dir ../.. --filter @skillctl/core build && vitest run",
     "lint": "pnpm --dir ../.. --filter @skillctl/core build && tsc -p tsconfig.json --noEmit",
     "typecheck": "pnpm --dir ../.. --filter @skillctl/core build && tsc -p tsconfig.json --noEmit"
   },
