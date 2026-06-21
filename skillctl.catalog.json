@@ -397,6 +397,60 @@
       "canonical_rel_path": "skills/productivity-and-artifacts/google-sheets-editor"
     },
     {
+      "skill_id": "grill-me",
+      "category": "knowledge-and-research",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "9f7847e420627e32e87c4331a099cdca26726b03",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/knowledge-and-research/grill-me",
+      "upstream": {
+        "repo": "mattpocock/skills",
+        "ref": "694fa30311e02c2639942308513555e61ee84a6f",
+        "skillPath": "skills/productivity/grill-me",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/mattpocock/skills/tree/main/skills/productivity/grill-me",
+        "imported_at": "2026-06-17T13:12:45.703Z",
+        "last_verified_ref": "694fa30311e02c2639942308513555e61ee84a6f",
+        "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "grill-with-docs",
+      "category": "knowledge-and-research",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "24aedc7e18966ebddcaea3e7966994bfe4f7de13",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/knowledge-and-research/grill-with-docs",
+      "upstream": {
+        "repo": "mattpocock/skills",
+        "ref": "694fa30311e02c2639942308513555e61ee84a6f",
+        "skillPath": "skills/engineering/grill-with-docs",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/mattpocock/skills/tree/main/skills/engineering/grill-with-docs",
+        "imported_at": "2026-06-17T13:12:46.927Z",
+        "last_verified_ref": "694fa30311e02c2639942308513555e61ee84a6f",
+        "local_modifications": false
+      }
+    },
+    {
       "skill_id": "gsap-core",
       "category": "frontend-and-design",
       "visibility": "public",
@@ -664,6 +718,33 @@
         "imported_at": "2026-06-14T15:05:00.000Z",
         "last_verified_ref": "main",
         "local_modifications": true
+      }
+    },
+    {
+      "skill_id": "llm-intern-skill",
+      "category": "productivity-and-artifacts",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "70765b83654972e8cf3fabb6df7582f91c039225",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/productivity-and-artifacts/llm-intern-skill",
+      "upstream": {
+        "repo": "couragec/LLMInternSkill",
+        "ref": "11db44f57b3d78ae3f83072b3959cd7a5d85df0b",
+        "skillPath": ".",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/couragec/LLMInternSkill",
+        "imported_at": "2026-06-21T05:12:23.698Z",
+        "last_verified_ref": "11db44f57b3d78ae3f83072b3959cd7a5d85df0b",
+        "local_modifications": false
       }
     },
     {
