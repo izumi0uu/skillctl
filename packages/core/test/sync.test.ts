@@ -151,12 +151,14 @@ describe("sync and prune", () => {
         'import path from "node:path";',
         'const args = process.argv.slice(2);',
         'const sourceDir = args[args.indexOf("add") + 1];',
+        'const agent = args[args.indexOf("-a") + 1];',
         'const skillIds = [];',
         'for (let i = 0; i < args.length; i += 1) {',
         '  if (args[i] === "-s" && args[i + 1]) skillIds.push(args[i + 1]);',
         '}',
         'for (const skillId of skillIds.length > 0 ? skillIds : [path.basename(sourceDir)]) {',
-        '  const dest = path.join(os.homedir(), ".agents", "skills", skillId);',
+        '  const base = agent === "claude-code" ? path.join(os.homedir(), ".claude", "skills") : path.join(os.homedir(), ".agents", "skills");',
+        '  const dest = path.join(base, skillId);',
         '  const skillSource = path.join(sourceDir, skillId);',
         '  rmSync(dest, { recursive: true, force: true });',
         '  mkdirSync(path.dirname(dest), { recursive: true });',
@@ -208,6 +210,95 @@ describe("sync and prune", () => {
     const installed = await fs.readFile(path.join(fakeHome, ".codex", "skills", "alpha", "SKILL.md"), "utf8");
     expect(installed).toContain("## Source Attribution");
     expect(installed).toContain("imported-upstream");
+  });
+
+  test("skills-cli transport keeps direct claude-code installs even when shared layer is stale", async () => {
+    const repoRoot = await makeTempDir("skillctl-sync-cli-claude-direct-");
+    const skillsDir = path.join(repoRoot, "skills");
+    await fs.mkdir(skillsDir, { recursive: true });
+    const skillPath = await writeSkill(skillsDir, "alpha", "fresh-marker");
+    await writeReadme(repoRoot, "# skillctl\n");
+    const fakeHome = await makeTempDir("skillctl-home-");
+    process.env.HOME = fakeHome;
+
+    const staleSharedDir = path.join(fakeHome, ".agents", "skills", "alpha");
+    await fs.mkdir(staleSharedDir, { recursive: true });
+    await fs.writeFile(
+      path.join(staleSharedDir, "SKILL.md"),
+      "---\nname: alpha\ndescription: stale shared copy\n---\n\nstale-shared-marker\n",
+      "utf8",
+    );
+
+    const fakeCli = path.join(repoRoot, "fake-claude-skills.mjs");
+    await fs.writeFile(
+      fakeCli,
+      [
+        'import { cpSync, mkdirSync, rmSync } from "node:fs";',
+        'import os from "node:os";',
+        'import path from "node:path";',
+        'const args = process.argv.slice(2);',
+        'const sourceDir = args[args.indexOf("add") + 1];',
+        'const skillIds = [];',
+        'for (let i = 0; i < args.length; i += 1) {',
+        '  if (args[i] === "-s" && args[i + 1]) skillIds.push(args[i + 1]);',
+        '}',
+        'for (const skillId of skillIds.length > 0 ? skillIds : [path.basename(sourceDir)]) {',
+        '  const dest = path.join(os.homedir(), ".claude", "skills", skillId);',
+        '  const skillSource = path.join(sourceDir, skillId);',
+        '  rmSync(dest, { recursive: true, force: true });',
+        '  mkdirSync(path.dirname(dest), { recursive: true });',
+        '  cpSync(skillIds.length > 0 ? skillSource : sourceDir, dest, { recursive: true });',
+        '}',
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const catalog: SkillctlCatalog = {
+      version: 1,
+      generatedBy: "test",
+      skills: [{
+        skill_id: "alpha",
+        visibility: "public",
+        source_kind: "local-public",
+        origin_kind: "imported-upstream",
+        hash: "placeholder",
+        managed: true,
+        targets: ["claude-code"],
+        canonical_rel_path: path.relative(repoRoot, skillPath),
+        upstream: {
+          repo: "owner/repo",
+          ref: "main",
+          skillPath: "skills/alpha",
+          sourceType: "github",
+          local_modifications: false,
+        },
+      }],
+    };
+    const config: SkillctlConfig = {
+      sourceRoots: [{ path: skillsDir, visibility: "public", managedByDefault: true }],
+      privateRoots: [],
+      enabledAdapters: ["claude-code"],
+      excludeSkills: [],
+      liveProbePolicy: "off",
+      transport: {
+        mode: "skills-cli",
+        command: "node",
+        args: [fakeCli],
+      },
+      stateDir: path.join(repoRoot, ".skillctl-local"),
+    };
+
+    const result = await syncCatalog(repoRoot, config, catalog);
+
+    expect(result.copied).toContainEqual({ agent: "claude-code", skillId: "alpha" });
+    const installed = await fs.readFile(path.join(fakeHome, ".claude", "skills", "alpha", "SKILL.md"), "utf8");
+    expect(installed).toContain("fresh-marker");
+    expect(installed).toContain("## Source Attribution");
+    expect(installed).not.toContain("stale-shared-marker");
+
+    const staleShared = await fs.readFile(path.join(fakeHome, ".agents", "skills", "alpha", "SKILL.md"), "utf8");
+    expect(staleShared).toContain("stale-shared-marker");
   });
 
   test("skills-cli batches sibling skills into a single transport run per agent", async () => {
@@ -479,12 +570,14 @@ describe("sync and prune", () => {
         'import path from "node:path";',
         'const args = process.argv.slice(2);',
         'const sourceDir = args[args.indexOf("add") + 1];',
+        'const agent = args[args.indexOf("-a") + 1];',
         'const skillIds = [];',
         'for (let i = 0; i < args.length; i += 1) {',
         '  if (args[i] === "-s" && args[i + 1]) skillIds.push(args[i + 1]);',
         '}',
         'for (const skillId of skillIds.length > 0 ? skillIds : [path.basename(sourceDir)]) {',
-        '  const dest = path.join(os.homedir(), ".agents", "skills", skillId);',
+        '  const base = agent === "claude-code" ? path.join(os.homedir(), ".claude", "skills") : path.join(os.homedir(), ".agents", "skills");',
+        '  const dest = path.join(base, skillId);',
         '  const skillSource = path.join(sourceDir, skillId);',
         '  rmSync(dest, { recursive: true, force: true });',
         '  mkdirSync(path.dirname(dest), { recursive: true });',

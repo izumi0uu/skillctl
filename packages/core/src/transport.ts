@@ -213,6 +213,9 @@ async function runSkillsCliForAgent(
 }
 
 async function mirrorSharedInstallToAdapter(agent: AgentId, copiedSkills: string[]): Promise<void> {
+  if (!getAdapter(agent).skillsCliUsesSharedLayer) {
+    return;
+  }
   const sharedRoot = path.join(os.homedir(), ".agents", "skills");
   const installDir = getAdapter(agent).installDir();
   await ensureDir(installDir);
@@ -227,9 +230,9 @@ async function mirrorSharedInstallToAdapter(agent: AgentId, copiedSkills: string
 }
 
 // Apply the source-attribution footer to each skill's final per-agent install
-// location. This must run AFTER mirrorSharedInstallToAdapter: for universal
-// agents the upstream CLI copies into ~/.agents/skills and the mirror brings it
-// into the adapter dir, so footering the adapter dir before the mirror would be
+// location. This must run AFTER any shared-layer mirror: some agents are written
+// by the upstream CLI into ~/.agents/skills first and only then mirrored into
+// the adapter dir, so footering the adapter dir before that mirror would be
 // silently lost (and leave installs in permanent footer drift).
 async function renderInstalledAttribution(agent: AgentId, skills: CatalogSkill[], copied: SyncResult["copied"]): Promise<void> {
   const copiedIds = new Set(copied.map((entry) => entry.skillId));

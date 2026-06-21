@@ -13,6 +13,7 @@ export interface AgentAdapter {
   installDir(homeDir?: string): string;
   canProbe: boolean;
   skillsCliAgent?: string;
+  skillsCliUsesSharedLayer?: boolean;
   probeCommand?: { file: string; args: string[] };
 }
 
@@ -25,6 +26,7 @@ export const BUILTIN_ADAPTERS: Record<AgentId, AgentAdapter> = {
     installDir: (homeDir = home()) => path.join(homeDir, ".claude", "skills"),
     canProbe: true,
     skillsCliAgent: "claude-code",
+    skillsCliUsesSharedLayer: false,
     probeCommand: { file: "claude", args: ["--help"] },
   },
   codex: {
@@ -33,6 +35,7 @@ export const BUILTIN_ADAPTERS: Record<AgentId, AgentAdapter> = {
     installDir: (homeDir = home()) => path.join(homeDir, ".codex", "skills"),
     canProbe: true,
     skillsCliAgent: "codex",
+    skillsCliUsesSharedLayer: true,
     probeCommand: { file: "codex", args: ["--help"] },
   },
   pi: {
@@ -41,6 +44,7 @@ export const BUILTIN_ADAPTERS: Record<AgentId, AgentAdapter> = {
     installDir: (homeDir = home()) => path.join(homeDir, ".pi", "agent", "skills"),
     canProbe: false,
     skillsCliAgent: "pi",
+    skillsCliUsesSharedLayer: false,
   },
   hermes: {
     id: "hermes",
@@ -48,6 +52,7 @@ export const BUILTIN_ADAPTERS: Record<AgentId, AgentAdapter> = {
     installDir: (homeDir = home()) => path.join(homeDir, ".hermes", "skills"),
     canProbe: true,
     skillsCliAgent: "hermes-agent",
+    skillsCliUsesSharedLayer: false,
     probeCommand: { file: "hermes", args: ["--help"] },
   },
   opencode: {
@@ -56,6 +61,7 @@ export const BUILTIN_ADAPTERS: Record<AgentId, AgentAdapter> = {
     installDir: (homeDir = home()) => path.join(homeDir, ".config", "opencode", "skills"),
     canProbe: true,
     skillsCliAgent: "opencode",
+    skillsCliUsesSharedLayer: true,
     probeCommand: { file: "opencode", args: ["--help"] },
   },
 };

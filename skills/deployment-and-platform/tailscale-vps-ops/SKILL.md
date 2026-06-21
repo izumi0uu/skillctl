@@ -40,6 +40,24 @@ Discover them from the current machine, reflect them in your response, and use t
 3. Run a minimal connectivity probe before heavier commands.
 4. Summarize health in grouped sections instead of dumping raw command output.
 5. Do not persist newly discovered private host details back into this canonical skill.
+6. When the task follows a local code iteration, do not evaluate the remote service until you have confirmed the VPS is actually serving the latest intended code.
+
+## Code Iteration Rule
+
+If the user just changed code locally and then asks you to check, verify, or use a VPS-hosted service, assume the remote service may still be stale until proven otherwise.
+
+Before trusting any remote UI, API, or systemd result:
+
+1. identify whether the remote service is repo-backed
+2. verify the local intended source of truth
+3. verify the VPS repo path or deployed artifact path
+4. sync or pull the intended version first
+5. restart only the relevant service
+6. verify both:
+   - code identity
+   - runtime health
+
+Do not say "the VPS behavior is current" if you have only checked service health but not code freshness.
 
 ## Standard Flow
 
@@ -97,6 +115,30 @@ Once the probe works, keep using the same discovered:
 - Hermes paths
 
 Do not keep re-probing keys or switching users mid-session unless evidence shows the first working combination stopped working.
+
+### 5. If the task is about a repo-backed service, discover the code path too
+
+Extract, when relevant:
+
+- remote repo path
+- remote branch
+- remote origin
+- local canonical repo path
+- relevant systemd unit or launcher
+
+Typical proof commands:
+
+```bash
+ssh -o StrictHostKeyChecking=no -i <KEY> <USER>@<VPS_HOST> "
+  cd <REMOTE_REPO> &&
+  git status --short &&
+  git branch --show-current &&
+  git remote -v &&
+  git rev-parse HEAD
+"
+```
+
+Use this before claiming the VPS is on the expected code.
 
 ## VPS Health Overview
 
@@ -185,6 +227,61 @@ ssh -N -L 8765:127.0.0.1:8765 -i <KEY> <USER>@<VPS_HOST>
 Then open `http://127.0.0.1:8765` locally.
 
 If Tailscale `serve` is intentionally part of the setup, remember the first enablement may require elevated privileges or an operator assignment.
+
+## Repo-Backed Service Deploy Loop
+
+Use this when the VPS service is backed by a Git checkout or a synced local repo and the user expects the remote behavior to reflect fresh local edits.
+
+### Standard sequence
+
+1. validate the change locally first
+2. determine the canonical local repo
+3. determine the remote repo path and runtime unit
+4. sync the intended code to the VPS
+5. restart the relevant service
+6. verify code identity and runtime health
+7. only then inspect the user-visible behavior
+
+### Minimum remote proof after sync
+
+```bash
+ssh -o StrictHostKeyChecking=no -i <KEY> <USER>@<VPS_HOST> "
+  cd <REMOTE_REPO> &&
+  git rev-parse HEAD &&
+  systemctl is-active <SERVICE_NAME> &&
+  curl -fsS http://127.0.0.1:<PORT>/api/health
+"
+```
+
+If the service exposes a build id, commit hash, or UI build marker, verify that too. Prefer runtime truth over assuming a restart picked up the latest file.
+
+### When Git pull is not the actual transport
+
+Some services are updated by `scp` or `rsync` instead of `git pull`.
+
+In that case:
+
+- verify the exact remote file or directory changed
+- capture a post-sync proof such as:
+  - file timestamp
+  - file hash
+  - runtime `ui_build`
+  - endpoint response containing version metadata
+
+Do not stop after `systemctl restart` alone.
+
+### GitHub Issues Dashboard pattern
+
+For the dashboard service specifically, the safest verification chain is:
+
+1. local repo passes focused validation
+2. sync `app.py` and any relevant tests or support files to `/home/ubuntu/.hermes/services/github-issues-dashboard`
+3. restart `github-issues-dashboard.service`
+4. verify `/api/health`
+5. verify `ui_build`
+6. verify the changed HTML or API behavior
+
+If local `127.0.0.1:8765` is an SSH tunnel to the VPS, remember that "local page still old" may simply mean the VPS service was not updated yet. Check remote `/api/health` first.
 
 ## Web Dashboard Troubleshooting Pitfall
 
@@ -308,6 +405,29 @@ See `references/ssh-heredoc-python-trap.md`. Prefer `echo` line-by-line, `python
 ### Pitfall 8: Cron output blocked by invisible Unicode
 
 If a Hermes cron run is blocked by prompt-injection scanning because of hidden Unicode, see `references/cron-prompt-injection-unicode-fix.md`.
+
+### Pitfall 9: Treating a healthy service as proof of fresh code
+
+`systemctl is-active` only proves the process is running. It does not prove the VPS is serving the latest intended code.
+
+For repo-backed services, always verify one of:
+
+- remote commit hash
+- synced file hash
+- runtime build marker
+- endpoint version field
+
+before concluding the deploy is current.
+
+### Pitfall 10: Forgetting that localhost may be a tunnel to the VPS
+
+If `http://127.0.0.1:<PORT>` on the Mac is forwarded over SSH, then browser results reflect remote state, not local source files.
+
+When the browser still shows old behavior:
+
+1. inspect the remote `/api/health`
+2. inspect the remote build marker or file hash
+3. only then blame browser cache
 
 ## Reporting Rule
 

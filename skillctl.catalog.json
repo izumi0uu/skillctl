@@ -962,7 +962,7 @@
       "visibility": "public",
       "source_kind": "upstream",
       "origin_kind": "derived-from-upstream",
-      "hash": "f91a9d7334c2e889cc23b364c03920bdb434a50f",
+      "hash": "194a0c5a2ed2affd88bb7301fb78588823c006c3",
       "managed": true,
       "targets": [
         "claude-code",
