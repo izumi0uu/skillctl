@@ -1,15 +1,17 @@
 ---
 name: hermes-upstream-worktree-fix
-description: "Use when working on Hermes upstream fixes or maintaining the standardized local Hermes worktree bench: keep the main checkout plus three intentionally retained numbered worktrees clean and isolated for parallel upstream development, reuse only those numbered lanes by switching branches inside them, sync the needed lanes to latest upstream/main before development, reproduce on a clean baseline, implement the smallest fix, validate locally, and draft issue/PR artifacts without publishing until explicitly confirmed."
+description: "Use when working on Hermes upstream fixes or maintaining the standardized local Hermes worktree bench after issue triage is already done: keep the main checkout plus three intentionally retained numbered worktrees clean and isolated for parallel upstream development, reuse only those numbered lanes by switching branches inside them, sync the needed lanes to latest upstream/main before development, reproduce on a clean baseline, implement the smallest fix, validate locally, and draft issue/PR artifacts without publishing until explicitly confirmed."
 ---
 
 # Hermes Upstream Worktree Fix
 
 ## Overview
 
-Use this skill when Hermes work should happen on a clean, standardized local bench instead of an ad-hoc checkout. It covers two related jobs:
+Use this skill when Hermes fix work should happen on a clean, standardized local bench instead of an ad-hoc checkout. It covers two related jobs:
 - keep the local Hermes bench healthy
 - reproduce and land minimal upstream fixes from that clean bench
+
+Use `$hermes-issue-triage` first when the issue itself still needs to be judged as live, fixed, duplicate, or wrong-premise.
 
 Default posture:
 - safe local inspect/sync/rebase/worktree/venv/node_modules setup, editing, testing, branching, and drafting are allowed
@@ -22,7 +24,7 @@ Default posture:
 
 ## Use When
 
-- The user wants to investigate or fix a Hermes upstream bug.
+- The user wants to reproduce or fix a Hermes upstream bug after triage says it is worth pursuing.
 - The user wants the Hermes local workspace normalized before starting development.
 - The bug may depend on stale branches, shared state, profile contamination, packaging, or version skew.
 - The user wants issue and PR drafts rooted in clean-worktree evidence.
@@ -32,9 +34,11 @@ Default posture:
 - The request is only a quick local hotfix with no need for clean-baseline proof.
 - The user wants fully automatic GitHub publishing with no confirmation gates.
 - The task is only code review or explanation with no workspace maintenance or patching.
+- The main open question is still whether the issue is real on current `main`; use `$hermes-issue-triage` first.
 
 ## Non-Negotiable Boundaries
 
+- Do not skip issue triage when the main uncertainty is whether the report is still valid on current `main`.
 - Do not call something an upstream bug until clean-baseline checks rule out local skew.
 - Keep exactly four retained local Hermes checkouts unless the user explicitly asks for a different topology.
 - Do not use `~/.hermes/hermes-agent` as the default checkout for upstream bugfix or feature development. Reserve it for local usage, personal workflow tuning, and experience testing unless the user explicitly overrides that policy.
@@ -112,6 +116,7 @@ If you need a reusable gate list, load `references/checklist.md`.
   - `AGENTS.md` if present
   - `CONTRIBUTING.md`
   - `.github/PULL_REQUEST_TEMPLATE.md` if a PR is likely
+- If issue validity is still uncertain, stop and run `$hermes-issue-triage` before doing fix work.
 - Resolve artifact-style precedence before you commit or publish:
   - for external GitHub artifacts, prefer the target repo's observed upstream conventions
   - if local workspace rules add extra commit structure, keep it only when compatible with upstream style
@@ -121,6 +126,7 @@ If you need a reusable gate list, load `references/checklist.md`.
 
 ### 3. Reproduce on a clean baseline
 
+- Assume issue triage already established that the report is worth pursuing.
 - Record the exact baseline commit used for reproduction.
 - Capture the real environment that matters:
   - OS / distro
@@ -227,14 +233,15 @@ If the user asks only for worktree maintenance, stop at topology, sync, isolatio
 When this skill is active, the useful default output is:
 
 1. Worktree topology and sync status
-2. Baseline commit and checkout used
-3. Reproduction status
-4. Source-level root cause
-5. Minimal fix summary
-6. Validation evidence
-7. Issue draft or issue link
-8. PR draft or PR link
-9. Clear publish status or cleanup blockers
+2. Triage prerequisite status
+3. Baseline commit and checkout used
+4. Reproduction status
+5. Source-level root cause
+6. Minimal fix summary
+7. Validation evidence
+8. Issue draft or issue link
+9. PR draft or PR link
+10. Clear publish status or cleanup blockers
 
 ## Reference Files
 

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Hermes Issue Triage"
+  short_description: "Decide if a Hermes issue is live, fixed, duplicate, or wrong-premise"
+  default_prompt: "Use $hermes-issue-triage to verify this Hermes issue against latest upstream/main, check for overlapping issues/PRs, and give an evidence-backed verdict before any fix work."
+
+policy:
+  allow_implicit_invocation: true

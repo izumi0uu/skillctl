@@ -667,6 +667,23 @@
       }
     },
     {
+      "skill_id": "hermes-issue-triage",
+      "category": "agent-infra",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "d8a05b36d67f1d572ca192a83db4d31c79f8203b",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/hermes-issue-triage"
+    },
+    {
       "skill_id": "hermes-upstream-worktree-fix",
       "category": "agent-infra",
       "tags": [
@@ -677,7 +694,7 @@
       "visibility": "public",
       "source_kind": "local-public",
       "origin_kind": "local-authored",
-      "hash": "9a7b1cc95fff0f3f911581c8add9e02d957a567e",
+      "hash": "b71979665ab04a545d5958dcb4fed5c236011e63",
       "managed": true,
       "targets": [
         "claude-code",
