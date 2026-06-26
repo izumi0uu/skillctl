@@ -1,0 +1,4 @@
+interface:
+  display_name: "Chrome Web Store Publish"
+  short_description: "Prepare and audit Chrome extension store submissions"
+  default_prompt: "Use $chrome-web-store-publish to audit this Chrome extension for Chrome Web Store submission, package it correctly, and check listing, permissions, and privacy readiness."

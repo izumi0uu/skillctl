@@ -70,6 +70,23 @@
       "canonical_rel_path": "skills/domain-aws-thrive/aws-rds-dump-restore"
     },
     {
+      "skill_id": "chrome-web-store-publish",
+      "category": "deployment-and-platform",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "021271596e51f7a311f17299844f0d1659ea6672",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/deployment-and-platform/chrome-web-store-publish"
+    },
+    {
       "skill_id": "claude-design",
       "category": "frontend-and-design",
       "visibility": "public",
