@@ -1,6 +1,6 @@
 ---
 name: hermes-upstream-worktree-fix
-description: "Use when working on Hermes upstream fixes or maintaining the standardized local Hermes worktree bench after issue triage is already done: keep the main checkout plus three intentionally retained numbered worktrees clean and isolated for parallel upstream development, reuse only those numbered lanes by switching branches inside them, sync the needed lanes to latest upstream/main before development, reproduce on a clean baseline, implement the smallest fix, validate locally, and draft issue/PR artifacts without publishing until explicitly confirmed."
+description: "Use when working on Hermes upstream fixes or maintaining the standardized local Hermes worktree bench after issue triage is already done: default to the main checkout plus three intentionally retained numbered worktrees for parallel upstream development, reuse those numbered lanes by switching branches inside them when possible, honor explicit user-requested topology overrides when needed, sync the needed lanes to latest upstream/main before development, reproduce on a clean baseline, implement the smallest fix, validate locally, and draft or publish issue/PR artifacts only when the user has explicitly asked for publication."
 ---
 
 # Hermes Upstream Worktree Fix
@@ -15,12 +15,13 @@ Use `$hermes-issue-triage` first when the issue itself still needs to be judged 
 
 Default posture:
 - safe local inspect/sync/rebase/worktree/venv/node_modules setup, editing, testing, branching, and drafting are allowed
-- `git push`, `gh issue create`, and `gh pr create` require explicit user confirmation
+- `git push`, `gh issue create`, and `gh pr create` require explicit user confirmation; a direct user instruction in the current thread counts as that confirmation, so do not stop to re-ask
 - issue and PR text may be drafted automatically, but publication stays human-gated
 - if the task is only worktree hygiene, stop after reporting topology, sync status, and any blockers
 - treat `~/.hermes/hermes-agent` as the user's local-experience lane, not the default upstream bugfix/feature lane
 - treat the three numbered worktrees as the normal retained parallel-development bench, not as accidental clutter to collapse by default
 - never create a new ad-hoc or temporary Hermes worktree when lane `1-3` can be reused by switching branches inside an existing lane
+- if the user explicitly requests a different topology for this run (for example `lane4`), treat that as a deliberate override to honor and document, not as silent bench drift
 
 ## Use When
 
@@ -41,14 +42,15 @@ Default posture:
 - Do not skip issue triage when the main uncertainty is whether the report is still valid on current `main`.
 - Do not call something an upstream bug until clean-baseline checks rule out local skew.
 - Keep exactly four retained local Hermes checkouts unless the user explicitly asks for a different topology.
+- When the user explicitly asks for a different topology, treat that as a deliberate override for the current task; keep the override isolated and explicit instead of forcing policy compliance mid-task.
 - Do not use `~/.hermes/hermes-agent` as the default checkout for upstream bugfix or feature development. Reserve it for local usage, personal workflow tuning, and experience testing unless the user explicitly overrides that policy.
 - Keep the three numbered worktrees available for concurrent upstream investigations or fixes unless the user explicitly wants a slimmer bench. Their existence is intentional and should be reflected in the skill/config, not treated as maintenance debt by default.
 - Do not create extra Hermes worktrees outside the retained four just because the current branch in lane `1-3` is inconvenient. Reuse lane `1-3` by switching branches inside those lanes.
-- If all three numbered lanes contain active work that cannot safely be repurposed, surface that as a blocker instead of creating a fifth upstream-development worktree.
+- If all three numbered lanes contain active work that cannot safely be repurposed, surface that as a blocker unless the user has explicitly overridden the default topology for this task.
 - Do not delete extra worktrees or branches if they contain dirty changes or unique commits; surface that as a blocker first.
 - Keep fixes minimal and issue-scoped. Do not mix in unrelated cleanup or architecture work.
 - Every material claim in the final write-up must be either direct evidence, a clearly labeled inference, or an explicit unknown.
-- Drafting is allowed. Publishing is not allowed without explicit user confirmation.
+- Drafting is allowed. Publishing is not allowed without explicit user confirmation, but a direct request such as "push this" or "open the PR" is sufficient confirmation.
 
 ## Hermes Local Worktree Policy
 
@@ -92,6 +94,7 @@ Sync rule before upstream development:
 Cleanup rule:
 - prune unnecessary Hermes worktrees and local branches beyond the retained four after confirming they are clean and merged or otherwise disposable
 - extra temporary Hermes worktrees are drift from policy; clean them up and restore the bench to the retained four whenever it is safe to do so
+- do not classify a user-requested active override lane as disposable drift while the task it was created for is still in progress
 - if a numbered slot is recycled, either restore the canonical `worktree/<n>` mapping or update `~/.hermes/admin/worktree-bench.json` so the lane-to-branch ownership stays explicit before new development starts
 
 ## Workflow
@@ -107,6 +110,7 @@ Cleanup rule:
 - If extra Hermes worktrees or branches exist, remove only the clearly disposable ones and report anything that needs human review.
 - If a lane's current branch is the wrong task, switch that lane's branch in place rather than creating a new worktree.
 - If lanes `1-3` are all occupied by active work that cannot be safely repurposed, stop and report that blocker instead of creating another worktree.
+- If the user explicitly requested a non-default lane or temporary topology override, create or use that override lane deliberately, record why, and avoid disturbing occupied retained lanes just to satisfy the default policy.
 
 If you need a reusable gate list, load `references/checklist.md`.
 
@@ -163,7 +167,7 @@ Do not say "this is definitely upstream" unless the source-level explanation sur
 - Create a fresh bugfix branch inside one of lanes `1-3` from the clean baseline if needed.
 - Prefer implementing upstream-facing fixes in a numbered upstream-development worktree, not in `~/.hermes/hermes-agent`.
 - Do not create a new temporary worktree just because a numbered lane is on the wrong branch; switch that lane to the needed branch in place.
-- If no numbered lane can be repurposed safely, treat that as a blocker to surface, not as permission to add a fourth upstream-development lane.
+- If no numbered lane can be repurposed safely, treat that as a blocker to surface unless the user has explicitly asked for a temporary topology override such as an additional named lane.
 - Match the target repo's branch naming and commit conventions.
 - For commit messages, match the target repo's **subject-line** convention first.
   - Example: if upstream PRs and commits are using `fix(desktop): ...`, do not substitute a local freeform subject like `Keep desktop ...`
@@ -224,6 +228,8 @@ The agent may prepare commands and drafts, but must stop for explicit confirmati
 - `gh pr create`
 
 This gate is intentionally narrow. Do not stop for ordinary safe local work just because this skill is active.
+When the user has already directly asked for one of those publish actions in the current thread, treat that as the required confirmation and proceed without a second permission handoff.
+Execute publish steps sequentially, not in parallel: finalize commit state first, then push, then create the GitHub artifact from the pushed branch.
 
 If the user asks only for drafts, stop at markdown text and command suggestions.
 If the user asks only for worktree maintenance, stop at topology, sync, isolation, and cleanup status.
