@@ -1431,6 +1431,23 @@
       }
     },
     {
+      "skill_id": "watch-hot-node",
+      "category": "agent-infra",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "554b2b8743c8d90fc2704286afa793b4786b637c",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/watch-hot-node"
+    },
+    {
       "skill_id": "web-design-guidelines",
       "category": "frontend-and-design",
       "tags": [

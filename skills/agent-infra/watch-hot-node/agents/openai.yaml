@@ -1,0 +1,7 @@
+interface:
+  display_name: "Watch Hot Node"
+  short_description: "Capture short-lived hot node or codex spikes"
+  default_prompt: "Use $watch-hot-node to install or run a macOS watcher that captures evidence for short-lived hot node or codex processes."
+
+policy:
+  allow_implicit_invocation: true
