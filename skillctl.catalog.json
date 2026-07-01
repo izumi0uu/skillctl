@@ -380,7 +380,7 @@
       "visibility": "public",
       "source_kind": "local-public",
       "origin_kind": "local-authored",
-      "hash": "7b01ad8d5675f653f4afdf43f7d6d6ae547ed56a",
+      "hash": "9cf8dade7f3b9d9c0d080f6fa02dd6dc2140ffb0",
       "managed": true,
       "targets": [
         "claude-code",

@@ -1,17 +1,34 @@
 ---
 name: github-issues-dashboard-ops
-description: Operate, develop, deploy, and diagnose the GitHub Issues Dashboard project across its local repo and VPS service. Use when the task involves the dashboard codebase, its SQLite-backed FastAPI service, the `github-issues-dashboard.service` systemd unit, local-to-VPS sync, health checks, archive/reconcile behavior, or safe incident response without damaging dashboard data.
+description: Operate, develop, deploy, and diagnose the standalone GitHub Issues Dashboard service that currently monitors `NousResearch/hermes-agent` issues. Use when the task involves the dashboard codebase, its SQLite-backed FastAPI service, the `github-issues-dashboard.service` systemd unit, local-to-VPS sync, health checks, archive/reconcile behavior, or safe incident response without damaging dashboard data.
 ---
 
 # GitHub Issues Dashboard Ops
 
 Use this skill for the repo-specific maintenance loop around the GitHub Issues Dashboard.
 
+## Service Scope
+
+- This dashboard is a standalone GitHub issue monitor and triage service. It is not a Hermes core runtime feature.
+- In this environment it lives under `~/.hermes/services` and often reuses the Hermes venv, but those are deployment details, not product identity.
+- The current monitored upstream repository is `NousResearch/hermes-agent`.
+
+## MCP Server Identity
+
+When operating this service through Codex MCP, the canonical MCP server is:
+
+- server name: `github_monitor`
+- transport URL: `http://127.0.0.1:8766/mcp`
+- health URL: `http://127.0.0.1:8766/health`
+
+When the task is about reading or mutating dashboard issue state through tools, explicitly prefer the `github_monitor` MCP server before falling back to raw API curls or browser-only checks.
+
 ## Canonical Facts
 
 - Local repo: `/Users/idah/.hermes/services/github-issues-dashboard`
 - VPS repo: `/home/ubuntu/.hermes/services/github-issues-dashboard`
 - Canonical Git remote: `git@github.com:izumi0uu/github-issues-dashboard.git`
+- Current monitored upstream repo: `NousResearch/hermes-agent`
 - Runtime port: `127.0.0.1:8765`
 - Systemd unit: `github-issues-dashboard.service`
 - Launcher: `run_dashboard.sh`
@@ -45,7 +62,9 @@ Treat these as the starting assumptions unless fresh repo evidence shows they ch
 
 ### 0. Codex MCP access
 
-Use this path when the user wants Codex, not Hermes, to talk to the dashboard service.
+Use this path when the user wants Codex, rather than the Hermes MCP client, to talk to the dashboard service.
+
+The intended MCP server name in Codex is `github_monitor`. If multiple MCP servers are available, prefer `github_monitor` for dashboard issue and event operations.
 
 1. Confirm the remote sidecar is healthy:
    - `systemctl is-active github-issues-dashboard-mcp.service`
@@ -164,7 +183,7 @@ Read `references/incident-checklist.md` for the standard incident path.
 
 ### 5. MCP sidecar and agent-access triage
 
-When the dashboard works in a browser but Codex or Hermes cannot use it, check in this order:
+When the dashboard works in a browser but Codex or another MCP client cannot use it, check in this order:
 
 1. `github-issues-dashboard-mcp.service`
 2. local port binding on `127.0.0.1:8766`
