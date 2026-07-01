@@ -15,6 +15,12 @@ Use this skill for the repo-specific maintenance loop around the GitHub Issues D
 - Runtime port: `127.0.0.1:8765`
 - Systemd unit: `github-issues-dashboard.service`
 - Launcher: `run_dashboard.sh`
+- MCP health: `http://127.0.0.1:8766/health`
+- MCP endpoint: `http://127.0.0.1:8766/mcp`
+- MCP systemd unit: `github-issues-dashboard-mcp.service`
+- MCP launcher: `run_dashboard_mcp.sh`
+- Preferred Codex MCP server name: `github_monitor`
+- Codex config file: `~/.codex/config.toml`
 - Main app: `app.py`
 - Primary test file: `tests/test_app.py`
 
@@ -31,8 +37,46 @@ Treat these as the starting assumptions unless fresh repo evidence shows they ch
    - API behavior
    - SQLite data state
    - ingestion/reconcile pipeline behavior
+6. Treat the dashboard app and MCP sidecar as separate restart domains. If only `github_monitor_mcp.py`, `run_dashboard_mcp.sh`, or the sidecar unit changed, restart only `github-issues-dashboard-mcp.service` unless evidence shows the app also needs a restart.
+7. Prefer SSH local forwarding for Codex access to the remote MCP sidecar. Do not expose the sidecar publicly or bind it to `0.0.0.0` unless the user explicitly asks.
+8. `issue_archive` is a live mutating action. Read the target issue first with `issue_get` or `issues_list`, and archive only when the task clearly intends state change.
 
 ## Standard Workflows
+
+### 0. Codex MCP access
+
+Use this path when the user wants Codex, not Hermes, to talk to the dashboard service.
+
+1. Confirm the remote sidecar is healthy:
+   - `systemctl is-active github-issues-dashboard-mcp.service`
+   - `curl -fsS http://127.0.0.1:8766/health`
+2. If the sidecar runs on the VPS, open a local tunnel:
+
+```bash
+ssh -N -L 8766:127.0.0.1:8766 -i ~/.ssh/smd.pem ubuntu@100.115.70.73
+```
+
+3. Ensure the local Codex config contains:
+
+```toml
+[mcp_servers.github_monitor]
+url = "http://127.0.0.1:8766/mcp"
+startup_timeout_sec = 60.0
+tool_timeout_sec = 120.0
+```
+
+4. Validate the forwarded endpoint locally:
+   - `curl -fsS http://127.0.0.1:8766/health`
+5. Restart Codex or open a new Codex session so it reloads MCP servers.
+6. Prefer the read-only tools first, then mutating tools:
+   - `health_get`
+   - `issues_list`
+   - `issue_get`
+   - `events_recent`
+   - `full_reconcile_status`
+   - `issue_archive`
+
+If Codex is running on the same machine as the sidecar, skip the SSH tunnel and use the same localhost MCP URL directly.
 
 ### 1. Local development and bug fixing
 
@@ -90,11 +134,15 @@ Use this sequence unless the task is explicitly local-only:
 3. Connect to the VPS.
 4. Confirm remote repo path, branch, and origin.
 5. Pull the expected commit.
-6. Restart `github-issues-dashboard.service`.
-7. Verify:
-   - `systemctl is-active github-issues-dashboard.service`
-   - `curl -fsS http://127.0.0.1:8765/api/health`
-8. If the change is user-visible, also check the affected endpoint or page.
+6. Restart only the relevant service:
+   - dashboard app changes: `github-issues-dashboard.service`
+   - MCP sidecar changes: `github-issues-dashboard-mcp.service`
+7. Verify the matching health endpoint:
+   - app: `systemctl is-active github-issues-dashboard.service`
+   - app: `curl -fsS http://127.0.0.1:8765/api/health`
+   - sidecar: `systemctl is-active github-issues-dashboard-mcp.service`
+   - sidecar: `curl -fsS http://127.0.0.1:8766/health`
+8. If the change is user-visible, also check the affected endpoint, page, or MCP tool.
 
 Read `references/deploy-runbook.md` when you need the exact remote command sequence.
 
@@ -114,9 +162,23 @@ Check in this order:
 
 Read `references/incident-checklist.md` for the standard incident path.
 
+### 5. MCP sidecar and agent-access triage
+
+When the dashboard works in a browser but Codex or Hermes cannot use it, check in this order:
+
+1. `github-issues-dashboard-mcp.service`
+2. local port binding on `127.0.0.1:8766`
+3. `http://127.0.0.1:8766/health`
+4. the SSH tunnel or private-network forwarding path
+5. local MCP client config:
+   - Codex: `~/.codex/config.toml`
+   - Hermes: `~/.hermes/config.yaml`
+6. tool behavior, starting with `health_get` and `issue_get`
+
 ## Repo-Specific Heuristics
 
 - `app.py` currently contains both the FastAPI backend and embedded HTML/JS UI, so many UI changes are server-rendered string changes rather than a separate frontend build.
+- The MCP sidecar serves Streamable HTTP on `/mcp`, backed by the same SQLite/API domain but on a separate process and port.
 - `/api/health` is the best structured truth source for:
   - `events_count`
   - `issues_count`
@@ -129,6 +191,14 @@ Read `references/incident-checklist.md` for the standard incident path.
   - `/api/issues/archive-closed`
   - `/api/issues/archive-linked-pr`
   - `/api/issues/archive-duplicated`
+- Agent-facing MCP tools are currently:
+  - `health_get`
+  - `issues_list`
+  - `issue_get`
+  - `issue_archive`
+  - `events_recent`
+  - `full_reconcile_status`
+- For a specified issue, the safest sequence is `issue_get` first, then `issue_archive` only if the user clearly wants that mutation.
 - Full reconcile is long-running and should be treated as a service-side operation, not a front-end-only effect.
 
 ## When To Read References
@@ -144,6 +214,9 @@ The task is complete only when:
 - the intended dashboard code or ops change is in the canonical repo
 - local validation matches the claimed fix
 - VPS changes, if relevant, are synced to the correct repo and service
-- `github-issues-dashboard.service` is healthy after deployment
-- `/api/health` confirms the service is responding
+- the relevant service is healthy after deployment:
+  - `github-issues-dashboard.service` for the app
+  - `github-issues-dashboard-mcp.service` for MCP access
+- the matching health endpoint confirms the service is responding
+- if agent access was in scope, the local Codex or Hermes MCP config points at the correct forwarded endpoint
 - no dashboard data was modified destructively unless the user explicitly requested it

@@ -18,6 +18,16 @@ If these fail, inspect logs:
 journalctl -u github-issues-dashboard.service -n 100 --no-pager
 ```
 
+If the browser app is healthy but agent access is failing, also check:
+
+```bash
+systemctl is-active github-issues-dashboard-mcp.service
+systemctl status github-issues-dashboard-mcp.service --no-pager -l
+ss -tlnp | grep 8766
+curl -fsS http://127.0.0.1:8766/health
+journalctl -u github-issues-dashboard-mcp.service -n 100 --no-pager
+```
+
 ## 2. Check repo drift before editing code
 
 ```bash
@@ -83,6 +93,22 @@ Check:
 - latest events
 - ingest and reconcile code paths in `app.py`
 
+### Agent-access symptom
+
+Examples:
+
+- Codex cannot see the `github_monitor` MCP server
+- Hermes MCP config works locally but Codex does not
+- issue tools time out even though the dashboard page loads
+
+Check:
+
+- `github-issues-dashboard-mcp.service`
+- `http://127.0.0.1:8766/health`
+- the SSH tunnel or private-network forwarding path
+- `~/.codex/config.toml` or `~/.hermes/config.yaml`
+- `issue_get` behavior before trying `issue_archive`
+
 ## 4. Prefer non-destructive recovery
 
 Use this order:
@@ -91,8 +117,9 @@ Use this order:
 2. inspect logs
 3. inspect repo drift
 4. inspect API output
-5. inspect DB counts
-6. patch code or restart service if justified
+5. inspect MCP sidecar and local forwarding if agent access is involved
+6. inspect DB counts
+7. patch code or restart service if justified
 
 Avoid:
 
@@ -106,5 +133,6 @@ Before declaring the issue fixed, capture:
 
 - service active state
 - `/api/health` result
+- `http://127.0.0.1:8766/health` result if agent access was involved
 - affected endpoint result
 - deployed commit hash if VPS was touched

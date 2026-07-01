@@ -23,6 +23,7 @@ Then check:
 ```bash
 curl -fsS http://127.0.0.1:8765/health
 curl -fsS http://127.0.0.1:8765/api/health
+curl -fsS http://127.0.0.1:8766/health
 ```
 
 ### 2. Commit and push
@@ -55,7 +56,7 @@ git rev-parse HEAD
 git log -1 --oneline
 ```
 
-### 4. Restart the service
+### 4. Restart the relevant service
 
 ```bash
 sudo systemctl restart github-issues-dashboard.service
@@ -63,11 +64,20 @@ systemctl is-active github-issues-dashboard.service
 systemctl status github-issues-dashboard.service --no-pager -l
 ```
 
+If the change only touched the MCP sidecar, restart that service instead:
+
+```bash
+sudo systemctl restart github-issues-dashboard-mcp.service
+systemctl is-active github-issues-dashboard-mcp.service
+systemctl status github-issues-dashboard-mcp.service --no-pager -l
+```
+
 ### 5. Verify runtime health
 
 ```bash
 curl -fsS http://127.0.0.1:8765/health
 curl -fsS http://127.0.0.1:8765/api/health
+curl -fsS http://127.0.0.1:8766/health
 ```
 
 If the change touched archive/reconcile/UI behavior, also probe the affected API:
@@ -76,6 +86,12 @@ If the change touched archive/reconcile/UI behavior, also probe the affected API
 curl -fsS http://127.0.0.1:8765/api/issues | head
 curl -fsS http://127.0.0.1:8765/api/events | head
 curl -fsS http://127.0.0.1:8765/api/full-reconcile
+```
+
+If the change touched Codex or Hermes access, also verify the local forwarded MCP endpoint:
+
+```bash
+curl -fsS http://127.0.0.1:8766/health
 ```
 
 ## Safe rollback posture
@@ -88,9 +104,16 @@ curl -fsS http://127.0.0.1:8765/api/full-reconcile
 journalctl -u github-issues-dashboard.service -n 100 --no-pager
 ```
 
+For sidecar-only failures:
+
+```bash
+journalctl -u github-issues-dashboard-mcp.service -n 100 --no-pager
+```
+
 ## Definition of done
 
 - intended commit is on the VPS repo
-- service is active
-- `/api/health` returns `ok: true`
+- the relevant service is active
+- `/api/health` or `/health` returns healthy for the app
+- `http://127.0.0.1:8766/health` returns healthy when MCP access was in scope
 - the changed dashboard behavior is confirmed
