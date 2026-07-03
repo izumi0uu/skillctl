@@ -3,6 +3,33 @@
   "generatedBy": "skillctl",
   "skills": [
     {
+      "skill_id": "adhd",
+      "category": "knowledge-and-research",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "ab53e4b66be95a86f9bbd44d4b99c08fb585718a",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/knowledge-and-research/adhd",
+      "upstream": {
+        "repo": "UditAkhourii/adhd",
+        "ref": "c5287d381f4148276ee2646348f90bf63581ddce",
+        "skillPath": "skills/adhd",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/UditAkhourii/adhd",
+        "imported_at": "2026-07-03T14:02:15.344Z",
+        "last_verified_ref": "c5287d381f4148276ee2646348f90bf63581ddce",
+        "local_modifications": false
+      }
+    },
+    {
       "skill_id": "agents-best-practices",
       "category": "knowledge-and-research",
       "tags": [

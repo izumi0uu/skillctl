@@ -236,6 +236,7 @@ This means `~/.agents/skills` is not accidental temporary output. In `skills-cli
 
 | Skill | Category | Origin | Upstream Repo | Upstream Path | Ref | Source URL | Local Modifications |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| adhd | Knowledge And Research | imported-upstream | [UditAkhourii/adhd](https://github.com/UditAkhourii/adhd) | [skills/adhd](https://github.com/UditAkhourii/adhd/tree/c5287d381f4148276ee2646348f90bf63581ddce/skills/adhd) | c5287d381f4148276ee2646348f90bf63581ddce | [open](https://github.com/UditAkhourii/adhd) | no |
 | agents-best-practices | Knowledge And Research | derived-from-upstream | [DenisSergeevitch/agents-best-practices](https://github.com/DenisSergeevitch/agents-best-practices) | [.](https://github.com/DenisSergeevitch/agents-best-practices) | main | [open](https://github.com/DenisSergeevitch/agents-best-practices) | yes |
 | anyrouter-config | Agent Infra | local-authored | n/a | n/a | n/a | n/a | no |
 | aws-rds-dump-restore | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | n/a | no |
@@ -306,7 +307,7 @@ Canonical skill sources live under `skills/` and are grouped by usage-oriented c
 | Category | Purpose | Skills |
 | --- | --- | --- |
 | Agent Infra | Agent runtime, configuration, recovery, and operational control-plane skills | `anyrouter-config`, `codex-config-health`, `codex-session-recovery`, `find-skills`, `hermes-issue-triage`, `hermes-upstream-worktree-fix`, `omx-project-scope-git-isolation`, `repo-preflight`, `skillctl-control-plane`, `watch-hot-node` |
-| Knowledge And Research | Knowledge workflows, learning systems, and reusable research guidance | `agents-best-practices`, `grill-me`, `grill-with-docs`, `karpathy-guidelines`, `obsidian-llm-wiki`, `writing-guidelines` |
+| Knowledge And Research | Knowledge workflows, learning systems, and reusable research guidance | `adhd`, `agents-best-practices`, `grill-me`, `grill-with-docs`, `karpathy-guidelines`, `obsidian-llm-wiki`, `writing-guidelines` |
 | Frontend And Design | Frontend architecture, design systems, UI patterns, and motion guidance | `claude-design`, `design-loop`, `design-system`, `electron`, `extract-design-system`, `frontend-app-builder`, `frontend-testing-debugging`, `gsap-core`, `gsap-frameworks`, `gsap-performance`, `gsap-plugins`, `gsap-react`, `gsap-scrolltrigger`, `gsap-timeline`, `gsap-utils`, `motion-design`, `product-showcase`, `react-component-performance`, `react-patterns`, `scan`, `shadcn`, `tailwind-theme-builder`, `ui-animation`, `ui-ux-pro-max`, `vercel-composition-patterns`, `vercel-react-best-practices`, `vercel-react-native-skills`, `vercel-react-view-transitions`, `web-design-guidelines` |
 | Deployment And Platform | Deployment, cloud platform, and environment optimization workflows | `chrome-web-store-publish`, `deploy-to-vercel`, `github-issues-dashboard-ops`, `tailscale-vps-ops`, `vercel-cli-with-tokens`, `vercel-optimize` |
 | Productivity And Artifacts | General artifact creation and productivity-oriented tool workflows | `excalidraw-diagram`, `google-sheets-editor`, `llm-intern-skill` |
