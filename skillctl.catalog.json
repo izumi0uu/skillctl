@@ -1009,6 +1009,23 @@
       "canonical_rel_path": "skills/domain-aws-thrive/recruitflow-project-ops"
     },
     {
+      "skill_id": "rename-codex-sessions",
+      "category": "agent-infra",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "0a56b2370db0d24f15c464b26b55fe0a13959c65",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/rename-codex-sessions"
+    },
+    {
       "skill_id": "repo-preflight",
       "category": "agent-infra",
       "tags": [
@@ -1147,6 +1164,23 @@
         "last_verified_ref": "0aa0f4437e0e70dda1e4e62df3a9d9cb8170f8ba",
         "local_modifications": false
       }
+    },
+    {
+      "skill_id": "thread-memory-capsule",
+      "category": "agent-infra",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "468e46e9093fd0912574efae344a541a3955d883",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/thread-memory-capsule"
     },
     {
       "skill_id": "thrive-billing-claim-cleanup-diagnostics",
