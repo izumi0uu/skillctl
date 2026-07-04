@@ -63,6 +63,33 @@ If the issue is worth fixing, hand off to `$hermes-upstream-worktree-fix` for cl
 - Prefer narrow keyword searches based on the concrete symptom, not only the issue number.
 - If a likely overlap exists, compare the actual code path before calling it a duplicate.
 
+#### Existing-PR overlap gate
+
+Before recommending or starting any new fix work, actively search for PRs that
+already implement the same bug-class fix, even when they do **not** mention the
+current issue number. A newer issue will often not appear in an older PR's body,
+timeline, or `Fixes #...` footer, so issue-linked PR lookup is necessary but not
+sufficient.
+
+Run both kinds of search:
+
+- Symptom search: use terms from the observed failure, provider/platform, and
+  user-visible behavior.
+- Code-site search: use implicated file names, function names, tests, and
+  mechanisms from the issue or source trace.
+
+For each candidate PR, compare:
+
+- same files or functions
+- same root cause / state transition / provider or platform boundary
+- same failing behavior from the user's point of view
+- same or stronger regression test coverage
+- PR state: open, draft, blocked, merged, or closed
+
+If an existing PR covers the same concrete failure chain, classify the issue as
+`duplicate-or-overlap` or `already-fixed` as appropriate. Do not create or
+recommend a new PR just because the existing PR does not reference the issue.
+
 ### 3. Read the current source, not just the issue theory
 
 - Find the exact files, symbols, branches, and tests implicated by the report.
@@ -107,6 +134,8 @@ Good next steps:
 - A current-source guard that contradicts the issue's failure chain
 - A removed or renamed function the issue still relies on
 - A merged commit or test that explicitly covers the behavior
+- An open or merged PR whose diff covers the same code site and concrete bug
+  class, even if it does not mention the current issue number
 - A targeted latest-`main` repro
 - A direct code-path explanation showing why the bug class still exists
 
@@ -116,6 +145,9 @@ Good next steps:
 - Do not declare "cannot reproduce" just because the local environment differs.
 - Do not drift into implementation work when the user only asked for triage.
 - Do not call something duplicate without comparing the actual bug class.
+- Do not rely only on issue timeline links, `Fixes #...`, or bot duplicate
+  comments to find overlap. Search current open/merged PRs by symptom and code
+  site before concluding that no existing fix exists.
 
 ## Handoff To Fix Work
 
