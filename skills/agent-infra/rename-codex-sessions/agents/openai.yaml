@@ -1,0 +1,4 @@
+interface:
+  display_name: "Rename Codex Sessions"
+  short_description: "Batch title Codex threads from summaries"
+  default_prompt: "Use $rename-codex-sessions to scan my Codex sessions, propose concise unique titles, and apply safe renames with a manifest."
