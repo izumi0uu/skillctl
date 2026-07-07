@@ -78,6 +78,69 @@ Run both kinds of search:
 - Code-site search: use implicated file names, function names, tests, and
   mechanisms from the issue or source trace.
 
+#### Local PR-overlap MCP fast path
+
+When the `pr-overlap-index` MCP tools are available, use them before broad
+GitHub PR search as a fast local candidate generator:
+
+For P2 triage or archive sweeps, check local index health before making
+archive/close recommendations:
+
+1. Call the MCP `health` tool, or run the read-only smoke command if operating
+   against the VPS-hosted index:
+
+   ```bash
+   PYTHONPATH=<PR_OVERLAP_SERVICE_DIR> \
+   PR_OVERLAP_DB=<PR_OVERLAP_DB> \
+   python3 -m pr_overlap_index.smoke --runs 5 --top-k 5
+   ```
+
+   Confirm `ok`, `initialized`, `schema_version`, and a nonzero or explainable
+   `indexed_pr_count`. Inspect `coverage_by_scope`, `archive_confidence_floor`,
+   `last_run_by_scope`, `brownout_state`, and smoke `term_coverage` when
+   present. Treat `coverage_denominator_kind: "unknown"`, hot-only coverage, or
+   incomplete term coverage as a warning: absence from the MCP means "not found
+   in the current local index", not "no PR exists in the repository." If the MCP
+   is unavailable, uninitialized, stale, or not loaded in the current session,
+   say so briefly and fall back to normal GitHub issue/PR search. Do not block
+   triage on the MCP.
+2. Call `search_pr_overlap` with `repo: "NousResearch/hermes-agent"` plus the
+   issue title/body and any extracted files, symbols, provider names, platform
+   names, and error messages. Keep `top_k` small (usually 5-10).
+3. Inspect `candidate_prefilter` on search results. When
+   `candidate_prefilter.reason == "term_match"` and
+   `term_indexed_manifest_count == latest_manifest_count`, the candidate list is
+   a higher-confidence local-index search because the term prefilter is active
+   and complete. If the prefilter is disabled, incomplete, or falling back, keep
+   recall concerns explicit and rely more heavily on normal GitHub PR search.
+4. Treat MCP results as candidates, not verdicts. For each high-scoring result,
+   inspect the PR diff/source path and compare the concrete failure chain before
+   classifying the issue.
+5. For archive/close decisions, require latest-live archive evidence. Only
+   `archive_allowed: true` is direct local evidence that an issue can be
+   archived from the MCP result. Prefer `require_fresh: true`; archive-class
+   results should be backed by a live fresh lease and replay capsule.
+6. `historical_overlap_only`, `needs-refresh`, `partial-cover`, and `adjacent`
+   are leads for deeper PR/source review or the pending list. They are not
+   direct archive authorization. Historical matches can explain why a bot or
+   maintainer saw overlap, but the final decision must be based on current
+   PR/source state.
+7. `cold_archive` coverage is offline/advisory by default. Do not use a
+   cold-only match as an archive basis unless a future explicit cold serving
+   gate reports it as active and the result still satisfies the latest-live
+   archive evidence rules above.
+8. Smoke output is observability, not archive evidence. It proves the local
+   index is healthy, fast, and covered enough to use as a candidate generator;
+   archive evidence still comes from `search_pr_overlap` result fields such as
+   `archive_allowed`, freshness, lease/capsule status, and the inspected PR diff.
+9. When reporting MCP evidence, include the coverage scope in plain language
+   (for example hot-only, hot+recent, or hot+cold). Do not present a hot-only
+   negative result as a full-repository scan.
+
+Keep the MCP query path bounded and local. Do not do an inline all-PR scan from
+triage; larger backfills belong to the VPS indexer/scheduler, not to a single
+issue-analysis turn.
+
 For each candidate PR, compare:
 
 - same files or functions

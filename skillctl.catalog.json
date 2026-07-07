@@ -716,7 +716,7 @@
       "visibility": "public",
       "source_kind": "local-public",
       "origin_kind": "local-authored",
-      "hash": "e0e1aa8f97b6b57e9758d9d45924cc3cc405e3ef",
+      "hash": "91f59a4e3f0cbadc82725256716043d2e97469ed",
       "managed": true,
       "targets": [
         "claude-code",
@@ -1121,7 +1121,7 @@
       "visibility": "public",
       "source_kind": "upstream",
       "origin_kind": "derived-from-upstream",
-      "hash": "194a0c5a2ed2affd88bb7301fb78588823c006c3",
+      "hash": "b01fd0df148b586909f77faa207bb818f3745c86",
       "managed": true,
       "targets": [
         "claude-code",
