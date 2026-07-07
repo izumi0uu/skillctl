@@ -175,6 +175,23 @@
       "canonical_rel_path": "skills/agent-infra/codex-session-recovery"
     },
     {
+      "skill_id": "dap-handoff-writer",
+      "category": "agent-infra",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "11311af590bfc451fd664a23c2d47e26e76b4128",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/dap-handoff-writer"
+    },
+    {
       "skill_id": "deploy-to-vercel",
       "category": "deployment-and-platform",
       "tags": [
