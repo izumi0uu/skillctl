@@ -270,6 +270,7 @@ This means `~/.agents/skills` is not accidental temporary output. In `skills-cli
 | karpathy-guidelines | Knowledge And Research | derived-from-upstream | [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) | [.](https://github.com/multica-ai/andrej-karpathy-skills) | main | [open](https://github.com/multica-ai/andrej-karpathy-skills) | yes |
 | llm-intern-skill | Productivity And Artifacts | imported-upstream | [couragec/LLMInternSkill](https://github.com/couragec/LLMInternSkill) | [.](https://github.com/couragec/LLMInternSkill) | 11db44f57b3d78ae3f83072b3959cd7a5d85df0b | [open](https://github.com/couragec/LLMInternSkill) | no |
 | local-portable-demo | System And Demo | local-authored | n/a | n/a | n/a | n/a | no |
+| maintain-mac-dev-environment | System And Demo | local-authored | n/a | n/a | n/a | n/a | no |
 | motion-design | Frontend And Design | derived-from-upstream | [lottiefiles/motion-design-skill](https://github.com/lottiefiles/motion-design-skill) | [skills/motion-design](https://github.com/lottiefiles/motion-design-skill/tree/main/skills/motion-design) | main | [open](https://github.com/lottiefiles/motion-design-skill) | yes |
 | obsidian-llm-wiki | Knowledge And Research | derived-from-upstream | [https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f.git](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) | [.](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) | main | [open](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) | yes |
 | omx-project-scope-git-isolation | Agent Infra | local-authored | n/a | n/a | n/a | n/a | no |
@@ -314,5 +315,5 @@ Canonical skill sources live under `skills/` and are grouped by usage-oriented c
 | Deployment And Platform | Deployment, cloud platform, and environment optimization workflows | `chrome-web-store-publish`, `deploy-to-vercel`, `github-issues-dashboard-ops`, `tailscale-vps-ops`, `vercel-cli-with-tokens`, `vercel-optimize` |
 | Productivity And Artifacts | General artifact creation and productivity-oriented tool workflows | `excalidraw-diagram`, `google-sheets-editor`, `llm-intern-skill` |
 | Domain AWS-Thrive | AWS-Thrive and related domain-specific operational workflows | `aws-rds-dump-restore`, `recruitflow-project-ops`, `thrive-billing-claim-cleanup-diagnostics`, `thrive-local-db-restore-login`, `thrive-therapy-session-diagnostics` |
-| System And Demo | Portable demos, fixtures, and system validation helpers | `local-portable-demo` |
+| System And Demo | Portable demos, fixtures, and system validation helpers | `local-portable-demo`, `maintain-mac-dev-environment` |
 <!-- skillctl:managed-skill-taxonomy:end -->

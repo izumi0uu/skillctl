@@ -284,7 +284,7 @@
       "visibility": "public",
       "source_kind": "upstream",
       "origin_kind": "derived-from-upstream",
-      "hash": "04bbc2fb6481ba2cf798bcbd962b6594d44bd3df",
+      "hash": "9c5871c2b56a31080a20d5243f0c074c0c8f2c32",
       "managed": true,
       "targets": [
         "claude-code",
@@ -829,6 +829,23 @@
         "opencode"
       ],
       "canonical_rel_path": "skills/system-and-demo/local-portable-demo"
+    },
+    {
+      "skill_id": "maintain-mac-dev-environment",
+      "category": "system-and-demo",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "7c7dda7bb3a9ad1b0433e9417ee55c81132ca513",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/system-and-demo/maintain-mac-dev-environment"
     },
     {
       "skill_id": "motion-design",
