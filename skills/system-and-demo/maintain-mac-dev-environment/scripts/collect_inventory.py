@@ -216,10 +216,16 @@ HOMEBREW_FORMULA_PATTERNS: dict[str, tuple[str, ...]] = {
     "yarn": ("yarn",),
     "zsh": ("zsh",),
 }
-HOMEBREW_BREW_PATHS = {
-    Path("/opt/homebrew/bin/brew"),
-    Path("/usr/local/bin/brew"),
+HOMEBREW_BREW_TARGETS = {
+    Path("/opt/homebrew/bin/brew"): frozenset({Path("/opt/homebrew/bin/brew")}),
+    Path("/usr/local/bin/brew"): frozenset(
+        {
+            Path("/usr/local/bin/brew"),
+            Path("/usr/local/Homebrew/bin/brew"),
+        }
+    ),
 }
+POSTGRES_VAR_ROOTS = (Path("/opt/homebrew/var"), Path("/usr/local/var"))
 ORBSTACK_DOCKER_TARGET = Path("/Applications/OrbStack.app/Contents/MacOS/xbin/docker-tools")
 DOCKER_DESKTOP_TARGETS = frozenset(
     {
@@ -339,8 +345,8 @@ def trusted_executable_path(candidate: Path, resolved: Path, command_name: str) 
         return False
     if resolved.parent in SYSTEM_EXECUTABLE_DIRS:
         return executable_names_match(command_name, resolved.name)
-    if command_name == "brew" and candidate in HOMEBREW_BREW_PATHS:
-        return resolved == candidate and resolved.name == "brew"
+    if command_name == "brew":
+        return resolved.name == "brew" and resolved in HOMEBREW_BREW_TARGETS.get(candidate, frozenset())
     if (
         candidate.parent in HOMEBREW_LINK_DIRS
         and candidate.is_symlink()
@@ -535,7 +541,7 @@ def collect_system() -> dict[str, Any]:
     product = run_safe(["sw_vers", "-productVersion"])
     shell = os.environ.get("SHELL", "")
     shell_name = Path(shell).name if shell else None
-    shell_version = run_safe([shell_name, "--version"]) if shell_name in {"bash", "zsh"} else None
+    shell_version = run_safe([shell, "--version"]) if shell_name in {"bash", "zsh"} else None
     return {
         "product": "macOS",
         "version": first_line(product),
@@ -588,10 +594,11 @@ def collect_brew(include_applications: bool) -> dict[str, Any]:
     services = run_safe(["brew", "services", "list"])
 
     parsed_services: list[dict[str, str]] = []
-    for line in lines(services)[1:]:
-        fields = line.split()
-        if len(fields) >= 2:
-            parsed_services.append({"name": fields[0], "status": fields[1]})
+    if services["ok"]:
+        for line in lines(services)[1:]:
+            fields = line.split()
+            if len(fields) >= 2:
+                parsed_services.append({"name": fields[0], "status": fields[1]})
 
     return {
         "available": True,
@@ -603,6 +610,7 @@ def collect_brew(include_applications: bool) -> dict[str, Any]:
         "casks_status": casks["status"] if casks else "not-requested",
         "leaves": sorted(lines(leaves)) if leaves["ok"] else [],
         "services": parsed_services,
+        "services_status": services["status"],
     }
 
 
@@ -844,7 +852,7 @@ def collect_container_state(include_sizes: bool) -> dict[str, Any]:
 
 def collect_postgres(include_sizes: bool) -> list[dict[str, Any]]:
     roots: list[Path] = []
-    for var_root in (Path("/opt/homebrew/var"), Path("/usr/local/var")):
+    for var_root in POSTGRES_VAR_ROOTS:
         if not var_root.is_dir():
             continue
         roots.extend(var_root.glob("postgresql@*"))
@@ -852,6 +860,8 @@ def collect_postgres(include_sizes: bool) -> list[dict[str, Any]]:
     roots = sorted(set(roots))
     findings: list[dict[str, Any]] = []
     for root in roots:
+        if path_has_symlink_component(root) or not root.is_dir():
+            continue
         version_text = read_bounded_regular_text(root / "PG_VERSION", max_bytes=32, encoding="ascii")
         version = version_text.strip() if version_text is not None else None
         findings.append(
@@ -1003,7 +1013,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     try:
-        args = parse_args(argv or sys.argv[1:])
+        args = parse_args(sys.argv[1:] if argv is None else argv)
         policy = load_policy(args.policy.expanduser())
         inventory = collect_inventory(policy, deep=args.deep)
         rendered = json.dumps(inventory, indent=2 if args.pretty else None, sort_keys=True)

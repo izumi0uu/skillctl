@@ -16,10 +16,11 @@ Maintain a macOS development setup by separating observed facts, personal owners
 5. Apply one tool family at a time.
 6. Re-run the collector and the affected tool checks before reporting success.
 
-Resolve the collector path relative to this `SKILL.md`, then run:
+Set `SKILL_MD_PATH` to the absolute path of this loaded `SKILL.md` from the skill registry. Never infer it from the current working directory. Then run:
 
 ```bash
-python3 scripts/collect_inventory.py --pretty
+SKILL_DIR="$(cd -- "$(dirname -- "${SKILL_MD_PATH:?}")" && pwd)"
+python3 "$SKILL_DIR/scripts/collect_inventory.py" --pretty
 ```
 
 Use `--deep` when cache, application, runtime, or database-directory sizes are needed. Use `--output <path>` only when the user explicitly wants a local snapshot. The output must be an absolute regular-file path with no symlink component in its parent path; snapshots are written atomically with mode `0600`. The collector automatically reads `${XDG_CONFIG_HOME:-$HOME/.config}/skillctl/maintain-mac-dev-environment.json` when present.

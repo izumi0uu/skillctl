@@ -10,7 +10,7 @@ import plistlib
 import stat
 import tempfile
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -23,6 +23,7 @@ SCRIPT = (
     / "scripts"
     / "collect_inventory.py"
 )
+SKILL = SCRIPT.parents[1] / "SKILL.md"
 SPEC = importlib.util.spec_from_file_location("collect_inventory", SCRIPT)
 assert SPEC and SPEC.loader
 assert isinstance(SPEC.loader, importlib.machinery.SourceFileLoader)
@@ -198,7 +199,6 @@ class CollectInventoryTests(unittest.TestCase):
                 HOMEBREW_LINK_DIRS=(link_dir,),
                 HOMEBREW_CELLAR_ROOTS=(base / "Cellar",),
                 HOMEBREW_FORMULA_PATTERNS={"node": ("node", "node@*")},
-                HOMEBREW_BREW_PATHS=set(),
             ):
                 self.assertFalse(MODULE.trusted_executable_path(entrypoint, entrypoint, "node"))
                 entrypoint.unlink()
@@ -210,6 +210,42 @@ class CollectInventoryTests(unittest.TestCase):
                 unrelated.write_text("#!/bin/sh\n", encoding="utf-8")
                 unrelated.chmod(0o755)
                 self.assertFalse(MODULE.trusted_executable_path(entrypoint, unrelated, "node"))
+
+    def test_accepts_only_mapped_homebrew_brew_targets(self) -> None:
+        self.assertEqual(
+            MODULE.HOMEBREW_BREW_TARGETS,
+            {
+                Path("/opt/homebrew/bin/brew"): frozenset({Path("/opt/homebrew/bin/brew")}),
+                Path("/usr/local/bin/brew"): frozenset(
+                    {
+                        Path("/usr/local/bin/brew"),
+                        Path("/usr/local/Homebrew/bin/brew"),
+                    }
+                ),
+            },
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir).resolve()
+            entrypoint = base / "bin" / "brew"
+            target = base / "Homebrew" / "bin" / "brew"
+            wrong_target = base / "OtherHomebrew" / "bin" / "brew"
+            entrypoint.parent.mkdir()
+            target.parent.mkdir(parents=True)
+            wrong_target.parent.mkdir(parents=True)
+            target.write_text("#!/bin/sh\n", encoding="utf-8")
+            target.chmod(0o755)
+            wrong_target.write_text("#!/bin/sh\n", encoding="utf-8")
+            wrong_target.chmod(0o755)
+            entrypoint.symlink_to(target)
+
+            with mock.patch.object(
+                MODULE,
+                "HOMEBREW_BREW_TARGETS",
+                {entrypoint: frozenset({entrypoint, target})},
+            ):
+                self.assertTrue(MODULE.trusted_executable_path(entrypoint, target, "brew"))
+                self.assertFalse(MODULE.trusted_executable_path(entrypoint, wrong_target, "brew"))
 
     def test_supported_app_symlink_can_live_in_a_homebrew_link_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -245,6 +281,25 @@ class CollectInventoryTests(unittest.TestCase):
             else:
                 os.environ["TEST_API_KEY"] = previous
 
+    def test_collect_system_probes_the_configured_shell_path(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_run_safe(args: list[str]) -> dict[str, object]:
+            calls.append(args)
+            output = "14.5" if args[0] == "sw_vers" else "zsh 5.9"
+            return {"ok": True, "status": "ok", "returncode": 0, "stdout": output}
+
+        with (
+            mock.patch.dict(os.environ, {"SHELL": "/bin/zsh"}),
+            mock.patch.object(MODULE, "run_safe", side_effect=fake_run_safe),
+        ):
+            result = MODULE.collect_system()
+
+        self.assertIn(["/bin/zsh", "--version"], calls)
+        self.assertNotIn(["zsh", "--version"], calls)
+        self.assertEqual(result["shell"], "/bin/zsh")
+        self.assertEqual(result["shell_version"], "zsh 5.9")
+
     def test_homebrew_casks_follow_application_inventory_opt_in(self) -> None:
         calls: list[list[str]] = []
 
@@ -264,6 +319,26 @@ class CollectInventoryTests(unittest.TestCase):
             calls.clear()
             MODULE.collect_brew(True)
             self.assertIn(["brew", "list", "--cask"], calls)
+
+    def test_failed_homebrew_services_output_is_not_parsed(self) -> None:
+        def fake_run_safe(args: list[str]) -> dict[str, object]:
+            if args == ["brew", "services", "list"]:
+                return {
+                    "ok": False,
+                    "status": "nonzero-exit",
+                    "returncode": 1,
+                    "stdout": "Error: service command failed\npostgresql started",
+                }
+            return {"ok": True, "status": "ok", "returncode": 0, "stdout": ""}
+
+        with (
+            mock.patch.object(MODULE.shutil, "which", return_value="/opt/homebrew/bin/brew"),
+            mock.patch.object(MODULE, "run_safe", side_effect=fake_run_safe),
+        ):
+            result = MODULE.collect_brew(False)
+
+        self.assertEqual(result["services"], [])
+        self.assertEqual(result["services_status"], "nonzero-exit")
 
     def test_reads_global_node_package_metadata_without_executing_package_code(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -334,6 +409,32 @@ class CollectInventoryTests(unittest.TestCase):
             info.unlink()
             info.symlink_to(private_info)
             self.assertIsNone(MODULE.application_version(app))
+
+    def test_postgres_inventory_skips_symlinked_clusters(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir).resolve()
+            var_root = base / "var"
+            real_cluster = var_root / "postgresql@16"
+            real_cluster.mkdir(parents=True)
+            (real_cluster / "PG_VERSION").write_text("16\n", encoding="ascii")
+
+            external_cluster = base / "external-cluster"
+            external_cluster.mkdir()
+            (external_cluster / "PG_VERSION").write_text("15\n", encoding="ascii")
+            (var_root / "postgresql@15").symlink_to(external_cluster, target_is_directory=True)
+
+            with mock.patch.object(MODULE, "POSTGRES_VAR_ROOTS", (var_root,)):
+                self.assertEqual(
+                    MODULE.collect_postgres(False),
+                    [
+                        {
+                            "cluster": "postgresql@16",
+                            "major_version": "16",
+                            "data_directory_present": True,
+                            "size_bytes": None,
+                        }
+                    ],
+                )
 
     def test_snapshot_output_is_owner_only(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -425,6 +526,30 @@ class CollectInventoryTests(unittest.TestCase):
         self.assertEqual(exit_code, 2)
         self.assertNotIn("/Users/alice/private-argument", stderr.getvalue())
         self.assertNotIn("Traceback", stderr.getvalue())
+
+    def test_main_preserves_an_explicitly_empty_argument_list(self) -> None:
+        arguments = MODULE.argparse.Namespace(
+            policy=Path("/private/tmp/missing-policy.json"),
+            output=None,
+            deep=False,
+            pretty=False,
+        )
+        stdout = io.StringIO()
+        with (
+            mock.patch.object(MODULE.sys, "argv", ["collector", "--unexpected-host-argument"]),
+            mock.patch.object(MODULE, "parse_args", return_value=arguments) as parse_args,
+            mock.patch.object(MODULE, "load_policy", return_value=MODULE.DEFAULT_POLICY),
+            mock.patch.object(MODULE, "collect_inventory", return_value={}),
+            redirect_stdout(stdout),
+        ):
+            self.assertEqual(MODULE.main([]), 0)
+        parse_args.assert_called_once_with([])
+
+    def test_skill_invocation_is_independent_of_the_working_directory(self) -> None:
+        skill_text = SKILL.read_text(encoding="utf-8")
+        self.assertIn("SKILL_MD_PATH", skill_text)
+        self.assertIn('python3 "$SKILL_DIR/scripts/collect_inventory.py" --pretty', skill_text)
+        self.assertNotIn("python3 scripts/collect_inventory.py --pretty", skill_text)
 
 
 if __name__ == "__main__":
