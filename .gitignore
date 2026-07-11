@@ -8,5 +8,5 @@ apps/electron/out
 apps/electron/release
 skills/**/.venv/
 skills/**/node_modules/
-skills/**/__pycache__/
+**/__pycache__/
 skills/**/__pypackages__/

@@ -5,7 +5,7 @@
   "packageManager": "pnpm@10.33.2",
   "scripts": {
     "build": "pnpm -r build",
-    "test": "pnpm -r test",
+    "test": "pnpm -r test && python3 -m unittest discover -s tests -p 'test_*.py'",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "version:set": "node scripts/release-version.mjs",
