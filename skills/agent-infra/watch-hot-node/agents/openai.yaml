@@ -1,7 +1,7 @@
 interface:
-  display_name: "Watch Hot Node"
-  short_description: "Capture short-lived hot node or codex spikes"
-  default_prompt: "Use $watch-hot-node to install or run a macOS watcher that captures evidence for short-lived hot node or codex processes."
+  display_name: "Watch Hot Processes"
+  short_description: "Trace CPU spikes with a low-overhead Rust daemon"
+  default_prompt: "Use $watch-hot-node to build, install, or inspect the Rust macOS watcher that captures short-lived hot node or codex processes and correlates WindowServer spikes with system and display context."
 
 policy:
   allow_implicit_invocation: true
