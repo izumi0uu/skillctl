@@ -728,6 +728,23 @@
       "canonical_rel_path": "skills/agent-infra/hermes-issue-triage"
     },
     {
+      "skill_id": "hermes-pr-notion-notes",
+      "category": "knowledge-and-research",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "1a57f77107e64e1d9c38f771c180c278da6432e4",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/knowledge-and-research/hermes-pr-notion-notes"
+    },
+    {
       "skill_id": "hermes-upstream-worktree-fix",
       "category": "agent-infra",
       "tags": [
