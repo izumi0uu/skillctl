@@ -23,8 +23,6 @@ GENERIC_TITLES = {
     "review",
     "untitled",
     "new chat",
-    "$ralph",
-    "$ralplan",
 }
 
 

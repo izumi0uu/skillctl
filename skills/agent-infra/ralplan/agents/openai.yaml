@@ -1,7 +1,0 @@
-interface:
-  display_name: "Ralplan"
-  short_description: "Independently review a high-risk plan contract"
-  default_prompt: "Use $ralplan to produce and sequentially review a task-system-neutral plan-bundle/v1 contract, stopping before persistence or implementation."
-
-policy:
-  allow_implicit_invocation: false

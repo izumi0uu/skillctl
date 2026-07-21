@@ -37,7 +37,7 @@ description: Use when the task is about RecruitFlow or its Project-Plan workspac
 
 ### 2. Respect Git Sync Ownership
 - This skill does not require a clean working tree check before code edits.
-- Invoke `$repo-preflight` only when the user explicitly asks to sync, rebase, or run preflight.
+- Run repository sync or rebase operations only when the user explicitly requests them; follow that repository's documented Git workflow directly.
 - If the working tree is dirty, work with existing changes and do not revert user work.
 - Preserve manual git publishing ownership unless the user explicitly asks for commit, push, or PR actions.
 

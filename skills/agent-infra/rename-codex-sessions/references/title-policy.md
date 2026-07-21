@@ -15,8 +15,6 @@ Avoid titles that only describe the last prompt or workflow wrapper:
 - `continue`
 - `start implementation`
 - `help me check`
-- `$ralph`
-- `$ralplan`
 - `debug`
 - `fix`
 - `review`

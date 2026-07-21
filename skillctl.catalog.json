@@ -990,55 +990,6 @@
       }
     },
     {
-      "skill_id": "omx-project-scope-git-isolation",
-      "category": "agent-infra",
-      "tags": [
-        "git",
-        "project-scope",
-        "omx"
-      ],
-      "visibility": "public",
-      "source_kind": "local-public",
-      "origin_kind": "local-authored",
-      "hash": "1b8944d17ad41177b062323ec07519acce374284",
-      "managed": true,
-      "targets": [
-        "claude-code",
-        "codex",
-        "pi",
-        "hermes",
-        "opencode"
-      ],
-      "canonical_rel_path": "skills/agent-infra/omx-project-scope-git-isolation"
-    },
-    {
-      "skill_id": "plan",
-      "category": "agent-infra",
-      "visibility": "public",
-      "source_kind": "upstream",
-      "origin_kind": "derived-from-upstream",
-      "hash": "8ea6c30ea1d0e477c1f2236a43e9610395a992e4",
-      "managed": true,
-      "targets": [
-        "claude-code",
-        "codex",
-        "pi",
-        "hermes",
-        "opencode"
-      ],
-      "canonical_rel_path": "skills/agent-infra/plan",
-      "upstream": {
-        "repo": "Yeachan-Heo/oh-my-codex",
-        "ref": "456effa2afcb7967e8ba7130ee15b2835c235d72",
-        "skillPath": "skills/plan",
-        "sourceType": "github",
-        "sourceUrl": "https://github.com/Yeachan-Heo/oh-my-codex/tree/v0.20.0/skills/plan",
-        "imported_at": "2026-07-13T11:50:36.134Z",
-        "last_verified_ref": "456effa2afcb7967e8ba7130ee15b2835c235d72",
-        "local_modifications": true
-      }
-    },
-    {
       "skill_id": "product-showcase",
       "category": "frontend-and-design",
       "visibility": "public",
@@ -1059,60 +1010,6 @@
         "imported_at": "2026-06-14T13:50:12.781Z",
         "last_verified_ref": "0aa0f4437e0e70dda1e4e62df3a9d9cb8170f8ba",
         "local_modifications": false
-      }
-    },
-    {
-      "skill_id": "ralph",
-      "category": "agent-infra",
-      "visibility": "public",
-      "source_kind": "upstream",
-      "origin_kind": "derived-from-upstream",
-      "hash": "2282dae8a4dd68b07e33395f3f66234e9a1a48e7",
-      "managed": true,
-      "targets": [
-        "claude-code",
-        "codex",
-        "pi",
-        "hermes",
-        "opencode"
-      ],
-      "canonical_rel_path": "skills/agent-infra/ralph",
-      "upstream": {
-        "repo": "Yeachan-Heo/oh-my-codex",
-        "ref": "456effa2afcb7967e8ba7130ee15b2835c235d72",
-        "skillPath": "skills/ralph",
-        "sourceType": "github",
-        "sourceUrl": "https://github.com/Yeachan-Heo/oh-my-codex/tree/v0.20.0/skills/ralph",
-        "imported_at": "2026-07-13T11:50:55.660Z",
-        "last_verified_ref": "456effa2afcb7967e8ba7130ee15b2835c235d72",
-        "local_modifications": true
-      }
-    },
-    {
-      "skill_id": "ralplan",
-      "category": "agent-infra",
-      "visibility": "public",
-      "source_kind": "upstream",
-      "origin_kind": "derived-from-upstream",
-      "hash": "8fb6759564f562e8c0bb7f114a2b39b4668a0708",
-      "managed": true,
-      "targets": [
-        "claude-code",
-        "codex",
-        "pi",
-        "hermes",
-        "opencode"
-      ],
-      "canonical_rel_path": "skills/agent-infra/ralplan",
-      "upstream": {
-        "repo": "Yeachan-Heo/oh-my-codex",
-        "ref": "456effa2afcb7967e8ba7130ee15b2835c235d72",
-        "skillPath": "skills/ralplan",
-        "sourceType": "github",
-        "sourceUrl": "https://github.com/Yeachan-Heo/oh-my-codex/tree/v0.20.0/skills/ralplan",
-        "imported_at": "2026-07-13T11:50:45.211Z",
-        "last_verified_ref": "456effa2afcb7967e8ba7130ee15b2835c235d72",
-        "local_modifications": true
       }
     },
     {
@@ -1173,7 +1070,7 @@
       "visibility": "public",
       "source_kind": "local-public",
       "origin_kind": "local-authored",
-      "hash": "beb42980f19bbede27d8407f7878cbfb4c932256",
+      "hash": "61f838bcd8c675d4ac9e0d8603269cb7e8c1c3ae",
       "managed": true,
       "targets": [
         "claude-code",
@@ -1190,7 +1087,7 @@
       "visibility": "public",
       "source_kind": "local-public",
       "origin_kind": "local-authored",
-      "hash": "0a56b2370db0d24f15c464b26b55fe0a13959c65",
+      "hash": "e4a23ffe1a724ba2f16e1c1a05ca2445a81b0e4c",
       "managed": true,
       "targets": [
         "claude-code",
@@ -1200,28 +1097,6 @@
         "opencode"
       ],
       "canonical_rel_path": "skills/agent-infra/rename-codex-sessions"
-    },
-    {
-      "skill_id": "repo-preflight",
-      "category": "agent-infra",
-      "tags": [
-        "git",
-        "preflight",
-        "workflow"
-      ],
-      "visibility": "public",
-      "source_kind": "local-public",
-      "origin_kind": "local-authored",
-      "hash": "ac963901554576100a62bc165264fc7886508c1e",
-      "managed": true,
-      "targets": [
-        "claude-code",
-        "codex",
-        "pi",
-        "hermes",
-        "opencode"
-      ],
-      "canonical_rel_path": "skills/agent-infra/repo-preflight"
     },
     {
       "skill_id": "scan",
@@ -1440,23 +1315,6 @@
         "opencode"
       ],
       "canonical_rel_path": "skills/domain-aws-thrive/thrive-therapy-session-diagnostics"
-    },
-    {
-      "skill_id": "trellis-plan-adapter",
-      "category": "agent-infra",
-      "visibility": "public",
-      "source_kind": "local-public",
-      "origin_kind": "local-authored",
-      "hash": "5e576d3a7f733718517ecd25ff05e5f571df8843",
-      "managed": true,
-      "targets": [
-        "claude-code",
-        "codex",
-        "pi",
-        "hermes",
-        "opencode"
-      ],
-      "canonical_rel_path": "skills/agent-infra/trellis-plan-adapter"
     },
     {
       "skill_id": "ui-animation",
@@ -1698,33 +1556,6 @@
         "sourceUrl": "https://github.com/vercel-labs/agent-skills",
         "imported_at": "2026-06-14T01:23:51.541Z",
         "last_verified_ref": "main",
-        "local_modifications": true
-      }
-    },
-    {
-      "skill_id": "visual-ralph",
-      "category": "frontend-and-design",
-      "visibility": "public",
-      "source_kind": "upstream",
-      "origin_kind": "derived-from-upstream",
-      "hash": "bce4a238ba1793ca75d9023761d058877293084b",
-      "managed": true,
-      "targets": [
-        "claude-code",
-        "codex",
-        "pi",
-        "hermes",
-        "opencode"
-      ],
-      "canonical_rel_path": "skills/frontend-and-design/visual-ralph",
-      "upstream": {
-        "repo": "Yeachan-Heo/oh-my-codex",
-        "ref": "456effa2afcb7967e8ba7130ee15b2835c235d72",
-        "skillPath": "skills/visual-ralph",
-        "sourceType": "github",
-        "sourceUrl": "https://github.com/Yeachan-Heo/oh-my-codex/tree/v0.20.0/skills/visual-ralph",
-        "imported_at": "2026-07-14T00:44:11.266Z",
-        "last_verified_ref": "456effa2afcb7967e8ba7130ee15b2835c235d72",
         "local_modifications": true
       }
     },

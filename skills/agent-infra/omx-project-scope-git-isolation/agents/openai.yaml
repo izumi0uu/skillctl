@@ -1,3 +1,0 @@
-display_name: OMX Project Scope Git Isolation
-short_description: Keep project-scope OMX installs local-only in Git repos.
-default_prompt: Set up repo-local git ignores for a project-scope OMX install while preserving ~/.codex login credentials.

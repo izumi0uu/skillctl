@@ -35,7 +35,7 @@ Use this skill to batch-name Codex conversations from their actual work content 
 4. Generate candidate titles.
    - Prefer concise noun or verb-object phrases.
    - Use the earliest clear user objective, final artifact, changed files, and project/domain hints.
-   - Avoid generic titles such as `continue`, `start implementation`, `debug`, `fix`, `review`, or `$ralph`.
+   - Avoid generic titles such as `continue`, `start implementation`, `debug`, `fix`, or `review`.
    - Preserve a good existing human-written title unless the user explicitly requested overwrite.
 
 5. Deduplicate responsibilities.

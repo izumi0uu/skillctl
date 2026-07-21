@@ -1,7 +1,0 @@
-interface:
-  display_name: "Ralph"
-  short_description: "Complete an approved Trellis task with evidence"
-  default_prompt: "Use $ralph with $trellis-plan-adapter to complete the active approved task and prove every acceptance criterion."
-
-policy:
-  allow_implicit_invocation: false
