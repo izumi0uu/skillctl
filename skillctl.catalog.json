@@ -347,6 +347,23 @@
       }
     },
     {
+      "skill_id": "figma-fidelity",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "20582538f113ae16e0ba35c29817592b28e72d60",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/figma-fidelity"
+    },
+    {
       "skill_id": "find-skills",
       "category": "agent-infra",
       "visibility": "public",
@@ -767,6 +784,33 @@
       "canonical_rel_path": "skills/agent-infra/hermes-upstream-worktree-fix"
     },
     {
+      "skill_id": "js-reverse",
+      "category": "knowledge-and-research",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "c8bcc9ae9a9afeabb9765276c228a5da3f1ddb4d",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/knowledge-and-research/js-reverse",
+      "upstream": {
+        "repo": "zhaoxuya520/reverse-skill",
+        "ref": "9ec60377bfdcafa0b317ed3612acc6c46270be78",
+        "skillPath": "skills/js-reverse",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/zhaoxuya520/reverse-skill/tree/main/skills/js-reverse",
+        "imported_at": "2026-07-09T09:22:06.361Z",
+        "last_verified_ref": "9ec60377bfdcafa0b317ed3612acc6c46270be78",
+        "local_modifications": true
+      }
+    },
+    {
       "skill_id": "karpathy-guidelines",
       "category": "knowledge-and-research",
       "tags": [
@@ -934,6 +978,33 @@
       "canonical_rel_path": "skills/agent-infra/omx-project-scope-git-isolation"
     },
     {
+      "skill_id": "plan",
+      "category": "agent-infra",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "8ea6c30ea1d0e477c1f2236a43e9610395a992e4",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/plan",
+      "upstream": {
+        "repo": "Yeachan-Heo/oh-my-codex",
+        "ref": "456effa2afcb7967e8ba7130ee15b2835c235d72",
+        "skillPath": "skills/plan",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/Yeachan-Heo/oh-my-codex/tree/v0.20.0/skills/plan",
+        "imported_at": "2026-07-13T11:50:36.134Z",
+        "last_verified_ref": "456effa2afcb7967e8ba7130ee15b2835c235d72",
+        "local_modifications": true
+      }
+    },
+    {
       "skill_id": "product-showcase",
       "category": "frontend-and-design",
       "visibility": "public",
@@ -954,6 +1025,60 @@
         "imported_at": "2026-06-14T13:50:12.781Z",
         "last_verified_ref": "0aa0f4437e0e70dda1e4e62df3a9d9cb8170f8ba",
         "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "ralph",
+      "category": "agent-infra",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "2282dae8a4dd68b07e33395f3f66234e9a1a48e7",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/ralph",
+      "upstream": {
+        "repo": "Yeachan-Heo/oh-my-codex",
+        "ref": "456effa2afcb7967e8ba7130ee15b2835c235d72",
+        "skillPath": "skills/ralph",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/Yeachan-Heo/oh-my-codex/tree/v0.20.0/skills/ralph",
+        "imported_at": "2026-07-13T11:50:55.660Z",
+        "last_verified_ref": "456effa2afcb7967e8ba7130ee15b2835c235d72",
+        "local_modifications": true
+      }
+    },
+    {
+      "skill_id": "ralplan",
+      "category": "agent-infra",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "8fb6759564f562e8c0bb7f114a2b39b4668a0708",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/ralplan",
+      "upstream": {
+        "repo": "Yeachan-Heo/oh-my-codex",
+        "ref": "456effa2afcb7967e8ba7130ee15b2835c235d72",
+        "skillPath": "skills/ralplan",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/Yeachan-Heo/oh-my-codex/tree/v0.20.0/skills/ralplan",
+        "imported_at": "2026-07-13T11:50:45.211Z",
+        "last_verified_ref": "456effa2afcb7967e8ba7130ee15b2835c235d72",
+        "local_modifications": true
       }
     },
     {
@@ -1116,6 +1241,23 @@
       }
     },
     {
+      "skill_id": "site-1to1-local-mirror",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "23dbe5880f073d42785ea359935619d2591bf176",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/site-1to1-local-mirror"
+    },
+    {
       "skill_id": "skillctl-control-plane",
       "category": "agent-infra",
       "visibility": "public",
@@ -1264,6 +1406,23 @@
         "opencode"
       ],
       "canonical_rel_path": "skills/domain-aws-thrive/thrive-therapy-session-diagnostics"
+    },
+    {
+      "skill_id": "trellis-plan-adapter",
+      "category": "agent-infra",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "5e576d3a7f733718517ecd25ff05e5f571df8843",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/trellis-plan-adapter"
     },
     {
       "skill_id": "ui-animation",
@@ -1505,6 +1664,33 @@
         "sourceUrl": "https://github.com/vercel-labs/agent-skills",
         "imported_at": "2026-06-14T01:23:51.541Z",
         "last_verified_ref": "main",
+        "local_modifications": true
+      }
+    },
+    {
+      "skill_id": "visual-ralph",
+      "category": "frontend-and-design",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "bce4a238ba1793ca75d9023761d058877293084b",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/frontend-and-design/visual-ralph",
+      "upstream": {
+        "repo": "Yeachan-Heo/oh-my-codex",
+        "ref": "456effa2afcb7967e8ba7130ee15b2835c235d72",
+        "skillPath": "skills/visual-ralph",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/Yeachan-Heo/oh-my-codex/tree/v0.20.0/skills/visual-ralph",
+        "imported_at": "2026-07-14T00:44:11.266Z",
+        "last_verified_ref": "456effa2afcb7967e8ba7130ee15b2835c235d72",
         "local_modifications": true
       }
     },

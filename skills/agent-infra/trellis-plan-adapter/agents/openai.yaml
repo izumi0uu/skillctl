@@ -1,0 +1,7 @@
+interface:
+  display_name: "Trellis Plan Adapter"
+  short_description: "Bridge plan contracts into Trellis lifecycle"
+  default_prompt: "Use $trellis-plan-adapter to import or validate a neutral Plan Bundle and perform the requested Trellis lifecycle operation."
+
+policy:
+  allow_implicit_invocation: true

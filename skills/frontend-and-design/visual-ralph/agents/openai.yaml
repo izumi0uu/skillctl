@@ -1,0 +1,7 @@
+interface:
+  display_name: "Visual Ralph"
+  short_description: "Deliver approved UI with measured visual evidence"
+  default_prompt: "Use $visual-ralph to execute the active approved visual task through Ralph and record reproducible screenshot evidence."
+
+policy:
+  allow_implicit_invocation: false

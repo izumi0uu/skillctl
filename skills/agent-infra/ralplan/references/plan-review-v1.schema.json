@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.idah.dev/schemas/plan-review-v1.schema.json",
+  "title": "Plan Review v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "bundle_id",
+    "bundle_revision",
+    "plan_digest",
+    "status",
+    "consensus_strength",
+    "architect",
+    "critic",
+    "reviewed_at"
+  ],
+  "properties": {
+    "schema": {
+      "const": "plan-review/v1"
+    },
+    "bundle_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "bundle_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "plan_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "status": {
+      "enum": [
+        "approved",
+        "needs_revision",
+        "rejected"
+      ]
+    },
+    "consensus_strength": {
+      "enum": [
+        "independent",
+        "reduced"
+      ]
+    },
+    "architect": {
+      "$ref": "#/$defs/architectReview"
+    },
+    "critic": {
+      "$ref": "#/$defs/criticReview"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "reviewBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verdict",
+        "required_changes",
+        "findings"
+      ],
+      "properties": {
+        "verdict": {
+          "type": "string"
+        },
+        "required_changes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "architectReview": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/reviewBase"
+        },
+        {
+          "properties": {
+            "verdict": {
+              "enum": [
+                "APPROVE",
+                "REVISE"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "criticReview": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/reviewBase"
+        },
+        {
+          "properties": {
+            "verdict": {
+              "enum": [
+                "APPROVE",
+                "REVISE",
+                "REJECT"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "approved"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "consensus_strength": {
+            "const": "independent"
+          },
+          "architect": {
+            "properties": {
+              "verdict": {
+                "const": "APPROVE"
+              },
+              "required_changes": {
+                "maxItems": 0
+              }
+            }
+          },
+          "critic": {
+            "properties": {
+              "verdict": {
+                "const": "APPROVE"
+              },
+              "required_changes": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "needs_revision"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "critic": {
+            "properties": {
+              "verdict": {
+                "enum": [
+                  "APPROVE",
+                  "REVISE"
+                ]
+              }
+            }
+          }
+        },
+        "anyOf": [
+          {
+            "properties": {
+              "architect": {
+                "properties": {
+                  "verdict": {
+                    "const": "REVISE"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "properties": {
+              "critic": {
+                "properties": {
+                  "verdict": {
+                    "const": "REVISE"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "rejected"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "critic": {
+            "properties": {
+              "verdict": {
+                "const": "REJECT"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

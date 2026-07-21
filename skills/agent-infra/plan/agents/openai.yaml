@@ -1,0 +1,7 @@
+interface:
+  display_name: "Plan"
+  short_description: "Create a portable implementation contract"
+  default_prompt: "Use $plan to inspect this repository and return a right-sized plan-bundle/v1 contract without starting implementation."
+
+policy:
+  allow_implicit_invocation: true
