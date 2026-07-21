@@ -1,0 +1,7 @@
+interface:
+  display_name: "DAP Handoff Writer"
+  short_description: "Write debugger-agent handoff docs"
+  default_prompt: "Use $dap-handoff-writer to turn this feature module, commit range, or local diff into a DAP handoff with invariants, phase probes, watchpoints, expected states, and acceptance criteria."
+
+policy:
+  allow_implicit_invocation: true

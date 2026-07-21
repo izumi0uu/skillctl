@@ -213,6 +213,88 @@ Prioritize interpretation in this order:
 3. latest output artifacts
 4. disk or memory pressure
 
+## PR Overlap Index MCP Checks
+
+Use this when operating the optional `pr-overlap-index` MCP on a small VPS.
+This section is an operator/runbook surface only: it proves the MCP is healthy,
+fast, and not pressuring the host. It does not decide whether a Hermes issue can
+be archived; archive decisions belong to the issue-triage workflow and must use
+`search_pr_overlap` archive evidence.
+
+### Read-only smoke command
+
+After discovering the VPS host, user, SSH key, service directory, and DB path at
+runtime, run the stdlib smoke module through the same Python environment the
+service uses:
+
+```bash
+ssh -o StrictHostKeyChecking=no -i <KEY> <USER>@<VPS_HOST> "
+  export PYTHONPATH=<PR_OVERLAP_SERVICE_DIR>
+  export PR_OVERLAP_DB=<PR_OVERLAP_DB>
+  <PYTHON> -m pr_overlap_index.smoke --runs 5 --top-k 5
+"
+```
+
+For the current Hermes VPS layout, discover these values rather than hardcoding
+them:
+
+- `<PR_OVERLAP_SERVICE_DIR>` is commonly under
+  `<HERMES_HOME>/services/pr-overlap-index`
+- `<PR_OVERLAP_DB>` is commonly under
+  `<HERMES_HOME>/data/pr-overlap-index/pr-overlap.db`
+- `<PYTHON>` is commonly the Hermes repo venv Python, but verify it exists
+
+### Smoke fields to inspect
+
+Report the high-signal fields instead of pasting the full JSON:
+
+- query speed: `query.elapsed_ms_p50`, `query.elapsed_ms_p95`,
+  `query.elapsed_ms_max`
+- term coverage: `term_coverage.term_indexed_manifest_count` /
+  `term_coverage.latest_manifest_count`, plus
+  `term_coverage.term_index_coverage_ratio`
+- prefilter status: `query.candidate_prefilter.reason`; `term_match` with full
+  term coverage is the healthy fast path
+- health: `health.schema_version`, `health.brownout_state`,
+  `health.archive_confidence_floor`, `health.free_disk_bytes`,
+  `health.db_bytes`, `health.wal_bytes`
+- indexer status: `health.last_run_by_scope.*.indexed`,
+  `requests_used`, `stop_reason`, and `finished_at`
+- host pressure: `system.memavailable_bytes`, `system.swapfree_bytes`,
+  `system.load1`, `system.load5`, and `system.smoke_max_rss_bytes`
+
+Treat `brownout_state != "ok"`, swap use, incomplete term coverage, missing
+`last_run_by_scope`, or repeated non-cap stop reasons as signals to pause
+backfills and inspect logs before doing more ingestion.
+
+### Safe deploy rules
+
+When syncing local updates to the VPS-hosted PR overlap service:
+
+- Back up the service directory, DB, and crontab before changing files.
+- Sync only the intended service files; preserve the VPS-local
+  `run-indexer-safe.sh`.
+- Do not use `rsync --delete` against the service directory unless you have
+  explicitly accounted for VPS-local files such as `run-indexer-safe.sh`.
+- Verify freshness with file hashes and `python -m compileall` before claiming
+  the VPS is running the intended code.
+- Prefer terminating only the stale `pr-overlap-index/server.py` child process
+  so the gateway can respawn it with fresh code; do not restart unrelated
+  services unless evidence shows it is necessary.
+
+### Small VPS ingestion boundaries
+
+On a 2C/2GB/50GB VPS, keep ingestion bounded:
+
+- Use the existing safe runner (`run-indexer-safe.sh`) with `nice`, `ionice`,
+  `flock`, short timeouts, low request caps, small batch limits, and patch/file
+  truncation.
+- Do not run broad cold-history ingestion on the serving VPS.
+- Build `cold_archive` bundles off-VPS or on a larger temporary worker, then
+  stage/validate/import them with the PR overlap import helpers.
+- Remember that smoke is read-only observability. It can prove the service is
+  healthy and fast, but it is not archive authorization by itself.
+
 ## Dashboard Or Local Web Service Access
 
 For an internal dashboard or local-only service on the VPS:
