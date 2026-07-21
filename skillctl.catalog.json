@@ -762,6 +762,23 @@
       "canonical_rel_path": "skills/agent-infra/hermes-issue-triage"
     },
     {
+      "skill_id": "hermes-pr-notion-notes",
+      "category": "knowledge-and-research",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "1a57f77107e64e1d9c38f771c180c278da6432e4",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/knowledge-and-research/hermes-pr-notion-notes"
+    },
+    {
       "skill_id": "hermes-upstream-worktree-fix",
       "category": "agent-infra",
       "tags": [
@@ -789,7 +806,7 @@
       "visibility": "public",
       "source_kind": "upstream",
       "origin_kind": "derived-from-upstream",
-      "hash": "c8bcc9ae9a9afeabb9765276c228a5da3f1ddb4d",
+      "hash": "861475b3c72120417ba1b54fc86fbd3c47b605b9",
       "managed": true,
       "targets": [
         "claude-code",
@@ -890,6 +907,23 @@
         "opencode"
       ],
       "canonical_rel_path": "skills/system-and-demo/local-portable-demo"
+    },
+    {
+      "skill_id": "maintain-mac-dev-environment",
+      "category": "system-and-demo",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "7c7dda7bb3a9ad1b0433e9417ee55c81132ca513",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/system-and-demo/maintain-mac-dev-environment"
     },
     {
       "skill_id": "motion-design",
@@ -1246,7 +1280,7 @@
       "visibility": "public",
       "source_kind": "local-public",
       "origin_kind": "local-authored",
-      "hash": "23dbe5880f073d42785ea359935619d2591bf176",
+      "hash": "4a786db92ec0a494b89a978eff482d0f759cdfc5",
       "managed": true,
       "targets": [
         "claude-code",
@@ -1700,7 +1734,7 @@
       "visibility": "public",
       "source_kind": "local-public",
       "origin_kind": "local-authored",
-      "hash": "554b2b8743c8d90fc2704286afa793b4786b637c",
+      "hash": "16011bb764e69967fbf5d85be06abc9639699997",
       "managed": true,
       "targets": [
         "claude-code",

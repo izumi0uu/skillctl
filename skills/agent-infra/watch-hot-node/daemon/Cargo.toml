@@ -1,0 +1,20 @@
+[package]
+name = "watch-hot-process"
+version = "0.3.0"
+edition = "2021"
+rust-version = "1.80"
+description = "Low-overhead macOS watcher for hot node, codex, and WindowServer processes"
+license = "MIT"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+signal-hook = "0.3"
+sysinfo = "0.37"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = true

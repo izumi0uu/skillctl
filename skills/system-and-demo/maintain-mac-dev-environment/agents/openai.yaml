@@ -1,0 +1,6 @@
+interface:
+  display_name: "Maintain Mac Dev Environment"
+  short_description: "Audit and safely simplify a macOS dev setup"
+  default_prompt: "Use $maintain-mac-dev-environment to audit my Mac development environment and produce a safe cleanup plan without changing anything."
+policy:
+  allow_implicit_invocation: false
