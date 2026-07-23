@@ -1317,6 +1317,23 @@
       "canonical_rel_path": "skills/domain-aws-thrive/thrive-therapy-session-diagnostics"
     },
     {
+      "skill_id": "trellis-design-doc-generator",
+      "category": "productivity-and-artifacts",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "49089fb003aea87cab389c4160e4d6df528725fd",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/productivity-and-artifacts/trellis-design-doc-generator"
+    },
+    {
       "skill_id": "ui-animation",
       "category": "frontend-and-design",
       "visibility": "public",
