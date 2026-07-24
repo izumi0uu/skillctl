@@ -15,7 +15,7 @@ Derived copies are not source:
 
 - agent install mirrors such as `~/.codex/skills/agent-process-monitor/`;
 - the live xbar plugin at `~/Library/Application Support/xbar/plugins/mcp-monitor.15s.py`;
-- install metadata and backups under `~/.local/state/skillctl/agent-process-monitor/`.
+- install metadata, transactional backups, and provenance-only legacy artifacts under `~/.local/state/skillctl/agent-process-monitor/`; legacy artifacts are not rollback candidates.
 
 Never hand-edit a derived copy. Change the canonical plugin, update its deterministic verifier, sync the skill, then install it through the lifecycle manager.
 
