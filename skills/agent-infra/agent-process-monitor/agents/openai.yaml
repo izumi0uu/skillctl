@@ -1,0 +1,7 @@
+interface:
+  display_name: "Agent Process Monitor"
+  short_description: "Maintain the xbar dashboard for local agent process trees"
+  default_prompt: "Use $agent-process-monitor to inspect, verify, install, update, diagnose, or roll back the macOS xbar Agent Process Monitor through its canonical skillctl-managed source and transactional lifecycle manager."
+
+policy:
+  allow_implicit_invocation: true
