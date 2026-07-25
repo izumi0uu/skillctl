@@ -5,6 +5,7 @@ import path from "node:path";
 export const EXCLUDED_SKILL_FILES = new Set([
   "metadata.json",
   ".DS_Store",
+  "uv.lock",
 ]);
 
 export const EXCLUDED_SKILL_DIRS = new Set([

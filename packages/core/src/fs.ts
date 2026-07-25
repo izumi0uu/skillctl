@@ -41,6 +41,21 @@ export async function removeDirContents(dirPath: string): Promise<void> {
   await Promise.all(entries.map(async (entry) => fs.rm(path.join(dirPath, entry), { recursive: true, force: true })));
 }
 
+export async function removeExcludedSkillEntries(dirPath: string): Promise<void> {
+  const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+  await Promise.all(entries.map(async (entry) => {
+    const entryPath = path.join(dirPath, entry.name);
+    if (isExcludedSkillEntry(entry.name, entry.isDirectory() || entry.isSymbolicLink())) {
+      await fs.rm(entryPath, { recursive: true, force: true });
+      return;
+    }
+    if (entry.isDirectory()) {
+      await removeExcludedSkillEntries(entryPath);
+    }
+  }));
+}
+
 async function copySkillTree(src: string, dst: string): Promise<void> {
   await ensureDir(dst);
   const entries = await fs.readdir(src, { withFileTypes: true });

@@ -82,11 +82,6 @@ describe("sync and prune", () => {
     const skillsDir = path.join(repoRoot, "skills");
     await fs.mkdir(skillsDir, { recursive: true });
     const skillPath = await writeSkill(skillsDir, "portable");
-    await fs.mkdir(path.join(skillPath, ".venv", "bin"), { recursive: true });
-    await fs.mkdir(path.join(skillPath, "__pycache__"), { recursive: true });
-    await fs.writeFile(path.join(skillPath, ".venv", "bin", "python"), "python", "utf8");
-    await fs.writeFile(path.join(skillPath, "__pycache__", "skill.pyc"), "compiled", "utf8");
-    await fs.writeFile(path.join(skillPath, "metadata.json"), "{\"private\":true}\n", "utf8");
     await writeReadme(repoRoot, "# skillctl\n");
     const fakeHome = await makeTempDir("skillctl-home-");
     process.env.HOME = fakeHome;
@@ -120,6 +115,15 @@ describe("sync and prune", () => {
     };
 
     await normalizeCatalogArtifacts(repoRoot, catalog);
+    const portableHash = catalog.skills[0]?.hash;
+    await fs.mkdir(path.join(skillPath, ".venv", "bin"), { recursive: true });
+    await fs.mkdir(path.join(skillPath, "__pycache__"), { recursive: true });
+    await fs.writeFile(path.join(skillPath, ".venv", "bin", "python"), "python", "utf8");
+    await fs.writeFile(path.join(skillPath, "__pycache__", "skill.pyc"), "compiled", "utf8");
+    await fs.writeFile(path.join(skillPath, "metadata.json"), "{\"private\":true}\n", "utf8");
+    await fs.writeFile(path.join(skillPath, "uv.lock"), "local lockfile\n", "utf8");
+    await normalizeCatalogArtifacts(repoRoot, catalog);
+    expect(catalog.skills[0]?.hash).toBe(portableHash);
     await syncCatalog(repoRoot, config, catalog);
 
     const installedDir = path.join(fakeHome, ".codex", "skills", "portable");
@@ -127,6 +131,7 @@ describe("sync and prune", () => {
     await expect(fs.access(path.join(installedDir, ".venv"))).rejects.toThrow();
     await expect(fs.access(path.join(installedDir, "__pycache__"))).rejects.toThrow();
     await expect(fs.access(path.join(installedDir, "metadata.json"))).rejects.toThrow();
+    await expect(fs.access(path.join(installedDir, "uv.lock"))).rejects.toThrow();
   });
 
   test("skills-cli transport footers the final per-agent install after mirroring", async () => {
@@ -134,6 +139,7 @@ describe("sync and prune", () => {
     const skillsDir = path.join(repoRoot, "skills");
     await fs.mkdir(skillsDir, { recursive: true });
     const skillPath = await writeSkill(skillsDir, "alpha");
+    await fs.writeFile(path.join(skillPath, "uv.lock"), "local lockfile\n", "utf8");
     await writeReadme(repoRoot, "# skillctl\n");
     const fakeHome = await makeTempDir("skillctl-home-");
     process.env.HOME = fakeHome;
@@ -210,6 +216,8 @@ describe("sync and prune", () => {
     const installed = await fs.readFile(path.join(fakeHome, ".codex", "skills", "alpha", "SKILL.md"), "utf8");
     expect(installed).toContain("## Source Attribution");
     expect(installed).toContain("imported-upstream");
+    await expect(fs.access(path.join(fakeHome, ".agents", "skills", "alpha", "uv.lock"))).rejects.toThrow();
+    await expect(fs.access(path.join(fakeHome, ".codex", "skills", "alpha", "uv.lock"))).rejects.toThrow();
   });
 
   test("skills-cli transport keeps direct claude-code installs even when shared layer is stale", async () => {
@@ -217,6 +225,7 @@ describe("sync and prune", () => {
     const skillsDir = path.join(repoRoot, "skills");
     await fs.mkdir(skillsDir, { recursive: true });
     const skillPath = await writeSkill(skillsDir, "alpha", "fresh-marker");
+    await fs.writeFile(path.join(skillPath, "uv.lock"), "local lockfile\n", "utf8");
     await writeReadme(repoRoot, "# skillctl\n");
     const fakeHome = await makeTempDir("skillctl-home-");
     process.env.HOME = fakeHome;
@@ -299,6 +308,7 @@ describe("sync and prune", () => {
 
     const staleShared = await fs.readFile(path.join(fakeHome, ".agents", "skills", "alpha", "SKILL.md"), "utf8");
     expect(staleShared).toContain("stale-shared-marker");
+    await expect(fs.access(path.join(fakeHome, ".claude", "skills", "alpha", "uv.lock"))).rejects.toThrow();
   });
 
   test("skills-cli batches sibling skills into a single transport run per agent", async () => {
