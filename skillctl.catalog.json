@@ -818,6 +818,60 @@
       "canonical_rel_path": "skills/agent-infra/hermes-upstream-worktree-fix"
     },
     {
+      "skill_id": "humanizer",
+      "category": "knowledge-and-research",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "b7e50dbf57ef673b9c93128e243e17fc1c78e3e6",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/knowledge-and-research/humanizer",
+      "upstream": {
+        "repo": "blader/humanizer",
+        "ref": "523374dee72d67c7b2b5f858ea0094ffda49c3ac",
+        "skillPath": ".",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/blader/humanizer",
+        "imported_at": "2026-07-27T17:25:12.656Z",
+        "last_verified_ref": "523374dee72d67c7b2b5f858ea0094ffda49c3ac",
+        "local_modifications": false
+      }
+    },
+    {
+      "skill_id": "humanizer-zh",
+      "category": "knowledge-and-research",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "2a0b537f64c6e32157937a88985ea9d708c342f7",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/knowledge-and-research/humanizer-zh",
+      "upstream": {
+        "repo": "op7418/Humanizer-zh",
+        "ref": "91f3d394db8419c20d67ebe22a96cf8fee0a404b",
+        "skillPath": ".",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/op7418/Humanizer-zh",
+        "imported_at": "2026-07-27T17:25:39.058Z",
+        "last_verified_ref": "91f3d394db8419c20d67ebe22a96cf8fee0a404b",
+        "local_modifications": false
+      }
+    },
+    {
       "skill_id": "js-reverse",
       "category": "knowledge-and-research",
       "visibility": "public",
