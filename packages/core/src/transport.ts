@@ -7,7 +7,7 @@ import { ensureReadmeSourceRegistry, expectedSkillRenderedHash } from "./attribu
 import { getAdapter } from "./adapters.js";
 import { managedSkillsForAgent } from "./catalog.js";
 import { DistributionPolicyCache, installableSkillsForAgent } from "./distribution.js";
-import { copyDir, ensureDir, fileExists, removeDirIfExists } from "./fs.js";
+import { copyDir, ensureDir, fileExists, removeDirIfExists, removeExcludedSkillEntries } from "./fs.js";
 import { writeManagedIndex } from "./indexes.js";
 import type {
   AgentId,
@@ -229,6 +229,20 @@ async function mirrorSharedInstallToAdapter(agent: AgentId, copiedSkills: string
   }));
 }
 
+async function removeExcludedEntriesFromSkillsCliInstall(agent: AgentId, copiedSkills: string[]): Promise<void> {
+  const adapter = getAdapter(agent);
+  const installRoot = adapter.skillsCliUsesSharedLayer
+    ? path.join(os.homedir(), ".agents", "skills")
+    : adapter.installDir();
+
+  await Promise.all(copiedSkills.map(async (skillId) => {
+    const installedDir = path.join(installRoot, skillId);
+    if (await fileExists(installedDir)) {
+      await removeExcludedSkillEntries(installedDir);
+    }
+  }));
+}
+
 // Apply the source-attribution footer to each skill's final per-agent install
 // location. This must run AFTER any shared-layer mirror: some agents are written
 // by the upstream CLI into ~/.agents/skills first and only then mirrored into
@@ -312,6 +326,7 @@ export async function syncViaSkillsCli(
       });
       copied.push(...result.copied);
       skipped.push(...result.skipped);
+      await removeExcludedEntriesFromSkillsCliInstall(agent, result.copied.map((entry) => entry.skillId));
       onProgress?.({ stage: "mirror", agent, copied: copiedCount, total });
       await mirrorSharedInstallToAdapter(agent, result.copied.map((entry) => entry.skillId));
       await renderInstalledAttribution(agent, installable, result.copied);

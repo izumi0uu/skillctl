@@ -1,4 +1,4 @@
 interface:
   display_name: "Hermes PR Notion Notes"
-  short_description: "Turn Hermes PR fixes into durable Notion stories."
-  default_prompt: "Use $hermes-pr-notion-notes to document this Hermes PR fix in the Notion story database."
+  short_description: "Turn Hermes PR fixes into evidence-led debugging stories."
+  default_prompt: "Use $hermes-pr-notion-notes to reconstruct how this Hermes issue can be investigated and fixed, teach the relevant Hermes principles along the way, and document it as a flexible evidence-backed Notion Story."

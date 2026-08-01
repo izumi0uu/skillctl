@@ -284,6 +284,23 @@
       }
     },
     {
+      "skill_id": "ego-browser-guard",
+      "category": "agent-infra",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "dcbc594c86bcfc25a6f7b830062d562841611f48",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/ego-browser-guard"
+    },
+    {
       "skill_id": "electron",
       "category": "frontend-and-design",
       "visibility": "public",
@@ -801,7 +818,7 @@
       "visibility": "public",
       "source_kind": "local-public",
       "origin_kind": "local-authored",
-      "hash": "1a57f77107e64e1d9c38f771c180c278da6432e4",
+      "hash": "98c04c539c72c1df6910ef8f470f1307b59e9d21",
       "managed": true,
       "targets": [
         "claude-code",
@@ -1403,6 +1420,23 @@
         "opencode"
       ],
       "canonical_rel_path": "skills/domain-aws-thrive/thrive-therapy-session-diagnostics"
+    },
+    {
+      "skill_id": "trellis-design-doc-generator",
+      "category": "productivity-and-artifacts",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "49089fb003aea87cab389c4160e4d6df528725fd",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/productivity-and-artifacts/trellis-design-doc-generator"
     },
     {
       "skill_id": "ui-animation",
