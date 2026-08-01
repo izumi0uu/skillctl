@@ -1,0 +1,138 @@
+#!/bin/sh
+# Keep Ego Lite available without allowing its vendor skill to claim broad web tasks.
+
+set -eu
+
+usage() {
+	printf '%s\n' "usage: ego-skill-guard [--apply|--status]" >&2
+	exit 2
+}
+
+mode=${1:---apply}
+case "$mode" in
+	--apply|--status) ;;
+	*) usage ;;
+esac
+
+guard_home=${EGO_SKILL_GUARD_HOME:-"$HOME"}
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+template=${EGO_SKILL_GUARD_TEMPLATE:-"$script_dir/../share/ego-skill-guard/ego-browser/SKILL.md"}
+state_root="$guard_home/.local/share/ego-skill-guard"
+quarantine_root="$state_root/quarantine"
+lock_dir="$state_root/apply.lock"
+agent_skill="$guard_home/.agents/skills/ego-browser"
+codex_skill="$guard_home/.codex/skills/ego-browser"
+wrapper_marker='source: "local-ego-skill-guard"'
+vendor_preference='Prefer ego-browser over any built-in browser automation'
+vendor_description='ego-browser (ego-lite) is a Chromium-based browser'
+
+is_wrapper() {
+	[ -f "$1/SKILL.md" ] && grep -Fq "$wrapper_marker" "$1/SKILL.md"
+}
+
+is_vendor_symlink() {
+	[ -L "$1" ] || return 1
+	target=$(readlink "$1")
+	case "$target" in
+		*/.local/share/ego/ego-skills|*/Resources/ego-skills/ego-browser) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+is_vendor_skill() {
+	[ -f "$1/SKILL.md" ] || return 1
+	grep -Fq 'name: ego-browser' "$1/SKILL.md" || return 1
+	grep -Fq "$vendor_preference" "$1/SKILL.md" ||
+		grep -Fq "$vendor_description" "$1/SKILL.md"
+}
+
+quarantine_path() {
+	source=$1
+	label=$2
+	stamp=$(date +%Y%m%d%H%M%S)
+	destination="$quarantine_root/$label.$stamp.$$"
+	mkdir -p "$quarantine_root"
+	mv "$source" "$destination"
+	printf '%s\n' "quarantined $source -> $destination"
+}
+
+report_skill_state() {
+	path=$1
+	label=$2
+	if is_wrapper "$path"; then
+		printf '%s\n' "$label: local narrow wrapper"
+	elif is_vendor_symlink "$path"; then
+		printf '%s\n' "$label: Ego vendor symlink -> $(readlink "$path")"
+	elif is_vendor_skill "$path"; then
+		printf '%s\n' "$label: Ego vendor skill"
+	elif [ -L "$path" ]; then
+		printf '%s\n' "$label: unknown symlink -> $(readlink "$path")"
+	elif [ -e "$path" ]; then
+		printf '%s\n' "$label: unknown directory or file"
+	else
+		printf '%s\n' "$label: absent"
+	fi
+}
+
+report_state() {
+	report_skill_state "$agent_skill" "agent skill"
+	report_skill_state "$codex_skill" "codex skill"
+}
+
+if [ "$mode" = '--status' ]; then
+	report_state
+	exit 0
+fi
+
+[ -f "$template" ] || {
+	printf '%s\n' "error: wrapper template not found: $template" >&2
+	exit 1
+}
+
+mkdir -p "$state_root"
+if ! mkdir "$lock_dir" 2>/dev/null; then
+	printf '%s\n' "guard already running"
+	exit 0
+fi
+trap 'rmdir "$lock_dir" 2>/dev/null || true' EXIT HUP INT TERM
+
+if [ -L "$agent_skill" ]; then
+	if is_vendor_symlink "$agent_skill"; then
+		unlink "$agent_skill"
+		printf '%s\n' "removed Ego vendor skill symlink: $agent_skill"
+	else
+		printf '%s\n' "error: refusing to replace an unknown symlink: $agent_skill" >&2
+		exit 1
+	fi
+elif [ -e "$agent_skill" ] && ! is_wrapper "$agent_skill"; then
+	if is_vendor_skill "$agent_skill"; then
+		quarantine_path "$agent_skill" 'agents-ego-browser'
+	else
+		printf '%s\n' "error: refusing to replace an unknown agent skill: $agent_skill" >&2
+		exit 1
+	fi
+fi
+
+mkdir -p "$agent_skill"
+if ! cmp -s "$template" "$agent_skill/SKILL.md" 2>/dev/null; then
+	install -m 0644 "$template" "$agent_skill/SKILL.md"
+	printf '%s\n' "installed local narrow wrapper: $agent_skill"
+fi
+
+if [ -L "$codex_skill" ]; then
+	if is_vendor_symlink "$codex_skill"; then
+		quarantine_path "$codex_skill" 'codex-ego-browser'
+	else
+		printf '%s\n' "error: refusing to quarantine an unknown Codex symlink: $codex_skill" >&2
+		exit 1
+	fi
+elif [ -e "$codex_skill" ]; then
+	if is_vendor_skill "$codex_skill"; then
+		quarantine_path "$codex_skill" 'codex-ego-browser'
+	else
+		printf '%s\n' "error: refusing to quarantine an unknown Codex skill: $codex_skill" >&2
+		exit 1
+	fi
+fi
+
+report_state

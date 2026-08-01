@@ -284,6 +284,23 @@
       }
     },
     {
+      "skill_id": "ego-browser-guard",
+      "category": "agent-infra",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "dcbc594c86bcfc25a6f7b830062d562841611f48",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/ego-browser-guard"
+    },
+    {
       "skill_id": "electron",
       "category": "frontend-and-design",
       "visibility": "public",
