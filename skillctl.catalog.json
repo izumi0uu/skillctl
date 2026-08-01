@@ -453,6 +453,23 @@
       }
     },
     {
+      "skill_id": "generate-images-via-relay",
+      "category": "productivity-and-artifacts",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "2b62a5ff2737d6cef6af7ba5862c7f56e3b32c17",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/productivity-and-artifacts/generate-images-via-relay"
+    },
+    {
       "skill_id": "github-issues-dashboard-ops",
       "category": "deployment-and-platform",
       "visibility": "public",

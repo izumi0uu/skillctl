@@ -1,0 +1,4 @@
+interface:
+  display_name: "Relay Image Generation"
+  short_description: "Generate images through image-2 relay APIs"
+  default_prompt: "Use $generate-images-via-relay to generate an image through my configured image-2 relay and save it locally."
