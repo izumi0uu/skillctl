@@ -1,7 +1,7 @@
 interface:
   display_name: "Hermes Upstream Worktree Fix"
   short_description: "Upstream fixes with clean-worktree discipline"
-  default_prompt: "Use $hermes-upstream-worktree-fix to sync the four Hermes worktrees to latest upstream/main, reproduce on a clean baseline, implement the smallest fix, and draft issue/PR text without publishing until I confirm."
+  default_prompt: "Use $hermes-upstream-worktree-fix to health-check all four retained Hermes lanes, preserve local-experience lane 0, sync only upstream-development lanes 1-3 to latest upstream/main when safe, reproduce on a clean baseline, implement the smallest fix, and draft issue/PR text without publishing until I confirm."
 
 policy:
   allow_implicit_invocation: true

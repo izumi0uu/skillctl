@@ -1,6 +1,6 @@
 ---
 name: hermes-upstream-worktree-fix
-description: "Use when working on Hermes upstream fixes or maintaining the standardized local Hermes worktree bench after issue triage is already done: default to the main checkout plus three intentionally retained numbered worktrees for parallel upstream development, reuse those numbered lanes by switching branches inside them when possible, honor explicit user-requested topology overrides when needed, sync the needed lanes to latest upstream/main before development, reproduce on a clean baseline, implement the smallest fix, validate locally, and draft or publish issue/PR artifacts only when the user has explicitly asked for publication."
+description: "Use when working on Hermes upstream fixes or maintaining the standardized four-lane local Hermes worktree bench after issue triage is already done: retain four lanes total (lane 0 for local experience plus upstream-development lanes 1-3), reuse the numbered lanes by switching branches inside them when possible, honor explicit user-requested topology overrides when needed, sync only the needed upstream-development lanes to latest upstream/main before development, reproduce on a clean baseline, implement the smallest fix, validate locally, and draft or publish issue/PR artifacts only when the user has explicitly asked for publication."
 ---
 
 # Hermes Upstream Worktree Fix
@@ -18,6 +18,7 @@ Default posture:
 - `git push`, `gh issue create`, and `gh pr create` require explicit user confirmation; a direct user instruction in the current thread counts as that confirmation, so do not stop to re-ask
 - issue and PR text may be drafted automatically, but publication stays human-gated
 - if the task is only worktree hygiene, stop after reporting topology, sync status, and any blockers
+- count the default bench as four retained lanes total: lane `0` plus lanes `1-3`; do not describe the whole topology as "three lanes"
 - treat `~/.hermes/hermes-agent` as the user's local-experience lane, not the default upstream bugfix/feature lane
 - treat the three numbered worktrees as the normal retained parallel-development bench, not as accidental clutter to collapse by default
 - never create a new ad-hoc or temporary Hermes worktree when lane `1-3` can be reused by switching branches inside an existing lane
@@ -41,7 +42,7 @@ Default posture:
 
 - Do not skip issue triage when the main uncertainty is whether the report is still valid on current `main`.
 - Do not call something an upstream bug until clean-baseline checks rule out local skew.
-- Keep exactly four retained local Hermes checkouts unless the user explicitly asks for a different topology.
+- Keep exactly four retained local Hermes lanes/checkouts unless the user explicitly asks for a different topology: local-experience lane `0` plus upstream-development lanes `1-3`.
 - When the user explicitly asks for a different topology, treat that as a deliberate override for the current task; keep the override isolated and explicit instead of forcing policy compliance mid-task.
 - Do not use `~/.hermes/hermes-agent` as the default checkout for upstream bugfix or feature development. Reserve it for local usage, personal workflow tuning, and experience testing unless the user explicitly overrides that policy.
 - Keep the three numbered worktrees available for concurrent upstream investigations or fixes unless the user explicitly wants a slimmer bench. Their existence is intentional and should be reflected in the skill/config, not treated as maintenance debt by default.
@@ -52,24 +53,26 @@ Default posture:
 - Every material claim in the final write-up must be either direct evidence, a clearly labeled inference, or an explicit unknown.
 - Drafting is allowed. Publishing is not allowed without explicit user confirmation, but a direct request such as "push this" or "open the PR" is sufficient confirmation.
 
-## Hermes Local Worktree Policy
+## Hermes Four-Lane Worktree Policy
 
 Default topology:
-- `~/.hermes/hermes-agent` on a local-only branch such as `izumi/local` for day-to-day usage and local UX validation
-- `~/.hermes/hermes-agent-1` on `worktree/1`
-- `~/.hermes/hermes-agent-2` on `worktree/2`
-- `~/.hermes/hermes-agent-3` on `worktree/3`
+- lane `0`: `~/.hermes/hermes-agent` on a local-only branch such as `izumi/local` for day-to-day usage and local UX validation
+- lane `1`: `~/.hermes/hermes-agent-1`, canonically `worktree/1`
+- lane `2`: `~/.hermes/hermes-agent-2`, canonically `worktree/2`
+- lane `3`: `~/.hermes/hermes-agent-3`, canonically `worktree/3`
 
 Topology note:
-- The path slots are canonical even when the branch names are not. If `~/.hermes/admin/worktree-bench.json` is present, treat that config as the source of truth for which active branch currently occupies each numbered lane.
+- The default topology has exactly four retained lanes total, not three. Only three of them are upstream-development lanes.
+- The path slots are canonical even when the branch names are not. If `~/.hermes/admin/worktree-bench.json` is present, treat that config as the source of truth for which active branch currently occupies each lane.
 
 Role split:
 - `~/.hermes/hermes-agent` is the personal/local lane. It may carry local config-adjacent tweaks, convenience patches, or experience-testing changes that are not part of an upstream-ready clean bench.
 - `~/.hermes/hermes-agent-{1,2,3}` are the only upstream-development lanes. Use them for reproduction, clean-baseline verification, bugfixes, features, and PR preparation.
 - When a numbered lane's current branch is no longer the right fit, switch that lane to a new branch in place. Do not solve branch mismatch by creating another worktree elsewhere.
 
-Why retain three numbered lanes:
-- They allow multiple upstream tasks to stay isolated and runnable in parallel while reusing the same three physical lane directories instead of repeatedly creating temporary worktrees.
+Why retain four lanes total:
+- Lane `0` preserves a stable local-experience checkout while lanes `1-3` allow multiple upstream tasks to stay isolated and runnable in parallel.
+- The three upstream-development lanes reuse the same physical directories instead of repeatedly creating temporary worktrees.
 - The maintenance burden is acceptable when each lane is explicitly tracked in the bench config and validated by the shared health script.
 - This retained topology is preferred over ad-hoc simplification unless the user explicitly wants fewer standing lanes.
 

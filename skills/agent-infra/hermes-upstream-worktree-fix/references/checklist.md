@@ -2,14 +2,15 @@
 
 ## Worktree Baseline
 
-- Retain exactly four Hermes checkouts:
-  - `~/.hermes/hermes-agent`
-  - `~/.hermes/hermes-agent-1`
-  - `~/.hermes/hermes-agent-2`
-  - `~/.hermes/hermes-agent-3`
-- Map them to `main`, `worktree/1`, `worktree/2`, and `worktree/3`.
+- Retain exactly four Hermes lanes total:
+  - lane `0`: `~/.hermes/hermes-agent`, preserving its local-experience branch
+  - lane `1`: `~/.hermes/hermes-agent-1`, canonically `worktree/1`
+  - lane `2`: `~/.hermes/hermes-agent-2`, canonically `worktree/2`
+  - lane `3`: `~/.hermes/hermes-agent-3`, canonically `worktree/3`
+- Only lanes `1-3` are upstream-development lanes; do not describe the whole topology as "three lanes."
 - Verify each retained checkout has its own `.venv`, `node_modules`, and isolated runtime launcher such as `.hermes/with-env.sh`.
-- Sync all four to latest `upstream/main` before new upstream development or fresh baseline verification.
+- Health-check all four lanes. Sync only upstream-development lanes `1-3` to latest `upstream/main` before new upstream development or fresh baseline verification.
+- Do not auto-reset, auto-rebase, or auto-repoint lane `0` to `upstream/main`; preserve its local-experience branch unless the user explicitly asks to repurpose it.
 - Prefer the shared bench helpers over ad-hoc shell loops:
   - `~/.codex/skills/hermes-upstream-worktree-fix/scripts/hermes_worktree_bench.py`
   - `~/.hermes/admin/worktree-health.sh`

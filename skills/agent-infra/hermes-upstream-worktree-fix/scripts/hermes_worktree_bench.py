@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Health and sync helpers for a local Hermes four-worktree bench."""
+"""Health and sync helpers for a local Hermes four-lane worktree bench."""
 
 from __future__ import annotations
 
@@ -536,18 +536,19 @@ def sync_bench(root: Path, config: dict[str, Any]) -> tuple[dict[str, Any], int]
 
     operations: list[dict[str, str]] = []
     for spec in _checkout_specs(root, config):
+        if not spec.check_tracking:
+            continue
         tracking_ref = _expected_policy_for_checkout(spec, policy)["tracking_ref"]
         tracking_head = _tracking_head(root, tracking_ref)
         assert tracking_head is not None
         _git(spec.path, "checkout", spec.branch)
-        if spec.check_tracking:
-            _git(
-                spec.path,
-                "branch",
-                "--set-upstream-to",
-                tracking_ref,
-                spec.branch,
-            )
+        _git(
+            spec.path,
+            "branch",
+            "--set-upstream-to",
+            tracking_ref,
+            spec.branch,
+        )
         _git(spec.path, "reset", "--hard", tracking_head)
         operations.append(
             {
@@ -614,7 +615,7 @@ def _config_path_from_args(raw_path: str | None) -> tuple[Path | None, bool]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Manage the local Hermes four-worktree development bench."
+        description="Manage the local Hermes four-lane worktree development bench."
     )
     parser.add_argument(
         "--config",
@@ -631,13 +632,15 @@ def main(argv: list[str] | None = None) -> int:
         help="Exit non-zero on warnings as well as blockers",
     )
 
-    sync_parser = subparsers.add_parser("sync", help="Sync all four worktrees to the tracking ref")
+    sync_parser = subparsers.add_parser(
+        "sync", help="Sync tracking-enabled lanes to their configured refs"
+    )
     sync_parser.add_argument("--root", default="auto", help="Path to the main Hermes checkout")
     sync_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
 
     safety_parser = subparsers.add_parser(
         "apply-git-safety",
-        help="Configure local git push safety for the four-worktree bench",
+        help="Configure local git push safety for the four-lane bench",
     )
     safety_parser.add_argument("--root", default="auto", help="Path to the main Hermes checkout")
     safety_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
