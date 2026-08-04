@@ -35,7 +35,7 @@ PLUGIN = plugin_argument()
 assert PLUGIN.is_file(), PLUGIN
 
 SUPPORTED_XBAR_PARAMETERS = frozenset(
-    {"bash", "color", "param1", "param2", "terminal"}
+    {"bash", "color", "param1", "param2", "refresh", "terminal"}
 )
 
 
@@ -86,6 +86,17 @@ class AiInputStatusLike(Protocol):
     services: tuple[object, ...]
 
 
+class SpotifyStatusLike(Protocol):
+    health: str
+    playback: str
+    title: str | None
+    artist: str | None
+    is_ad: bool
+    media_muted: bool | None
+    auto_muted: bool
+    error: str | None
+
+
 class CompletedProcessLike(Protocol):
     stdout: str
 
@@ -124,6 +135,7 @@ class MonitorModule(Protocol):
         home: Path,
         now: str | None = None,
         ai_input_status: AiInputStatusLike | None = None,
+        spotify_status: SpotifyStatusLike | None = None,
     ) -> str: ...
 
     def parse_ai_input_payload(
@@ -138,6 +150,18 @@ class MonitorModule(Protocol):
         status: AiInputStatusLike,
         checked_at: int,
     ) -> tuple[dict[str, object], str | None]: ...
+
+    def parse_spotify_payload(self, payload: str) -> SpotifyStatusLike: ...
+
+    def spotify_ad_mute_transition(
+        self,
+        previous: dict[str, object],
+        *,
+        tab_id: int,
+        is_ad: bool,
+        media_muted: bool | None,
+        enabled: bool = True,
+    ) -> tuple[dict[str, object], bool | None]: ...
 
     def read_codex_session_handles_by_pid(
         self,
@@ -642,6 +666,133 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     )
     assert second_unreachable_notification == "Official model monitor is unreachable"
 
+    spotify_playing = monitor.parse_spotify_payload(
+        '{"playback":"playing","title":"Fixture Song",'
+        '"artist":"Fixture Artist","is_ad":false,"media_muted":false}'
+    )
+    spotify_playing_lines = monitor.render(
+        fixture_rows,
+        home,
+        now="12:34:56",
+        spotify_status=spotify_playing,
+    ).splitlines()
+    assert_supported_xbar_parameters(spotify_playing_lines)
+    assert "· SP play | color=" in spotify_playing_lines[0]
+    assert any(
+        line.startswith("Spotify Web: Playing · Fixture Song | color=green")
+        for line in spotify_playing_lines
+    )
+    assert any(
+        line.startswith("--Pause Spotify | bash=")
+        and "param1=spotify-toggle" in line
+        and "refresh=true" in line
+        for line in spotify_playing_lines
+    )
+
+    spotify_paused = monitor.parse_spotify_payload(
+        '{"playback":"paused","title":"Fixture Song",'
+        '"artist":"Fixture Artist","is_ad":false,"media_muted":false}'
+    )
+    spotify_paused_lines = monitor.render(
+        fixture_rows,
+        home,
+        now="12:34:56",
+        spotify_status=spotify_paused,
+    ).splitlines()
+    assert "· SP pause | color=" in spotify_paused_lines[0]
+    assert any(line.startswith("--Play Spotify | bash=") for line in spotify_paused_lines)
+
+    spotify_status_type = type(spotify_playing)
+    permission_lines = monitor.render(
+        fixture_rows,
+        home,
+        now="12:34:56",
+        spotify_status=spotify_status_type(health="permission"),
+    ).splitlines()
+    assert any(
+        line == "Spotify Web: Chrome permission required | color=orange"
+        for line in permission_lines
+    )
+    assert any(
+        "Allow JavaScript from Apple Events" in line for line in permission_lines
+    )
+    missing_lines = monitor.render(
+        fixture_rows,
+        home,
+        now="12:34:56",
+        spotify_status=spotify_status_type(health="not-found"),
+    ).splitlines()
+    assert any(line.startswith("Spotify Web: no open player tab") for line in missing_lines)
+    error_lines = monitor.render(
+        fixture_rows,
+        home,
+        now="12:34:56",
+        spotify_status=spotify_status_type(
+            health="error", error="fixture AppleScript failure"
+        ),
+    ).splitlines()
+    assert any("fixture AppleScript failure" in line for line in error_lines)
+
+    ad_started, mute_action = monitor.spotify_ad_mute_transition(
+        {}, tab_id=17, is_ad=True, media_muted=False
+    )
+    assert mute_action is True
+    assert ad_started == {
+        "schema_version": 1,
+        "active": True,
+        "tab_id": 17,
+        "owned": True,
+        "prior_muted": False,
+    }
+    ad_continued, repeated_mute_action = monitor.spotify_ad_mute_transition(
+        ad_started, tab_id=17, is_ad=True, media_muted=True
+    )
+    assert ad_continued == ad_started
+    assert repeated_mute_action is None
+    ad_ended, restore_action = monitor.spotify_ad_mute_transition(
+        ad_continued, tab_id=17, is_ad=False, media_muted=True
+    )
+    assert ad_ended == {"schema_version": 1, "active": False}
+    assert restore_action is False
+
+    premuted_ad, premuted_action = monitor.spotify_ad_mute_transition(
+        {}, tab_id=18, is_ad=True, media_muted=True
+    )
+    assert premuted_ad["owned"] is False
+    assert premuted_action is None
+    _, premuted_restore_action = monitor.spotify_ad_mute_transition(
+        premuted_ad, tab_id=18, is_ad=False, media_muted=True
+    )
+    assert premuted_restore_action is None
+    _, disabled_restore_action = monitor.spotify_ad_mute_transition(
+        ad_started,
+        tab_id=17,
+        is_ad=True,
+        media_muted=True,
+        enabled=False,
+    )
+    assert disabled_restore_action is False
+
+    spotify_ad = spotify_status_type(
+        health="ready",
+        playback="playing",
+        title="Advertisement",
+        is_ad=True,
+        media_muted=True,
+        auto_muted=True,
+    )
+    spotify_ad_lines = monitor.render(
+        fixture_rows,
+        home,
+        now="12:34:56",
+        spotify_status=spotify_ad,
+    ).splitlines()
+    assert "· SP ad | color=orange" in spotify_ad_lines[0]
+    assert any(
+        line.startswith("Spotify Web: Advertisement · auto-muted")
+        for line in spotify_ad_lines
+    )
+
     missing_mapping_home = home / "missing"
     fallback = monitor.runtime_label(
         monitor.AGENT_ADAPTERS[0],
@@ -662,6 +813,7 @@ assert parsed[42].executable == "omp"
 with tempfile.TemporaryDirectory() as status_state_directory:
     live_environment = os.environ.copy()
     live_environment["AI_INPUT_NOTIFICATIONS"] = "0"
+    live_environment["SPOTIFY_WEB_ENABLED"] = "0"
     live_environment["AI_INPUT_MONITOR_STATE_FILE"] = str(
         Path(status_state_directory) / "ai-input-status.json"
     )

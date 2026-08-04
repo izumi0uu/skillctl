@@ -1,24 +1,26 @@
 #!/usr/bin/env python3
 # <xbar.title>Agent Process Monitor</xbar.title>
-# <xbar.version>2.5.0</xbar.version>
+# <xbar.version>2.6.0</xbar.version>
 # <xbar.author>Local</xbar.author>
-# <xbar.desc>Local agent process inventory and AI.INPUT.IM model-health monitor.</xbar.desc>
+# <xbar.desc>Agent processes, AI.INPUT.IM health, and Spotify Web controls.</xbar.desc>
 # <xbar.dependencies>python3</xbar.dependencies>
 
-"""macOS menu-bar monitor for local agent processes and model health.
+"""macOS menu-bar monitor for agents, model health, and Spotify Web.
 
 Every process is assigned to at most one top-level agent runtime by ancestry.
 Session titles are shown only when a reliable PID/TTY mapping exists. The script
 never sends signals, reads process environments, or writes agent runtime state.
-It stores only its own model-status cache and notification transition state.
+It stores only its own model-status, notification, and Spotify mute state.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import shlex
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
@@ -50,6 +52,21 @@ AI_INPUT_STATE_FILE = Path(
         / "skillctl"
         / "agent-process-monitor"
         / "ai-input-status.json",
+    )
+)
+SPOTIFY_WEB_ENABLED = os.environ.get("SPOTIFY_WEB_ENABLED", "1") != "0"
+SPOTIFY_WEB_AUTOMUTE = os.environ.get("SPOTIFY_WEB_AUTOMUTE", "1") != "0"
+SPOTIFY_BROWSER_APP = os.environ.get("SPOTIFY_BROWSER_APP", "Google Chrome")
+SPOTIFY_SCRIPT_TIMEOUT_SECONDS = 4.0
+SPOTIFY_STATE_FILE = Path(
+    os.environ.get(
+        "SPOTIFY_WEB_STATE_FILE",
+        HOME
+        / "Library"
+        / "Caches"
+        / "skillctl"
+        / "agent-process-monitor"
+        / "spotify-web.json",
     )
 )
 
@@ -124,6 +141,18 @@ class AiInputStatus:
     health: str
     generated_at: int | None
     services: tuple[AiInputService, ...]
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class SpotifyStatus:
+    health: str
+    playback: str = "unknown"
+    title: str | None = None
+    artist: str | None = None
+    is_ad: bool = False
+    media_muted: bool | None = None
+    auto_muted: bool = False
     error: str | None = None
 
 
@@ -551,7 +580,7 @@ def fetch_ai_input_status(
         url,
         headers={
             "Accept": "application/json",
-            "User-Agent": "skillctl-agent-process-monitor/2.5.0",
+            "User-Agent": "skillctl-agent-process-monitor/2.6.0",
         },
     )
     try:
@@ -680,6 +709,297 @@ def collect_ai_input_status(
     return status
 
 
+SPOTIFY_STATUS_JAVASCRIPT = r"""
+(() => {
+  const clean = (value) => (value || "").replace(/\s+/g, " ").trim();
+  const playButton = document.querySelector(
+    '[data-testid="control-button-playpause"], button[aria-label="Play"], button[aria-label="Pause"], button[aria-label="播放"], button[aria-label="暂停"], button[aria-label="暫停"]'
+  );
+  const playLabel = clean(playButton?.getAttribute("aria-label"));
+  const playing = /^(pause|暂停|暫停|一時停止)/i.test(playLabel);
+  const paused = /^(play|播放|再生)/i.test(playLabel);
+  const titleElement = document.querySelector(
+    '[data-testid="context-item-info-title"], [data-testid="track-info-name"], [data-testid="context-item-link"]'
+  );
+  const artistElement = document.querySelector(
+    '[data-testid="context-item-info-subtitles"], [data-testid="track-info-artists"]'
+  );
+  const title = clean(titleElement?.textContent) || clean(document.title);
+  const artist = clean(artistElement?.textContent);
+  const nowPlaying = document.querySelector(
+    '[data-testid="now-playing-widget"], [data-testid="now-playing-bar"]'
+  );
+  const adNode = nowPlaying?.querySelector(
+    '[data-testid="ad-banner"], [data-testid*="advertisement"], [data-testid="track-info-advertiser"]'
+  ) || document.querySelector('[data-testid="ad-banner"]');
+  const adSignal = clean(`${nowPlaying?.textContent || ""} ${document.title}`);
+  const media = [...document.querySelectorAll("audio, video")];
+  return JSON.stringify({
+    playback: playing ? "playing" : (paused ? "paused" : "unknown"),
+    title,
+    artist,
+    is_ad: Boolean(adNode) || /advertisement|advertising|广告|廣告/i.test(adSignal),
+    media_muted: media.length ? media.every((element) => element.muted) : null
+  });
+})()
+"""
+
+SPOTIFY_TOGGLE_JAVASCRIPT = r"""
+(() => {
+  const button = document.querySelector(
+    '[data-testid="control-button-playpause"], button[aria-label="Play"], button[aria-label="Pause"], button[aria-label="播放"], button[aria-label="暂停"], button[aria-label="暫停"]'
+  );
+  if (!button) return JSON.stringify({ok: false, error: "playback control unavailable"});
+  button.click();
+  return JSON.stringify({ok: true});
+})()
+"""
+
+
+def compact_javascript(source: str) -> str:
+    return " ".join(line.strip() for line in source.splitlines() if line.strip())
+
+
+def run_spotify_javascript(
+    javascript: str,
+    tab_id: int | None = None,
+) -> tuple[int | None, str | None, str | None]:
+    browser = apple_script_string(SPOTIFY_BROWSER_APP)
+    source = apple_script_string(compact_javascript(javascript))
+    tab_condition = 'URL of spotifyTab starts with "https://open.spotify.com/"'
+    if tab_id is not None:
+        tab_condition = f"id of spotifyTab is {tab_id} and {tab_condition}"
+    script = "\n".join(
+        (
+            f'if application "{browser}" is not running then return "__NOT_RUNNING__"',
+            f'tell application "{browser}"',
+            "repeat with spotifyWindow in windows",
+            "repeat with spotifyTab in tabs of spotifyWindow",
+            f"if {tab_condition} then",
+            f'set spotifyResult to execute spotifyTab javascript "{source}"',
+            "return (id of spotifyTab as text) & tab & spotifyResult",
+            "end if",
+            "end repeat",
+            "end repeat",
+            'return "__NO_TAB__"',
+            "end tell",
+        )
+    )
+    try:
+        completed = subprocess.run(
+            ["/usr/bin/osascript", "-e", script],
+            capture_output=True,
+            text=True,
+            timeout=SPOTIFY_SCRIPT_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return None, None, sanitize_text(str(error), 140)
+    output = completed.stdout.strip()
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or "Chrome AppleScript failed"
+        lowered = detail.lower()
+        if (
+            "allow javascript from apple events" in lowered
+            or "javascript 的功能已关闭" in detail
+            or "允许 Apple 事件中的 JavaScript" in detail
+        ):
+            return None, None, "permission"
+        return None, None, sanitize_text(detail, 140)
+    if output == "__NOT_RUNNING__":
+        return None, None, "not-running"
+    if output == "__NO_TAB__":
+        return None, None, "not-found"
+    tab_id_text, separator, payload = output.partition("\t")
+    try:
+        tab_id = int(tab_id_text)
+    except ValueError:
+        return None, None, "Chrome returned an invalid Spotify tab identifier"
+    if not separator:
+        return None, None, "Chrome returned no Spotify page result"
+    return tab_id, payload, None
+
+
+def parse_spotify_payload(payload: str) -> SpotifyStatus:
+    try:
+        raw = json.loads(payload)
+    except json.JSONDecodeError as error:
+        raise ValueError("Spotify returned invalid page data") from error
+    if not isinstance(raw, dict):
+        raise ValueError("Spotify page data is not an object")
+    playback_value = raw.get("playback")
+    playback = (
+        playback_value
+        if playback_value in {"playing", "paused", "unknown"}
+        else "unknown"
+    )
+    title_value = raw.get("title")
+    artist_value = raw.get("artist")
+    muted_value = raw.get("media_muted")
+    return SpotifyStatus(
+        health="ready",
+        playback=playback,
+        title=title_value if isinstance(title_value, str) and title_value else None,
+        artist=artist_value if isinstance(artist_value, str) and artist_value else None,
+        is_ad=raw.get("is_ad") is True,
+        media_muted=muted_value if isinstance(muted_value, bool) else None,
+    )
+
+
+def spotify_ad_mute_transition(
+    previous: dict[str, object],
+    *,
+    tab_id: int,
+    is_ad: bool,
+    media_muted: bool | None,
+    enabled: bool = SPOTIFY_WEB_AUTOMUTE,
+) -> tuple[dict[str, object], bool | None]:
+    inactive: dict[str, object] = {"schema_version": 1, "active": False}
+    previous_tab_id = numeric_int(previous.get("tab_id"))
+    same_active_tab = previous.get("active") is True and previous_tab_id == tab_id
+    owned = same_active_tab and previous.get("owned") is True
+    prior_muted = previous.get("prior_muted") is True
+
+    if not enabled or not is_ad:
+        desired_muted = prior_muted if owned else None
+        return inactive, desired_muted
+
+    if media_muted is None:
+        return (previous if same_active_tab else inactive), None
+
+    if same_active_tab:
+        normalized = {
+            "schema_version": 1,
+            "active": True,
+            "tab_id": tab_id,
+            "owned": owned,
+            "prior_muted": prior_muted,
+        }
+        return normalized, True if owned and not media_muted else None
+
+    owns_mute = not media_muted
+    return (
+        {
+            "schema_version": 1,
+            "active": True,
+            "tab_id": tab_id,
+            "owned": owns_mute,
+            "prior_muted": media_muted,
+        },
+        True if owns_mute else None,
+    )
+
+
+def set_spotify_media_muted(tab_id: int, muted: bool) -> str | None:
+    value = "true" if muted else "false"
+    javascript = (
+        "(() => { const media = [...document.querySelectorAll(\"audio, video\")]; "
+        f"media.forEach((element) => {{ element.muted = {value}; }}); "
+        "return JSON.stringify({ok: true, count: media.length}); })()"
+    )
+    _, payload, error = run_spotify_javascript(javascript, tab_id=tab_id)
+    if error:
+        return error
+    try:
+        result = json.loads(payload or "")
+    except json.JSONDecodeError:
+        return "Spotify returned invalid mute confirmation"
+    if not isinstance(result, dict) or result.get("ok") is not True:
+        return "Spotify did not confirm the mute change"
+    return None
+
+
+def collect_spotify_status(
+    state_file: Path = SPOTIFY_STATE_FILE,
+) -> SpotifyStatus | None:
+    if not SPOTIFY_WEB_ENABLED:
+        return None
+    tab_id, payload, error = run_spotify_javascript(SPOTIFY_STATUS_JAVASCRIPT)
+    if error == "not-running":
+        return SpotifyStatus(health="not-running")
+    if error == "not-found":
+        return SpotifyStatus(health="not-found")
+    if error == "permission":
+        return SpotifyStatus(health="permission")
+    if error:
+        return SpotifyStatus(health="error", error=error)
+    if tab_id is None or payload is None:
+        return SpotifyStatus(health="error", error="Spotify page returned no data")
+    try:
+        status = parse_spotify_payload(payload)
+    except ValueError as parse_error:
+        return SpotifyStatus(health="error", error=str(parse_error))
+
+    previous = read_ai_input_state(state_file)
+    next_state, desired_muted = spotify_ad_mute_transition(
+        previous,
+        tab_id=tab_id,
+        is_ad=status.is_ad,
+        media_muted=status.media_muted,
+    )
+    mutation_error = (
+        set_spotify_media_muted(tab_id, desired_muted)
+        if desired_muted is not None
+        else None
+    )
+    if mutation_error:
+        return SpotifyStatus(
+            **{**status.__dict__, "error": mutation_error},
+        )
+    try:
+        if next_state != previous:
+            write_ai_input_state(state_file, next_state)
+    except OSError as state_error:
+        if desired_muted is True and previous.get("active") is not True:
+            _ = set_spotify_media_muted(tab_id, False)
+        return SpotifyStatus(
+            **{**status.__dict__, "error": sanitize_text(str(state_error), 140)},
+        )
+    effective_muted = desired_muted if desired_muted is not None else status.media_muted
+    return SpotifyStatus(
+        **{
+            **status.__dict__,
+            "media_muted": effective_muted,
+            "auto_muted": next_state.get("active") is True
+            and next_state.get("owned") is True,
+        },
+    )
+
+
+def send_spotify_notification(message: str) -> None:
+    script = (
+        f'display notification "{apple_script_string(message)}" '
+        'with title "Agent Process Monitor" subtitle "Spotify Web"'
+    )
+    try:
+        _ = subprocess.run(
+            ["/usr/bin/osascript", "-e", script],
+            capture_output=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def toggle_spotify_playback() -> None:
+    _, payload, error = run_spotify_javascript(SPOTIFY_TOGGLE_JAVASCRIPT)
+    if error:
+        send_spotify_notification(
+            "Enable Chrome > View > Developer > Allow JavaScript from Apple Events"
+            if error == "permission"
+            else f"Playback control failed: {error}"
+        )
+        return
+    try:
+        result = json.loads(payload or "")
+    except json.JSONDecodeError:
+        result = {}
+    if not isinstance(result, dict) or result.get("ok") is not True:
+        detail = result.get("error") if isinstance(result, dict) else None
+        send_spotify_notification(
+            str(detail) if detail else "Playback control unavailable"
+        )
+
+
 def fmt_latency(value: int | None) -> str:
     if value is None:
         return "-"
@@ -738,6 +1058,54 @@ def append_ai_input_lines(lines: list[str], status: AiInputStatus) -> None:
     lines.append(
         "--Open official model monitor"
         f" | bash=/usr/bin/open param1={AI_INPUT_STATUS_PAGE_URL} terminal=false"
+    )
+    lines.append("---")
+
+
+def append_spotify_lines(
+    lines: list[str],
+    status: SpotifyStatus,
+    plugin_path: Path | None = None,
+) -> None:
+    if status.health == "not-running":
+        lines.append("Spotify Web: Chrome not running | color=gray")
+    elif status.health == "not-found":
+        lines.append("Spotify Web: no open player tab | color=gray")
+    elif status.health == "permission":
+        lines.append("Spotify Web: Chrome permission required | color=orange")
+        lines.append("--Chrome > View > Developer | color=gray")
+        lines.append("--Enable Allow JavaScript from Apple Events | color=orange")
+    elif status.health == "error":
+        lines.append("Spotify Web: control unavailable | color=orange")
+        if status.error:
+            lines.append(f"--{sanitize_text(status.error, 110)} | color=gray")
+    else:
+        if status.is_ad:
+            state_text = "Advertisement · auto-muted" if status.auto_muted else "Advertisement"
+            color = "orange"
+        elif status.playback == "playing":
+            state_text, color = "Playing", "green"
+        elif status.playback == "paused":
+            state_text, color = "Paused", "gray"
+        else:
+            state_text, color = "Playback state unavailable", "orange"
+        title = f" · {sanitize_text(status.title, 65)}" if status.title else ""
+        lines.append(f"Spotify Web: {state_text}{title} | color={color}")
+        if status.artist:
+            lines.append(f"--{sanitize_text(status.artist, 80)} | color=gray")
+        if status.error:
+            lines.append(f"--Auto-mute warning: {sanitize_text(status.error, 95)} | color=orange")
+        action = "Pause Spotify" if status.playback == "playing" else "Play Spotify"
+        executable = shlex.quote(str((plugin_path or Path(__file__)).resolve()))
+        lines.append(
+            f"--{action} | bash={executable} param1=spotify-toggle"
+            " terminal=false refresh=true"
+        )
+        automute_text = "on" if SPOTIFY_WEB_AUTOMUTE else "off"
+        lines.append(f"--Advertisement auto-mute: {automute_text} | color=gray")
+    lines.append(
+        "--Open Spotify Web | bash=/usr/bin/open"
+        " param1=https://open.spotify.com/ terminal=false"
     )
     lines.append("---")
 
@@ -1471,6 +1839,7 @@ def render(
     home: Path = HOME,
     now: str | None = None,
     ai_input_status: AiInputStatus | None = None,
+    spotify_status: SpotifyStatus | None = None,
 ) -> str:
     runtimes, unattributed_mcp = build_runtimes(rows, home)
     runtime_processes = tuple(process for runtime in runtimes for process in runtime.processes)
@@ -1485,9 +1854,19 @@ def render(
             color = "red"
         elif ai_input_status.health == "unreachable" and color == "green":
             color = "orange"
+    spotify_title = ""
+    if spotify_status is not None and spotify_status.health == "ready":
+        if spotify_status.is_ad:
+            spotify_title = " · SP ad"
+            if color == "green":
+                color = "orange"
+        elif spotify_status.playback == "playing":
+            spotify_title = " · SP play"
+        elif spotify_status.playback == "paused":
+            spotify_title = " · SP pause"
     lines = [
         f"AI {len(runtimes)} · CPU {fmt_cpu(overall.cpu_percent)}"
-        f" · {fmt_bytes(overall.rss_bytes)}{ai_input_title} | color={color}",
+        f" · {fmt_bytes(overall.rss_bytes)}{ai_input_title}{spotify_title} | color={color}",
         "---",
         "Read-only agent process inventory | color=gray",
         f"Updated: {now or time.strftime('%H:%M:%S')} · refresh {REFRESH_SECONDS}s | color=gray",
@@ -1495,6 +1874,9 @@ def render(
         "RSS is summed per process; shared pages may be counted more than once. | color=gray",
         "---",
     ]
+
+    if spotify_status is not None:
+        append_spotify_lines(lines, spotify_status)
 
     if ai_input_status is not None:
         append_ai_input_lines(lines, ai_input_status)
@@ -1561,10 +1943,20 @@ def render(
 
 
 def main() -> None:
+    if sys.argv[1:] == ["spotify-toggle"]:
+        toggle_spotify_playback()
+        return
     ai_input_status = collect_ai_input_status()
+    spotify_status = collect_spotify_status()
     try:
         rows = ps_rows()
-        print(render(rows, ai_input_status=ai_input_status))
+        print(
+            render(
+                rows,
+                ai_input_status=ai_input_status,
+                spotify_status=spotify_status,
+            )
+        )
     except Exception as error:
         print("AI ? | color=red")
         print("---")

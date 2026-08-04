@@ -1,11 +1,11 @@
 ---
 name: agent-process-monitor
-description: Install, update, verify, diagnose, or roll back the macOS xbar Agent Process Monitor that attributes local OMP, Codex, Claude Code, OpenCode, Pi, and MCP process trees and displays AI.INPUT.IM model health. Use when maintaining the menu-bar monitor, investigating its process hierarchy or model-status notifications, or shipping a new monitor version through skillctl.
+description: Install, update, verify, diagnose, or roll back the macOS xbar Agent Process Monitor that attributes local OMP, Codex, Claude Code, OpenCode, Pi, and MCP process trees, displays AI.INPUT.IM model health, and controls Spotify Web playback with advertisement auto-mute. Use when maintaining the menu-bar monitor, investigating its process hierarchy, model-status notifications, or Spotify behavior, or shipping a new monitor version through skillctl.
 ---
 
 # Agent Process Monitor
 
-Own the local macOS Agent Process Monitor as a canonical `skillctl`-managed product. The monitor samples process metadata, attributes each process to one agent runtime, and renders session, worker, MCP-instance, support, and other Desktop process hierarchy. It also reads the public AI.INPUT.IM status API, caches the summarized response, and sends transition-only macOS notifications for model failure and recovery.
+Own the local macOS Agent Process Monitor as a canonical `skillctl`-managed product. The monitor samples process metadata, attributes each process to one agent runtime, and renders session, worker, MCP-instance, support, and other Desktop process hierarchy. It also reads the public AI.INPUT.IM status API, caches the summarized response, and sends transition-only macOS notifications for model failure and recovery. When Google Chrome has a Spotify Web tab open, it displays playback state, offers a play/pause action, and automatically mutes page media during advertisements.
 
 ## Ownership Boundary
 
@@ -16,7 +16,7 @@ Derived copies are not source:
 - agent install mirrors such as `~/.codex/skills/agent-process-monitor/`;
 - the live xbar plugin at `~/Library/Application Support/xbar/plugins/mcp-monitor.15s.py`;
 - install metadata, transactional backups, and provenance-only legacy artifacts under `~/.local/state/skillctl/agent-process-monitor/`; legacy artifacts are not rollback candidates.
-- the model-status cache and notification state under `~/Library/Caches/skillctl/agent-process-monitor/`.
+- the model-status cache, notification state, and Spotify mute ownership state under `~/Library/Caches/skillctl/agent-process-monitor/`.
 
 Never hand-edit a derived copy. Change the canonical plugin, update its deterministic verifier, sync the skill, then install it through the lifecycle manager.
 
@@ -27,9 +27,11 @@ Never hand-edit a derived copy. Change the canonical plugin, update its determin
 - `/usr/bin/ps` and `/usr/sbin/lsof`.
 - Network access to `https://status.input.im/api/status` for model health.
 - `/usr/bin/osascript` for failure and recovery notifications.
+- Google Chrome for Spotify Web controls.
+- Chrome menu `View > Developer > Allow JavaScript from Apple Events` enabled for Spotify playback inspection and page-local media control.
 - Read access to local agent session metadata when evidence-backed titles are desired.
 
-The plugin never sends signals, reads process environments, or writes agent runtime state. Its only write is its own mode-`0600` model-status cache. A status outage degrades visibly without hiding the local process inventory.
+The plugin never sends signals, reads process environments, or writes agent runtime state. Its only filesystem writes are its own mode-`0600` model-status and Spotify mute-ownership state files. A status outage or missing Chrome permission degrades visibly without hiding the local process inventory.
 
 ## Model Health Behavior
 
@@ -47,6 +49,24 @@ AI_INPUT_NOTIFICATIONS=0
 AI_INPUT_STATUS_URL=https://status.input.im/api/status
 AI_INPUT_STATUS_PAGE_URL=https://status.input.im
 AI_INPUT_MONITOR_STATE_FILE=/custom/cache/path.json
+```
+
+## Spotify Web Behavior
+
+- The menu-bar title and Spotify submenu show playing, paused, advertisement, or unavailable state.
+- The submenu action toggles Spotify Web play/pause without activating the browser window.
+- Advertisement detection and mute enforcement run on the xbar 15-second refresh, so a transition can take up to one refresh cycle to be applied.
+- Auto-mute changes only `audio` and `video` element `muted` properties inside the first open `https://open.spotify.com/` Chrome tab. It does not change the Spotify volume value or mute other tabs.
+- Mute ownership is persisted. A page that was already muted before an advertisement remains muted afterward; only a mute initiated by the monitor is restored.
+- If Chrome is closed, no Spotify tab is open, page controls change, or JavaScript from Apple Events is disabled, the menu reports the condition and leaves playback untouched.
+
+Optional environment overrides:
+
+```text
+SPOTIFY_WEB_ENABLED=0
+SPOTIFY_WEB_AUTOMUTE=0
+SPOTIFY_BROWSER_APP=Google Chrome
+SPOTIFY_WEB_STATE_FILE=/custom/cache/spotify-web.json
 ```
 
 ## Locate The Current Skill
@@ -129,8 +149,9 @@ Lifecycle-manager-only changes update the skill catalog hash but do not require 
 - Session evidence is accepted only from requested PID records and canonical paths under `~/.codex/sessions`.
 - Unknown xbar parameters are forbidden.
 - Collection failures fail visibly without killing or cleaning processes.
-- Model-status state contains no credentials and is written atomically with mode `0600`.
+- Model-status and Spotify mute-ownership state contain no credentials and are written atomically with mode `0600`.
 - Model failure and recovery notifications are transition-only; verifier runs disable notifications and use isolated state.
+- Spotify auto-mute never restores a page that was already muted before the advertisement.
 
 ## Safety
 
@@ -139,4 +160,5 @@ Lifecycle-manager-only changes update the skill catalog hash but do not require 
 - Do not rename the live `mcp-monitor.15s.py` target without an explicit migration that prevents duplicate xbar plugins.
 - Do not use this skill to kill, pool, or clean MCP processes.
 - Do not add an AI.INPUT.IM API key or replace the official public status feed with paid completion probes.
+- Keep Spotify JavaScript scoped to `open.spotify.com`; do not inspect unrelated Chrome tabs or browser history.
 - Preserve unrelated managed skills; use `skillctl` as the distribution control plane.
