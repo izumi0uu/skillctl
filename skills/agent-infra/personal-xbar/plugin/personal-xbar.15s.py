@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # <xbar.title>Personal xbar</xbar.title>
-# <xbar.version>3.0.1</xbar.version>
+# <xbar.version>3.0.2</xbar.version>
 # <xbar.author>Local</xbar.author>
 # <xbar.desc>Personal agent, AI.INPUT.IM, and Spotify Web controls.</xbar.desc>
 # <xbar.dependencies>python3</xbar.dependencies>

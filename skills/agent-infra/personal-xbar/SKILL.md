@@ -29,7 +29,7 @@ Never hand-edit a derived copy. Change the canonical plugin, update its determin
 ## Requirements
 
 - macOS with xbar installed.
-- Python 3.10 or newer available to xbar.
+- Python 3.9 or newer available to xbar.
 - `/usr/bin/ps` and `/usr/sbin/lsof`.
 - Network access to `https://status.input.im/api/status` for model health.
 - `/usr/bin/osascript` for failure and recovery notifications.

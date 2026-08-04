@@ -885,6 +885,31 @@ assert parsed[42].elapsed_seconds == 62
 assert parsed[42].tty == "ttys009"
 assert parsed[42].executable == "omp"
 
+support_root = next(
+    root
+    for root in (PLUGIN.parent, PLUGIN.parent / ".personal-xbar")
+    if (root / "personal_xbar").is_dir()
+)
+system_python_render = subprocess.check_output(
+    [
+        "/usr/bin/python3",
+        "-c",
+        (
+            "import sys; from pathlib import Path; "
+            "sys.path.insert(0, sys.argv[1]); "
+            "from personal_xbar.plugins.processes import ProcessInventoryPlugin; "
+            "from personal_xbar.registry import ExecutionContext; "
+            "context = ExecutionContext(entrypoint=Path(sys.argv[2]), "
+            "values={'process_rows': {}}); "
+            "print(ProcessInventoryPlugin().render(context))"
+        ),
+        str(support_root),
+        str(PLUGIN),
+    ],
+    text=True,
+)
+assert system_python_render.startswith("AI "), system_python_render.splitlines()[:1]
+
 with tempfile.TemporaryDirectory() as status_state_directory:
     live_environment = os.environ.copy()
     live_environment["AI_INPUT_NOTIFICATIONS"] = "0"

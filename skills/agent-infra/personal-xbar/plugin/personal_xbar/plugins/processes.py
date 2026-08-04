@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import cast
+from typing import Optional, cast
 
 from personal_xbar import runtime
 from personal_xbar.registry import ExecutionContext
@@ -22,11 +22,11 @@ class ProcessInventoryPlugin:
         return runtime.render(
             cast(dict[int, runtime.Process], context.values["process_rows"]),
             ai_input_status=cast(
-                runtime.AiInputStatus | None,
+                Optional[runtime.AiInputStatus],
                 context.values.get("ai_input_status"),
             ),
             spotify_status=cast(
-                runtime.SpotifyStatus | None,
+                Optional[runtime.SpotifyStatus],
                 context.values.get("spotify_status"),
             ),
             plugin_path=context.entrypoint,
