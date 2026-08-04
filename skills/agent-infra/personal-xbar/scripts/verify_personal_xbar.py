@@ -176,6 +176,10 @@ class MonitorModule(Protocol):
         enabled: bool = True,
     ) -> tuple[dict[str, object], bool | None]: ...
 
+    def spotify_mute_javascript(self, muted: bool) -> str: ...
+
+    def set_spotify_media_muted(self, tab_id: int, muted: bool) -> str | None: ...
+
     def read_codex_session_handles_by_pid(
         self,
         pids: tuple[int, ...],
@@ -691,6 +695,44 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     assert set(monitor.SPOTIFY_ACTION_JAVASCRIPT) == {"toggle", "previous", "next"}
     assert "control-button-skip-back" in monitor.SPOTIFY_ACTION_JAVASCRIPT["previous"]
     assert "control-button-skip-forward" in monitor.SPOTIFY_ACTION_JAVASCRIPT["next"]
+    mute_script = monitor.spotify_mute_javascript(True)
+    unmute_script = monitor.spotify_mute_javascript(False)
+    assert 'data-testid="volume-bar-toggle-mute-button"' in mute_script
+    assert "const desiredMuted = true" in mute_script
+    assert "const desiredMuted = false" in unmute_script
+    assert "if (changed) button.click()" in mute_script
+    assert "Spotify mute control unavailable" in mute_script
+
+    mute_globals = monitor.set_spotify_media_muted.__globals__
+    original_spotify_runner = mute_globals["run_spotify_javascript"]
+    captured_mute_scripts: list[tuple[str, int | None]] = []
+
+    def confirm_volume_button(
+        javascript: str,
+        tab_id: int | None = None,
+    ) -> tuple[int | None, str | None, str | None]:
+        captured_mute_scripts.append((javascript, tab_id))
+        return tab_id, '{"ok":true,"method":"volume-button","changed":true}', None
+
+    try:
+        mute_globals["run_spotify_javascript"] = confirm_volume_button
+        assert monitor.set_spotify_media_muted(17, True) is None
+        assert captured_mute_scripts[-1][1] == 17
+        assert "const desiredMuted = true" in captured_mute_scripts[-1][0]
+
+        mute_globals["run_spotify_javascript"] = (
+            lambda javascript, tab_id=None: (
+                tab_id,
+                '{"ok":false,"error":"Spotify mute control unavailable"}',
+                None,
+            )
+        )
+        assert (
+            monitor.set_spotify_media_muted(17, True)
+            == "Spotify mute control unavailable"
+        )
+    finally:
+        mute_globals["run_spotify_javascript"] = original_spotify_runner
     spotify_playing_lines = monitor.render(
         fixture_rows,
         home,

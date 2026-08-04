@@ -62,7 +62,7 @@ AI_INPUT_MONITOR_STATE_FILE=/custom/cache/path.json
 - The menu-bar title and Spotify submenu show playing, paused, advertisement, or unavailable state.
 - The submenu actions control previous track, play/pause, and next track without activating the browser window.
 - Advertisement detection and mute enforcement run on the xbar 15-second refresh, so a transition can take up to one refresh cycle to be applied.
-- Auto-mute changes only `audio` and `video` element `muted` properties inside the first open `https://open.spotify.com/` Chrome tab. It does not change the Spotify volume value or mute other tabs.
+- Auto-mute first toggles Spotify's own mute button inside the first open `https://open.spotify.com/` Chrome tab, with `audio` and `video` element `muted` properties as a fallback. It does not change the saved Spotify volume value or mute other tabs.
 - Mute ownership is persisted. A page that was already muted before an advertisement remains muted afterward; only a mute initiated by the monitor is restored.
 - If Chrome is closed, no Spotify tab is open, page controls change, or JavaScript from Apple Events is disabled, the menu reports the condition and leaves playback untouched.
 

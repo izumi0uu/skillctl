@@ -726,13 +726,46 @@ SPOTIFY_STATUS_JAVASCRIPT = r"""
   ) || document.querySelector('[data-testid="ad-banner"]');
   const adSignal = clean(`${nowPlaying?.textContent || ""} ${document.title}`);
   const media = [...document.querySelectorAll("audio, video")];
+  const muteButton = document.querySelector(
+    '[data-testid="volume-bar-toggle-mute-button"], button[aria-label="Mute"], button[aria-label="Unmute"], button[aria-label="静音"], button[aria-label="取消静音"], button[aria-label="靜音"], button[aria-label="取消靜音"]'
+  );
+  const muteLabel = clean(muteButton?.getAttribute("aria-label"));
+  const uiMuted = /^(unmute|取消静音|取消靜音|恢复声音|恢復聲音|开启声音|開啟聲音|ミュート解除)/i.test(muteLabel);
+  const uiUnmuted = /^(mute|静音|靜音|关闭声音|關閉聲音|ミュート)/i.test(muteLabel);
+  const mediaMuted = media.length ? media.every((element) => element.muted) : null;
   return JSON.stringify({
     playback: playing ? "playing" : (paused ? "paused" : "unknown"),
     title,
     artist,
     is_ad: Boolean(adNode) || /advertisement|advertising|广告|廣告/i.test(adSignal),
-    media_muted: media.length ? media.every((element) => element.muted) : null
+    media_muted: uiMuted ? true : (uiUnmuted ? false : mediaMuted)
   });
+})()
+"""
+
+SPOTIFY_SET_MUTED_JAVASCRIPT = r"""
+(() => {
+  const desiredMuted = __DESIRED_MUTED__;
+  const clean = (value) => (value || "").replace(/\s+/g, " ").trim();
+  const button = document.querySelector(
+    '[data-testid="volume-bar-toggle-mute-button"], button[aria-label="Mute"], button[aria-label="Unmute"], button[aria-label="静音"], button[aria-label="取消静音"], button[aria-label="靜音"], button[aria-label="取消靜音"]'
+  );
+  if (button) {
+    const label = clean(button.getAttribute("aria-label"));
+    const isMuted = /^(unmute|取消静音|取消靜音|恢复声音|恢復聲音|开启声音|開啟聲音|ミュート解除)/i.test(label);
+    const isUnmuted = /^(mute|静音|靜音|关闭声音|關閉聲音|ミュート)/i.test(label);
+    if (isMuted || isUnmuted) {
+      const changed = isMuted !== desiredMuted;
+      if (changed) button.click();
+      return JSON.stringify({ok: true, method: "volume-button", changed});
+    }
+  }
+  const media = [...document.querySelectorAll("audio, video")];
+  if (!media.length) {
+    return JSON.stringify({ok: false, error: "Spotify mute control unavailable"});
+  }
+  media.forEach((element) => { element.muted = desiredMuted; });
+  return JSON.stringify({ok: true, method: "media-elements", count: media.length});
 })()
 """
 
@@ -916,14 +949,16 @@ def spotify_ad_mute_transition(
     )
 
 
-def set_spotify_media_muted(tab_id: int, muted: bool) -> str | None:
+def spotify_mute_javascript(muted: bool) -> str:
     value = "true" if muted else "false"
-    javascript = (
-        "(() => { const media = [...document.querySelectorAll(\"audio, video\")]; "
-        f"media.forEach((element) => {{ element.muted = {value}; }}); "
-        "return JSON.stringify({ok: true, count: media.length}); })()"
+    return SPOTIFY_SET_MUTED_JAVASCRIPT.replace("__DESIRED_MUTED__", value)
+
+
+def set_spotify_media_muted(tab_id: int, muted: bool) -> str | None:
+    _, payload, error = run_spotify_javascript(
+        spotify_mute_javascript(muted),
+        tab_id=tab_id,
     )
-    _, payload, error = run_spotify_javascript(javascript, tab_id=tab_id)
     if error:
         return error
     try:
@@ -931,7 +966,8 @@ def set_spotify_media_muted(tab_id: int, muted: bool) -> str | None:
     except json.JSONDecodeError:
         return "Spotify returned invalid mute confirmation"
     if not isinstance(result, dict) or result.get("ok") is not True:
-        return "Spotify did not confirm the mute change"
+        detail = result.get("error") if isinstance(result, dict) else None
+        return str(detail) if detail else "Spotify did not confirm the mute change"
     return None
 
 

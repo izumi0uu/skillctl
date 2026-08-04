@@ -1083,7 +1083,7 @@
       "visibility": "public",
       "source_kind": "local-public",
       "origin_kind": "local-authored",
-      "hash": "965af4c585cdd2d8ad6b6e8d05df99ac5097f6a4",
+      "hash": "c16cbcff918d8d5eb1b57f2f572051070af44f9f",
       "managed": true,
       "targets": [
         "claude-code",
