@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # <xbar.title>Agent Process Monitor</xbar.title>
-# <xbar.version>2.6.0</xbar.version>
+# <xbar.version>2.6.1</xbar.version>
 # <xbar.author>Local</xbar.author>
 # <xbar.desc>Agent processes, AI.INPUT.IM health, and Spotify Web controls.</xbar.desc>
 # <xbar.dependencies>python3</xbar.dependencies>
@@ -580,7 +580,7 @@ def fetch_ai_input_status(
         url,
         headers={
             "Accept": "application/json",
-            "User-Agent": "skillctl-agent-process-monitor/2.6.0",
+            "User-Agent": "skillctl-agent-process-monitor/2.6.1",
         },
     )
     try:
@@ -760,16 +760,16 @@ def compact_javascript(source: str) -> str:
     return " ".join(line.strip() for line in source.splitlines() if line.strip())
 
 
-def run_spotify_javascript(
+def spotify_apple_script(
     javascript: str,
     tab_id: int | None = None,
-) -> tuple[int | None, str | None, str | None]:
+) -> str:
     browser = apple_script_string(SPOTIFY_BROWSER_APP)
     source = apple_script_string(compact_javascript(javascript))
     tab_condition = 'URL of spotifyTab starts with "https://open.spotify.com/"'
     if tab_id is not None:
         tab_condition = f"id of spotifyTab is {tab_id} and {tab_condition}"
-    script = "\n".join(
+    return "\n".join(
         (
             f'if application "{browser}" is not running then return "__NOT_RUNNING__"',
             f'tell application "{browser}"',
@@ -777,7 +777,7 @@ def run_spotify_javascript(
             "repeat with spotifyTab in tabs of spotifyWindow",
             f"if {tab_condition} then",
             f'set spotifyResult to execute spotifyTab javascript "{source}"',
-            "return (id of spotifyTab as text) & tab & spotifyResult",
+            "return (id of spotifyTab as text) & (ASCII character 9) & spotifyResult",
             "end if",
             "end repeat",
             "end repeat",
@@ -785,6 +785,13 @@ def run_spotify_javascript(
             "end tell",
         )
     )
+
+
+def run_spotify_javascript(
+    javascript: str,
+    tab_id: int | None = None,
+) -> tuple[int | None, str | None, str | None]:
+    script = spotify_apple_script(javascript, tab_id=tab_id)
     try:
         completed = subprocess.run(
             ["/usr/bin/osascript", "-e", script],

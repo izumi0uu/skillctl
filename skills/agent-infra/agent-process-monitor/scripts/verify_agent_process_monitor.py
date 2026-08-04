@@ -153,6 +153,12 @@ class MonitorModule(Protocol):
 
     def parse_spotify_payload(self, payload: str) -> SpotifyStatusLike: ...
 
+    def spotify_apple_script(
+        self,
+        javascript: str,
+        tab_id: int | None = None,
+    ) -> str: ...
+
     def spotify_ad_mute_transition(
         self,
         previous: dict[str, object],
@@ -670,6 +676,10 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         '{"playback":"playing","title":"Fixture Song",'
         '"artist":"Fixture Artist","is_ad":false,"media_muted":false}'
     )
+    spotify_script = monitor.spotify_apple_script("return JSON.stringify({ok: true})")
+    assert "(ASCII character 9)" in spotify_script
+    assert " & tab & " not in spotify_script
+    assert "id of spotifyTab is 17" in monitor.spotify_apple_script("return 1", tab_id=17)
     spotify_playing_lines = monitor.render(
         fixture_rows,
         home,
