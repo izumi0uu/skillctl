@@ -691,7 +691,9 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     spotify_script = monitor.spotify_apple_script("return JSON.stringify({ok: true})")
     assert "(ASCII character 9)" in spotify_script
     assert " & tab & " not in spotify_script
-    assert "id of spotifyTab is 17" in monitor.spotify_apple_script("return 1", tab_id=17)
+    scoped_spotify_script = monitor.spotify_apple_script("return 1", tab_id=17)
+    assert '(id of spotifyTab as text) is "17"' in scoped_spotify_script
+    assert "id of spotifyTab is 17" not in scoped_spotify_script
     assert set(monitor.SPOTIFY_ACTION_JAVASCRIPT) == {"toggle", "previous", "next"}
     assert "control-button-skip-back" in monitor.SPOTIFY_ACTION_JAVASCRIPT["previous"]
     assert "control-button-skip-forward" in monitor.SPOTIFY_ACTION_JAVASCRIPT["next"]

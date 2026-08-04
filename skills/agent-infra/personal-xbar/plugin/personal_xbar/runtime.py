@@ -821,7 +821,9 @@ def spotify_apple_script(
     source = apple_script_string(compact_javascript(javascript))
     tab_condition = 'URL of spotifyTab starts with "https://open.spotify.com/"'
     if tab_id is not None:
-        tab_condition = f"id of spotifyTab is {tab_id} and {tab_condition}"
+        tab_condition = (
+            f'(id of spotifyTab as text) is "{tab_id}" and {tab_condition}'
+        )
     return "\n".join(
         (
             f'if application "{browser}" is not running then return "__NOT_RUNNING__"',
