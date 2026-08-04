@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-# <xbar.title>Agent Process Monitor</xbar.title>
-# <xbar.version>2.7.0</xbar.version>
-# <xbar.author>Local</xbar.author>
-# <xbar.desc>Agent processes, AI.INPUT.IM health, and Spotify Web controls.</xbar.desc>
-# <xbar.dependencies>python3</xbar.dependencies>
-
 """macOS menu-bar monitor for agents, model health, and Spotify Web.
 
 Every process is assigned to at most one top-level agent runtime by ancestry.
@@ -20,7 +13,6 @@ import os
 import shlex
 import sqlite3
 import subprocess
-import sys
 import tempfile
 import time
 import urllib.error
@@ -50,7 +42,7 @@ AI_INPUT_STATE_FILE = Path(
         / "Library"
         / "Caches"
         / "skillctl"
-        / "agent-process-monitor"
+        / "personal-xbar"
         / "ai-input-status.json",
     )
 )
@@ -65,7 +57,7 @@ SPOTIFY_STATE_FILE = Path(
         / "Library"
         / "Caches"
         / "skillctl"
-        / "agent-process-monitor"
+        / "personal-xbar"
         / "spotify-web.json",
     )
 )
@@ -580,7 +572,7 @@ def fetch_ai_input_status(
         url,
         headers={
             "Accept": "application/json",
-            "User-Agent": "skillctl-agent-process-monitor/2.7.0",
+            "User-Agent": "skillctl-personal-xbar/3.0.0",
         },
     )
     try:
@@ -659,7 +651,7 @@ def send_ai_input_notification(message: str) -> None:
         return
     script = (
         f'display notification "{apple_script_string(message)}" '
-        'with title "Agent Process Monitor" subtitle "AI.INPUT.IM"'
+        'with title "Personal xbar" subtitle "AI.INPUT.IM"'
     )
     try:
         _ = subprocess.run(
@@ -1003,7 +995,7 @@ def collect_spotify_status(
 def send_spotify_notification(message: str) -> None:
     script = (
         f'display notification "{apple_script_string(message)}" '
-        'with title "Agent Process Monitor" subtitle "Spotify Web"'
+        'with title "Personal xbar" subtitle "Spotify Web"'
     )
     try:
         _ = subprocess.run(
@@ -1891,6 +1883,7 @@ def render(
     now: str | None = None,
     ai_input_status: AiInputStatus | None = None,
     spotify_status: SpotifyStatus | None = None,
+    plugin_path: Path | None = None,
 ) -> str:
     runtimes, unattributed_mcp = build_runtimes(rows, home)
     runtime_processes = tuple(process for runtime in runtimes for process in runtime.processes)
@@ -1927,7 +1920,7 @@ def render(
     ]
 
     if spotify_status is not None:
-        append_spotify_lines(lines, spotify_status)
+        append_spotify_lines(lines, spotify_status, plugin_path=plugin_path)
 
     if ai_input_status is not None:
         append_ai_input_lines(lines, ai_input_status)
@@ -1991,33 +1984,3 @@ def render(
         "Open Activity Monitor | bash=/usr/bin/open param1=-a param2='Activity Monitor' terminal=false"
     )
     return "\n".join(lines)
-
-
-def main() -> None:
-    spotify_actions = {
-        "spotify-toggle": "toggle",
-        "spotify-previous": "previous",
-        "spotify-next": "next",
-    }
-    if len(sys.argv) == 2 and sys.argv[1] in spotify_actions:
-        control_spotify_playback(spotify_actions[sys.argv[1]])
-        return
-    ai_input_status = collect_ai_input_status()
-    spotify_status = collect_spotify_status()
-    try:
-        rows = ps_rows()
-        print(
-            render(
-                rows,
-                ai_input_status=ai_input_status,
-                spotify_status=spotify_status,
-            )
-        )
-    except Exception as error:
-        print("AI ? | color=red")
-        print("---")
-        print(f"Process scan failed: {sanitize_text(str(error))} | color=red")
-
-
-if __name__ == "__main__":
-    main()

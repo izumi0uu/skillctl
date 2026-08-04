@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Manage the canonical Agent Process Monitor xbar installation."""
+"""Manage the canonical Personal xbar installation."""
 
 from __future__ import annotations
 
@@ -18,20 +18,23 @@ from pathlib import Path
 from typing import Protocol, cast
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SOURCE = SKILL_ROOT / "plugin" / "mcp-monitor.15s.py"
-DEFAULT_VERIFIER = SKILL_ROOT / "scripts" / "verify_agent_process_monitor.py"
+DEFAULT_SOURCE = SKILL_ROOT / "plugin" / "personal-xbar.15s.py"
+DEFAULT_VERIFIER = SKILL_ROOT / "scripts" / "verify_personal_xbar.py"
 DEFAULT_TARGET = (
     Path.home()
     / "Library"
     / "Application Support"
     / "xbar"
     / "plugins"
-    / "mcp-monitor.15s.py"
+    / "personal-xbar.15s.py"
 )
+LEGACY_TARGET = DEFAULT_TARGET.with_name("mcp-monitor.15s.py")
+DEFAULT_CACHE_ROOT = Path.home() / "Library" / "Caches" / "skillctl" / "personal-xbar"
+LEGACY_CACHE_ROOT = DEFAULT_CACHE_ROOT.with_name("agent-process-monitor")
 DEFAULT_STATE_ROOT = (
     Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state"))
     / "skillctl"
-    / "agent-process-monitor"
+    / "personal-xbar"
 )
 METADATA_FILE = "install.json"
 BACKUP_DIRECTORY = "backups"
@@ -69,8 +72,12 @@ def plugin_version(path: Path) -> str:
 
     if not lines or lines[0] != "#!/usr/bin/env python3":
         raise MonitorManagerError(f"invalid plugin shebang: {path}")
-    if "# <xbar.title>Agent Process Monitor</xbar.title>" not in lines[:12]:
-        raise MonitorManagerError(f"missing Agent Process Monitor xbar title: {path}")
+    valid_titles = {
+        "# <xbar.title>Personal xbar</xbar.title>",
+        "# <xbar.title>Agent Process Monitor</xbar.title>",
+    }
+    if not valid_titles.intersection(lines[:12]):
+        raise MonitorManagerError(f"missing Personal xbar title: {path}")
     for line in lines[:12]:
         prefix = "# <xbar.version>"
         suffix = "</xbar.version>"
@@ -115,7 +122,7 @@ def run_bundled_verifier(
 
 def ensure_production_environment(target: Path) -> None:
     if sys.platform != "darwin":
-        raise MonitorManagerError("Agent Process Monitor installation requires macOS")
+        raise MonitorManagerError("Personal xbar installation requires macOS")
     if target == DEFAULT_TARGET:
         xbar_present = any(
             candidate.exists()
@@ -172,6 +179,72 @@ def atomic_copy(source: Path, target: Path, mode: int) -> None:
                 pass
 
 
+def source_package(entrypoint: Path) -> Path | None:
+    candidate = entrypoint.parent / "personal_xbar"
+    return candidate if candidate.is_dir() else None
+
+
+def installed_package(entrypoint: Path) -> Path:
+    return entrypoint.parent / ".personal-xbar" / "personal_xbar"
+
+
+def directory_hash(path: Path) -> str:
+    digest = hashlib.sha256()
+    for child in sorted(path.rglob("*")):
+        if not child.is_file() or child.is_symlink() or "__pycache__" in child.parts:
+            continue
+        digest.update(str(child.relative_to(path)).encode())
+        digest.update(b"\0")
+        digest.update(child.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def atomic_copy_tree(source: Path, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staging_root = Path(tempfile.mkdtemp(prefix=f".{target.name}.", dir=target.parent))
+    staged = staging_root / target.name
+    displaced = staging_root / "previous"
+    try:
+        _ = shutil.copytree(source, staged)
+        if target.exists():
+            if target.is_symlink() or not target.is_dir():
+                raise MonitorManagerError(f"invalid Personal xbar package target: {target}")
+            os.replace(target, displaced)
+        os.replace(staged, target)
+    except OSError as error:
+        if displaced.exists() and not target.exists():
+            os.replace(displaced, target)
+        raise MonitorManagerError(f"cannot replace Personal xbar package: {error}") from error
+    finally:
+        shutil.rmtree(staging_root, ignore_errors=True)
+
+
+def remove_installed_package(entrypoint: Path) -> None:
+    package = installed_package(entrypoint)
+    if package.is_dir() and not package.is_symlink():
+        shutil.rmtree(package)
+
+
+def retire_legacy_target(state_root: Path) -> str | None:
+    if not LEGACY_TARGET.is_file():
+        return None
+    backup = create_backup(LEGACY_TARGET, state_root, "legacy-migration")
+    LEGACY_TARGET.unlink()
+    return backup.name
+
+
+def migrate_legacy_cache() -> list[str]:
+    migrated: list[str] = []
+    for name in ("ai-input-status.json", "spotify-web.json"):
+        source = LEGACY_CACHE_ROOT / name
+        target = DEFAULT_CACHE_ROOT / name
+        if source.is_file() and not source.is_symlink() and not target.exists():
+            atomic_copy(source, target, 0o600)
+            migrated.append(name)
+    return migrated
+
+
 def atomic_write_json(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.parent.chmod(0o700)
@@ -203,6 +276,7 @@ def atomic_write_json(path: Path, payload: dict[str, object]) -> None:
 
 def write_install_metadata(source: Path, target: Path, state_root: Path) -> None:
     details = plugin_details(target)
+    package = installed_package(target)
     atomic_write_json(
         metadata_path(state_root),
         {
@@ -212,6 +286,7 @@ def write_install_metadata(source: Path, target: Path, state_root: Path) -> None
             "target": str(target),
             "version": details["version"],
             "sha256": details["sha256"],
+            "package_sha256": directory_hash(package) if package.is_dir() else None,
         },
     )
 
@@ -231,6 +306,9 @@ def create_backup(target: Path, state_root: Path, reason: str) -> Path:
     )
     destination = destination_directory / backup_name
     atomic_copy(target, destination, 0o755)
+    package = installed_package(target)
+    if package.is_dir() and not package.is_symlink():
+        _ = shutil.copytree(package, destination.with_suffix(".bundle"))
     return destination
 
 
@@ -277,9 +355,16 @@ def status(source: Path, target: Path, state_root: Path) -> dict[str, object]:
         result.update({"status": "invalid", "error": str(error)})
         return result
     result["target_details"] = target_details
-    result["status"] = (
-        "current" if source_details["sha256"] == target_details["sha256"] else "drifted"
+    source_bundle = source_package(source)
+    target_bundle = installed_package(target)
+    bundle_current = source_bundle is None or (
+        target_bundle.is_dir()
+        and directory_hash(source_bundle) == directory_hash(target_bundle)
     )
+    result["package_current"] = bundle_current
+    result["status"] = "current" if (
+        source_details["sha256"] == target_details["sha256"] and bundle_current
+    ) else "drifted"
     return result
 
 
@@ -330,12 +415,27 @@ def install(
 
     source_details = plugin_details(source)
     verification = verify_plugin(source)
-    if target.is_file() and sha256_file(target) == source_details["sha256"]:
+    canonical_package = source_package(source)
+    target_package = installed_package(target)
+    package_current = canonical_package is None or (
+        target_package.is_dir()
+        and directory_hash(canonical_package) == directory_hash(target_package)
+    )
+    if (
+        target.is_file()
+        and sha256_file(target) == source_details["sha256"]
+        and package_current
+    ):
         target.chmod(0o755)
         write_install_metadata(source, target, state_root)
+        migrated_state = migrate_legacy_cache() if target == DEFAULT_TARGET else []
         return {
             "action": "noop",
             "backup": None,
+            "legacy_backup": (
+                retire_legacy_target(state_root) if target == DEFAULT_TARGET else None
+            ),
+            "migrated_state": migrated_state,
             "verification": verification,
             "target": plugin_details(target),
         }
@@ -344,20 +444,34 @@ def install(
         create_backup(target, state_root, "pre-install") if target.is_file() else None
     )
     try:
+        if canonical_package is not None:
+            atomic_copy_tree(canonical_package, target_package)
         atomic_copy(source, target, 0o755)
         installed_verification = verify_plugin(target)
         write_install_metadata(source, target, state_root)
     except (OSError, MonitorManagerError) as error:
         if backup is not None and backup.is_file():
             atomic_copy(backup, target, 0o755)
+            backup_package = backup.with_suffix(".bundle")
+            if backup_package.is_dir():
+                atomic_copy_tree(backup_package, target_package)
+            else:
+                remove_installed_package(target)
             _ = verify_plugin(target)
         elif target.exists():
             target.unlink()
+        if backup is None:
+            remove_installed_package(target)
         raise MonitorManagerError(f"installation failed: {error}") from error
+
+    migrated_state = migrate_legacy_cache() if target == DEFAULT_TARGET else []
+    legacy_backup = retire_legacy_target(state_root) if target == DEFAULT_TARGET else None
 
     return {
         "action": "installed",
         "backup": backup.name if backup is not None else None,
+        "legacy_backup": legacy_backup,
+        "migrated_state": migrated_state,
         "verification": installed_verification,
         "target": plugin_details(target),
     }
@@ -396,11 +510,21 @@ def rollback(
     )
     try:
         atomic_copy(backup, target, 0o755)
+        backup_package = backup.with_suffix(".bundle")
+        if backup_package.is_dir():
+            atomic_copy_tree(backup_package, installed_package(target))
+        else:
+            remove_installed_package(target)
         verification = verify_plugin(target)
         write_install_metadata(source, target, state_root)
     except (OSError, MonitorManagerError) as error:
         if current_backup is not None and current_backup.is_file():
             atomic_copy(current_backup, target, 0o755)
+            current_package = current_backup.with_suffix(".bundle")
+            if current_package.is_dir():
+                atomic_copy_tree(current_package, installed_package(target))
+            else:
+                remove_installed_package(target)
             _ = verify_plugin(target)
         elif target.exists():
             target.unlink()
@@ -416,7 +540,7 @@ def rollback(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Manage the skillctl-owned Agent Process Monitor xbar plugin."
+        description="Manage the skillctl-owned Personal xbar plugin bundle."
     )
     _ = parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
     _ = parser.add_argument("--target", type=Path, default=DEFAULT_TARGET)

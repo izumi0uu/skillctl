@@ -30,23 +30,6 @@
       }
     },
     {
-      "skill_id": "agent-process-monitor",
-      "category": "agent-infra",
-      "visibility": "public",
-      "source_kind": "local-public",
-      "origin_kind": "local-authored",
-      "hash": "8a5beb55f9c530ebf410d1f244fe52cd6758c1b4",
-      "managed": true,
-      "targets": [
-        "claude-code",
-        "codex",
-        "pi",
-        "hermes",
-        "opencode"
-      ],
-      "canonical_rel_path": "skills/agent-infra/agent-process-monitor"
-    },
-    {
       "skill_id": "agents-best-practices",
       "category": "knowledge-and-research",
       "tags": [
@@ -1093,6 +1076,23 @@
         "last_verified_ref": "main",
         "local_modifications": true
       }
+    },
+    {
+      "skill_id": "personal-xbar",
+      "category": "agent-infra",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "965af4c585cdd2d8ad6b6e8d05df99ac5097f6a4",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/agent-infra/personal-xbar"
     },
     {
       "skill_id": "product-showcase",

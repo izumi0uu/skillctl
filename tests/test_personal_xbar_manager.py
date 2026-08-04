@@ -15,9 +15,9 @@ MANAGER_PATH = (
     ROOT
     / "skills"
     / "agent-infra"
-    / "agent-process-monitor"
+    / "personal-xbar"
     / "scripts"
-    / "manage_agent_process_monitor.py"
+    / "manage_personal_xbar.py"
 )
 
 
@@ -54,7 +54,7 @@ class ManagerModule(Protocol):
 
 def load_manager() -> ManagerModule:
     spec = importlib.util.spec_from_file_location(
-        "agent_process_monitor_manager", MANAGER_PATH
+        "personal_xbar_manager", MANAGER_PATH
     )
     assert spec is not None and spec.loader is not None
     module: ModuleType = importlib.util.module_from_spec(spec)
@@ -69,7 +69,7 @@ def plugin_text(version: str, marker: str) -> str:
     return "\n".join(
         (
             "#!/usr/bin/env python3",
-            "# <xbar.title>Agent Process Monitor</xbar.title>",
+            "# <xbar.title>Personal xbar</xbar.title>",
             f"# <xbar.version>{version}</xbar.version>",
             "# <xbar.author>Fixture</xbar.author>",
             "# <xbar.desc>Fixture monitor.</xbar.desc>",
@@ -82,7 +82,7 @@ def plugin_text(version: str, marker: str) -> str:
 
 
 @final
-class TestAgentProcessMonitorManager(unittest.TestCase):
+class TestPersonalXbarManager(unittest.TestCase):
     @override
     def __init__(self, methodName: str = "runTest") -> None:
         super().__init__(methodName)
@@ -91,8 +91,8 @@ class TestAgentProcessMonitorManager(unittest.TestCase):
         )
         self.addCleanup(self.temporary_directory.cleanup)
         self.root: Path = Path(self.temporary_directory.name)
-        self.source: Path = self.root / "canonical" / "mcp-monitor.15s.py"
-        self.target: Path = self.root / "xbar" / "mcp-monitor.15s.py"
+        self.source: Path = self.root / "canonical" / "personal-xbar.15s.py"
+        self.target: Path = self.root / "xbar" / "personal-xbar.15s.py"
         self.state_root: Path = self.root / "state"
         self.write_plugin(self.source, "1.0.0", "one")
 
@@ -108,6 +108,14 @@ class TestAgentProcessMonitorManager(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         _ = path.write_text(plugin_text(version, marker), encoding="utf-8")
         path.chmod(0o755)
+
+    def write_bundle(self, marker: str) -> Path:
+        package = self.source.parent / "personal_xbar"
+        package.mkdir(parents=True, exist_ok=True)
+        _ = (package / "runtime.py").write_text(
+            f'MARKER = "{marker}"\n', encoding="utf-8"
+        )
+        return package
 
     def install(self) -> dict[str, object]:
         return MANAGER.install(
@@ -144,6 +152,34 @@ class TestAgentProcessMonitorManager(unittest.TestCase):
         self.assertIsNone(result["backup"])
         self.assertEqual(MANAGER.list_backups(self.state_root), [])
 
+    def test_bundle_drift_is_installed_and_rolled_back_with_entrypoint(self) -> None:
+        _ = self.write_bundle("one")
+        _ = self.install()
+        target_runtime = (
+            self.target.parent / ".personal-xbar" / "personal_xbar" / "runtime.py"
+        )
+        self.assertIn("one", target_runtime.read_text(encoding="utf-8"))
+
+        _ = self.write_bundle("two")
+        self.assertEqual(
+            MANAGER.status(self.source, self.target, self.state_root)["status"],
+            "drifted",
+        )
+        self.write_plugin(self.source, "2.0.0", "two")
+        _ = self.install()
+        backup_name = cast(str, MANAGER.list_backups(self.state_root)[0]["name"])
+        self.assertIn("two", target_runtime.read_text(encoding="utf-8"))
+
+        _ = MANAGER.rollback(
+            self.source,
+            self.target,
+            self.state_root,
+            backup_name,
+            verify_plugin=self.verify_plugin,
+            require_macos=False,
+        )
+        self.assertIn("one", target_runtime.read_text(encoding="utf-8"))
+
     def test_status_detects_manual_target_drift(self) -> None:
         _ = self.install()
         self.write_plugin(self.target, "1.0.1", "manual")
@@ -164,7 +200,7 @@ class TestAgentProcessMonitorManager(unittest.TestCase):
         self.assertEqual(MANAGER.list_backups(self.state_root), [])
 
     def test_install_rejects_symlink_target_without_touching_destination(self) -> None:
-        destination = self.root / "outside" / "mcp-monitor.15s.py"
+        destination = self.root / "outside" / "personal-xbar.15s.py"
         self.write_plugin(destination, "0.9.0", "outside")
         original = destination.read_bytes()
         self.target.parent.mkdir(parents=True, exist_ok=True)

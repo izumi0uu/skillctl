@@ -1,0 +1,7 @@
+interface:
+  display_name: "Personal xbar"
+  short_description: "Maintain the personal xbar plugin bundle"
+  default_prompt: "Use $personal-xbar to inspect, extend, verify, install, update, diagnose, or roll back the macOS Personal xbar bundle through its canonical skillctl-managed source and transactional lifecycle manager."
+
+policy:
+  allow_implicit_invocation: true

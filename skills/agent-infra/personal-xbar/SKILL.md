@@ -1,22 +1,28 @@
 ---
-name: agent-process-monitor
-description: Install, update, verify, diagnose, or roll back the macOS xbar Agent Process Monitor that attributes local OMP, Codex, Claude Code, OpenCode, Pi, and MCP process trees, displays AI.INPUT.IM model health, and controls Spotify Web playback with advertisement auto-mute. Use when maintaining the menu-bar monitor, investigating its process hierarchy, model-status notifications, or Spotify behavior, or shipping a new monitor version through skillctl.
+name: personal-xbar
+description: Install, update, verify, diagnose, or roll back the Personal xbar menu that combines local agent process inventory, AI.INPUT.IM model health, and Spotify Web playback controls with advertisement auto-mute. Use when maintaining this personal macOS menu-bar bundle, adding feature plugins, investigating notifications or Spotify behavior, or shipping a version through skillctl.
 ---
 
-# Agent Process Monitor
+# Personal xbar
 
-Own the local macOS Agent Process Monitor as a canonical `skillctl`-managed product. The monitor samples process metadata, attributes each process to one agent runtime, and renders session, worker, MCP-instance, support, and other Desktop process hierarchy. It also reads the public AI.INPUT.IM status API, caches the summarized response, and sends transition-only macOS notifications for model failure and recovery. When Google Chrome has a Spotify Web tab open, it displays playback state, offers a play/pause action, and automatically mutes page media during advertisements.
+Own the local Personal xbar bundle as a canonical `skillctl`-managed product. Its registered plugins inventory local agent processes, read the public AI.INPUT.IM status API with transition-only failure and recovery notifications, and control Spotify Web playback while automatically muting advertisements.
 
 ## Ownership Boundary
 
-For monitor runtime behavior, `plugin/mcp-monitor.15s.py` is the sole canonical source. The lifecycle manager and deterministic verifier are supporting skill code.
+`plugin/personal-xbar.15s.py` is the thin executable entrypoint. The `15s` suffix is xbar's refresh declaration, not the product or skill name. Feature plugins are registered only in `plugin/personal_xbar/app.py`:
+
+- `plugins/processes.py` collects and renders the agent process inventory;
+- `plugins/ai_input.py` collects model probe status and owns health transitions;
+- `plugins/spotify.py` collects playback state and registers playback actions;
+- `runtime.py` contains shared domain behavior retained by those plugins.
 
 Derived copies are not source:
 
-- agent install mirrors such as `~/.codex/skills/agent-process-monitor/`;
-- the live xbar plugin at `~/Library/Application Support/xbar/plugins/mcp-monitor.15s.py`;
-- install metadata, transactional backups, and provenance-only legacy artifacts under `~/.local/state/skillctl/agent-process-monitor/`; legacy artifacts are not rollback candidates.
-- the model-status cache, notification state, and Spotify mute ownership state under `~/Library/Caches/skillctl/agent-process-monitor/`.
+- agent install mirrors such as `~/.codex/skills/personal-xbar/`;
+- the live entrypoint at `~/Library/Application Support/xbar/plugins/personal-xbar.15s.py`;
+- the hidden live package at `~/Library/Application Support/xbar/plugins/.personal-xbar/personal_xbar/`;
+- install metadata and transactional backups under `~/.local/state/skillctl/personal-xbar/`;
+- model-status, notification, and Spotify mute ownership state under `~/Library/Caches/skillctl/personal-xbar/`.
 
 Never hand-edit a derived copy. Change the canonical plugin, update its deterministic verifier, sync the skill, then install it through the lifecycle manager.
 
@@ -74,13 +80,13 @@ SPOTIFY_WEB_STATE_FILE=/custom/cache/spotify-web.json
 Use the active agent's installed skill directory as `SKILL_DIR`. For Codex this is normally:
 
 ```bash
-SKILL_DIR="$HOME/.codex/skills/agent-process-monitor"
+SKILL_DIR="$HOME/.codex/skills/personal-xbar"
 ```
 
 For canonical development, use:
 
 ```bash
-SKILL_DIR="<skillctl-repo>/skills/agent-infra/agent-process-monitor"
+SKILL_DIR="<skillctl-repo>/skills/agent-infra/personal-xbar"
 ```
 
 ## Workflow
@@ -88,7 +94,7 @@ SKILL_DIR="<skillctl-repo>/skills/agent-infra/agent-process-monitor"
 ### 1. Inspect Without Mutating
 
 ```bash
-python3 "$SKILL_DIR/scripts/manage_agent_process_monitor.py" status
+python3 "$SKILL_DIR/scripts/manage_personal_xbar.py" status
 ```
 
 Status reports canonical and installed versions, SHA-256 hashes, target mode, latest backup, and one of: `not-installed`, `current`, `drifted`, or `invalid`.
@@ -96,7 +102,7 @@ Status reports canonical and installed versions, SHA-256 hashes, target mode, la
 ### 2. Verify Canonical Source
 
 ```bash
-python3 "$SKILL_DIR/scripts/manage_agent_process_monitor.py" verify
+python3 "$SKILL_DIR/scripts/manage_personal_xbar.py" verify
 ```
 
 This compiles the plugin and runs the bundled deterministic contract. Fix canonical source or verifier failures before installation.
@@ -104,7 +110,7 @@ This compiles the plugin and runs the bundled deterministic contract. Fix canoni
 ### 3. Install Or Update
 
 ```bash
-python3 "$SKILL_DIR/scripts/manage_agent_process_monitor.py" install
+python3 "$SKILL_DIR/scripts/manage_personal_xbar.py" install
 ```
 
 Installation is transactional: verify source, back up a changed target, atomically replace it with mode `0755`, verify the installed copy, write mode-`0600` metadata, and automatically restore the prior target if post-install verification fails. An already-current target is a no-op.
@@ -112,7 +118,7 @@ Installation is transactional: verify source, back up a changed target, atomical
 ### 4. Verify The Installed Copy
 
 ```bash
-python3 "$SKILL_DIR/scripts/manage_agent_process_monitor.py" verify --installed
+python3 "$SKILL_DIR/scripts/manage_personal_xbar.py" verify --installed
 ```
 
 Then allow one 15-second xbar refresh and inspect the live menu. Session rows must remain evidence-only; the Worker row owns MCP and Support submenus. The title must include the API healthy/total count, and the AI.INPUT.IM submenu must preserve process inventory when the status service is unavailable.
@@ -120,8 +126,8 @@ Then allow one 15-second xbar refresh and inspect the live menu. Session rows mu
 ### 5. List And Restore Backups
 
 ```bash
-python3 "$SKILL_DIR/scripts/manage_agent_process_monitor.py" list-backups
-python3 "$SKILL_DIR/scripts/manage_agent_process_monitor.py" rollback '<backup-name>'
+python3 "$SKILL_DIR/scripts/manage_personal_xbar.py" list-backups
+python3 "$SKILL_DIR/scripts/manage_personal_xbar.py" rollback '<backup-name>'
 ```
 
 Rollback accepts only a manager-owned backup basename under the configured state root. It verifies the backup, backs up the current target, restores atomically, and verifies the result.
@@ -130,9 +136,9 @@ Rollback accepts only a manager-owned backup basename under the configured state
 
 For every behavior change:
 
-1. Edit `plugin/mcp-monitor.15s.py` in the canonical skillctl repository.
+1. Edit the relevant module under `plugin/personal_xbar/plugins/` or shared `runtime.py`.
 2. Bump the `<xbar.version>` header.
-3. Extend `scripts/verify_agent_process_monitor.py` with an observable contract that would fail for a plausible regression.
+3. Extend `scripts/verify_personal_xbar.py` with an observable contract that would fail for a plausible regression.
 4. Run canonical verification, Python compilation, Ruff, and relevant tests.
 5. Run `skillctl discover`, inspect catalog provenance/taxonomy, then `skillctl sync`.
 6. Install through the lifecycle manager.
@@ -157,7 +163,7 @@ Lifecycle-manager-only changes update the skill catalog hash but do not require 
 
 - Run `status` and `verify` before any install or rollback.
 - Do not manually copy into xbar, agent mirrors, or state directories.
-- Do not rename the live `mcp-monitor.15s.py` target without an explicit migration that prevents duplicate xbar plugins.
+- Do not remove `.15s` from the live entrypoint; xbar uses it to schedule refreshes. The manager migrates and backs up the legacy `mcp-monitor.15s.py` target to prevent duplicates.
 - Do not use this skill to kill, pool, or clean MCP processes.
 - Do not add an AI.INPUT.IM API key or replace the official public status feed with paid completion probes.
 - Keep Spotify JavaScript scoped to `open.spotify.com`; do not inspect unrelated Chrome tabs or browser history.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the xbar agent-process monitor with deterministic process fixtures."""
+"""Verify Personal xbar with deterministic process and service fixtures."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Protocol, cast
 
-DEFAULT_PLUGIN = Path(__file__).resolve().parents[1] / "plugin" / "mcp-monitor.15s.py"
+DEFAULT_PLUGIN = Path(__file__).resolve().parents[1] / "plugin" / "personal-xbar.15s.py"
 
 
 def plugin_argument() -> Path:
@@ -97,6 +97,10 @@ class SpotifyStatusLike(Protocol):
     error: str | None
 
 
+class RegistryLike(Protocol):
+    plugin_ids: tuple[str, ...]
+
+
 class CompletedProcessLike(Protocol):
     stdout: str
 
@@ -121,6 +125,8 @@ class MonitorModule(Protocol):
     SPOTIFY_ACTION_JAVASCRIPT: dict[str, str]
     subprocess: PatchableSubprocess
     sqlite3: PatchableSqlite
+
+    def build_registry(self) -> RegistryLike: ...
 
     def parse_ps_output(self, output: str) -> dict[int, ProcessLike]: ...
 
@@ -195,6 +201,7 @@ def load_plugin() -> MonitorModule:
 
 
 monitor = load_plugin()
+assert monitor.build_registry().plugin_ids == ("ai-input", "spotify", "processes")
 
 with tempfile.TemporaryDirectory() as temporary_directory:
     home = Path(temporary_directory)
@@ -863,4 +870,4 @@ version_line = next(
 version = version_line.removeprefix("# <xbar.version>").removesuffix(
     "</xbar.version>"
 )
-print(f"xbar agent process monitor contract passed: {PLUGIN} (v{version})")
+print(f"Personal xbar contract passed: {PLUGIN} (v{version})")
