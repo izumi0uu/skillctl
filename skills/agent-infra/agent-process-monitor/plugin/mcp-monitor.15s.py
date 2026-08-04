@@ -1,23 +1,28 @@
 #!/usr/bin/env python3
 # <xbar.title>Agent Process Monitor</xbar.title>
-# <xbar.version>2.4.1</xbar.version>
+# <xbar.version>2.5.0</xbar.version>
 # <xbar.author>Local</xbar.author>
-# <xbar.desc>Read-only CPU and RSS monitor for local AI-agent runtimes and their MCP process trees.</xbar.desc>
+# <xbar.desc>Local agent process inventory and AI.INPUT.IM model-health monitor.</xbar.desc>
 # <xbar.dependencies>python3</xbar.dependencies>
 
-"""Read-only macOS menu-bar monitor for local AI-agent process trees.
+"""macOS menu-bar monitor for local agent processes and model health.
 
 Every process is assigned to at most one top-level agent runtime by ancestry.
 Session titles are shown only when a reliable PID/TTY mapping exists. The script
-never sends signals, reads process environments, or writes runtime state.
+never sends signals, reads process environments, or writes agent runtime state.
+It stores only its own model-status cache and notification transition state.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import subprocess
+import tempfile
 import time
+import urllib.error
+import urllib.request
 from collections import defaultdict, deque
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -26,6 +31,27 @@ from typing import cast
 
 REFRESH_SECONDS = 15
 HOME = Path.home()
+AI_INPUT_STATUS_URL = os.environ.get(
+    "AI_INPUT_STATUS_URL", "https://status.input.im/api/status"
+)
+AI_INPUT_STATUS_PAGE_URL = os.environ.get(
+    "AI_INPUT_STATUS_PAGE_URL", "https://status.input.im"
+)
+AI_INPUT_FETCH_TIMEOUT_SECONDS = 4.0
+AI_INPUT_CACHE_SECONDS = 55
+AI_INPUT_STALE_SECONDS = 180
+AI_INPUT_UNREACHABLE_ALERT_THRESHOLD = 2
+AI_INPUT_STATE_FILE = Path(
+    os.environ.get(
+        "AI_INPUT_MONITOR_STATE_FILE",
+        HOME
+        / "Library"
+        / "Caches"
+        / "skillctl"
+        / "agent-process-monitor"
+        / "ai-input-status.json",
+    )
+)
 
 
 @dataclass(frozen=True)
@@ -82,6 +108,23 @@ class Totals:
     process_count: int
     cpu_percent: float
     rss_bytes: int
+
+
+@dataclass(frozen=True)
+class AiInputService:
+    model: str
+    ok: bool | None
+    latency_ms: int | None
+    uptime_pct: float | None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class AiInputStatus:
+    health: str
+    generated_at: int | None
+    services: tuple[AiInputService, ...]
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -333,6 +376,370 @@ def sanitize_text(value: str, max_length: int = 90) -> str:
     if len(cleaned) > max_length:
         return cleaned[: max_length - 1] + "…"
     return cleaned
+
+
+def numeric_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return int(value)
+
+
+def numeric_float(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def parse_ai_input_payload(
+    payload: object,
+    now_epoch: int | None = None,
+) -> AiInputStatus:
+    if not isinstance(payload, dict):
+        raise ValueError("status payload must be an object")
+    generated_at = numeric_int(payload.get("generated_at"))
+    if generated_at is None:
+        raise ValueError("status payload has no generated_at timestamp")
+    raw_services = payload.get("services")
+    if not isinstance(raw_services, list) or not raw_services:
+        raise ValueError("status payload has no services")
+
+    services: list[AiInputService] = []
+    for raw_service in raw_services:
+        if not isinstance(raw_service, dict):
+            raise ValueError("status payload contains an invalid service")
+        model_value = raw_service.get("model")
+        if not isinstance(model_value, str) or not model_value.strip():
+            raise ValueError("status service has no model name")
+        raw_last = raw_service.get("last")
+        ok: bool | None = None
+        latency_ms: int | None = None
+        error: str | None = None
+        if isinstance(raw_last, dict):
+            last_ok = raw_last.get("ok")
+            ok = last_ok if isinstance(last_ok, bool) else None
+            latency_ms = numeric_int(raw_last.get("latency_ms"))
+            error_value = raw_last.get("error")
+            if isinstance(error_value, str) and error_value.strip():
+                error = sanitize_text(error_value, 140)
+        services.append(
+            AiInputService(
+                model=sanitize_text(model_value, 60),
+                ok=ok,
+                latency_ms=latency_ms,
+                uptime_pct=numeric_float(raw_service.get("uptime_pct")),
+                error=error,
+            )
+        )
+
+    now_value = int(time.time()) if now_epoch is None else now_epoch
+    if now_value - generated_at > AI_INPUT_STALE_SECONDS:
+        return AiInputStatus(
+            health="unreachable",
+            generated_at=generated_at,
+            services=tuple(services),
+            error="official status data is stale",
+        )
+    all_ok = payload.get("all_ok") is True and all(
+        service.ok is True for service in services
+    )
+    return AiInputStatus(
+        health="healthy" if all_ok else "degraded",
+        generated_at=generated_at,
+        services=tuple(services),
+    )
+
+
+def ai_input_status_payload(status: AiInputStatus) -> dict[str, object]:
+    return {
+        "health": status.health,
+        "generated_at": status.generated_at,
+        "error": status.error,
+        "services": [
+            {
+                "model": service.model,
+                "ok": service.ok,
+                "latency_ms": service.latency_ms,
+                "uptime_pct": service.uptime_pct,
+                "error": service.error,
+            }
+            for service in status.services
+        ],
+    }
+
+
+def ai_input_status_from_state(state: dict[str, object]) -> AiInputStatus | None:
+    raw_status = state.get("status")
+    if not isinstance(raw_status, dict):
+        return None
+    health = raw_status.get("health")
+    raw_services = raw_status.get("services")
+    if health not in {"healthy", "degraded", "unreachable"} or not isinstance(
+        raw_services, list
+    ):
+        return None
+    services: list[AiInputService] = []
+    for raw_service in raw_services:
+        if not isinstance(raw_service, dict):
+            return None
+        model = raw_service.get("model")
+        if not isinstance(model, str):
+            return None
+        ok_value = raw_service.get("ok")
+        services.append(
+            AiInputService(
+                model=model,
+                ok=ok_value if isinstance(ok_value, bool) else None,
+                latency_ms=numeric_int(raw_service.get("latency_ms")),
+                uptime_pct=numeric_float(raw_service.get("uptime_pct")),
+                error=(
+                    raw_service.get("error")
+                    if isinstance(raw_service.get("error"), str)
+                    else None
+                ),
+            )
+        )
+    error_value = raw_status.get("error")
+    return AiInputStatus(
+        health=health,
+        generated_at=numeric_int(raw_status.get("generated_at")),
+        services=tuple(services),
+        error=error_value if isinstance(error_value, str) else None,
+    )
+
+
+def read_ai_input_state(path: Path = AI_INPUT_STATE_FILE) -> dict[str, object]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return cast(dict[str, object], payload) if isinstance(payload, dict) else {}
+
+
+def write_ai_input_state(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary_file:
+            temporary_path = Path(temporary_file.name)
+            json.dump(payload, temporary_file, separators=(",", ":"))
+            temporary_file.write("\n")
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+        temporary_path.chmod(0o600)
+        os.replace(temporary_path, path)
+        temporary_path = None
+    finally:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink()
+            except FileNotFoundError:
+                pass
+
+
+def fetch_ai_input_status(
+    url: str = AI_INPUT_STATUS_URL,
+    now_epoch: int | None = None,
+) -> AiInputStatus:
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "skillctl-agent-process-monitor/2.5.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=AI_INPUT_FETCH_TIMEOUT_SECONDS,
+        ) as response:
+            body = response.read(128 * 1024 + 1)
+    except (OSError, urllib.error.URLError) as error:
+        raise RuntimeError(sanitize_text(str(error), 140)) from error
+    if len(body) > 128 * 1024:
+        raise RuntimeError("status response is too large")
+    try:
+        payload = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise RuntimeError("status response is not valid JSON") from error
+    try:
+        return parse_ai_input_payload(payload, now_epoch=now_epoch)
+    except ValueError as error:
+        raise RuntimeError(sanitize_text(str(error), 140)) from error
+
+
+def ai_input_failure_summary(status: AiInputStatus) -> str:
+    failing_models = [
+        service.model for service in status.services if service.ok is not True
+    ]
+    if status.health == "degraded" and failing_models:
+        return "Model probe failed: " + ", ".join(failing_models[:4])
+    return "Official model monitor is unreachable"
+
+
+def ai_input_notification_transition(
+    previous: dict[str, object],
+    status: AiInputStatus,
+    checked_at: int,
+) -> tuple[dict[str, object], str | None]:
+    alerting = previous.get("alerting") is True
+    previous_failures = numeric_int(previous.get("consecutive_fetch_failures")) or 0
+    fetch_failures = previous_failures + 1 if status.health == "unreachable" else 0
+    notification: str | None = None
+
+    if status.health == "healthy":
+        if alerting:
+            notification = f"Recovered: {len(status.services)}/{len(status.services)} models online"
+        alerting = False
+    elif status.health == "degraded":
+        if not alerting:
+            notification = ai_input_failure_summary(status)
+        alerting = True
+    elif (
+        not alerting
+        and fetch_failures >= AI_INPUT_UNREACHABLE_ALERT_THRESHOLD
+    ):
+        notification = ai_input_failure_summary(status)
+        alerting = True
+
+    return (
+        {
+            "schema_version": 1,
+            "checked_at": checked_at,
+            "health": status.health,
+            "alerting": alerting,
+            "consecutive_fetch_failures": fetch_failures,
+            "status": ai_input_status_payload(status),
+        },
+        notification,
+    )
+
+
+def apple_script_string(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def send_ai_input_notification(message: str) -> None:
+    if os.environ.get("AI_INPUT_NOTIFICATIONS", "1") == "0":
+        return
+    script = (
+        f'display notification "{apple_script_string(message)}" '
+        'with title "Agent Process Monitor" subtitle "AI.INPUT.IM"'
+    )
+    try:
+        _ = subprocess.run(
+            ["/usr/bin/osascript", "-e", script],
+            capture_output=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def collect_ai_input_status(
+    state_file: Path = AI_INPUT_STATE_FILE,
+    now_epoch: int | None = None,
+) -> AiInputStatus:
+    now_value = int(time.time()) if now_epoch is None else now_epoch
+    previous = read_ai_input_state(state_file)
+    cached = ai_input_status_from_state(previous)
+    checked_at = numeric_int(previous.get("checked_at"))
+    if (
+        cached is not None
+        and checked_at is not None
+        and 0 <= now_value - checked_at < AI_INPUT_CACHE_SECONDS
+    ):
+        return cached
+
+    try:
+        status = fetch_ai_input_status(now_epoch=now_value)
+    except RuntimeError as error:
+        status = AiInputStatus(
+            health="unreachable",
+            generated_at=cached.generated_at if cached else None,
+            services=cached.services if cached else (),
+            error=sanitize_text(str(error), 140),
+        )
+    next_state, notification = ai_input_notification_transition(
+        previous,
+        status,
+        checked_at=now_value,
+    )
+    try:
+        write_ai_input_state(state_file, next_state)
+    except OSError:
+        notification = None
+    if notification:
+        send_ai_input_notification(notification)
+    return status
+
+
+def fmt_latency(value: int | None) -> str:
+    if value is None:
+        return "-"
+    if value < 1000:
+        return f"{value}ms"
+    return f"{value / 1000:.1f}s"
+
+
+def ai_input_counts(status: AiInputStatus) -> tuple[int, int]:
+    return sum(service.ok is True for service in status.services), len(status.services)
+
+
+def append_ai_input_lines(lines: list[str], status: AiInputStatus) -> None:
+    healthy, total = ai_input_counts(status)
+    if status.health == "healthy":
+        max_latency = max(
+            (
+                service.latency_ms
+                for service in status.services
+                if service.latency_ms is not None
+            ),
+            default=None,
+        )
+        lines.append(
+            f"AI.INPUT.IM: {healthy}/{total} online · max {fmt_latency(max_latency)}"
+            " | color=green"
+        )
+    elif status.health == "degraded":
+        lines.append(
+            f"AI.INPUT.IM: {healthy}/{total} online · model failure | color=red"
+        )
+    else:
+        known = f" · last known {healthy}/{total}" if total else ""
+        lines.append(f"AI.INPUT.IM: monitor unreachable{known} | color=orange")
+
+    for service in status.services:
+        if service.ok is True:
+            state_text, color = "online", "green"
+        elif service.ok is False:
+            state_text, color = "failing", "red"
+        else:
+            state_text, color = "pending", "orange"
+        uptime = (
+            f"{service.uptime_pct:.2f}% / 60m"
+            if service.uptime_pct is not None
+            else "uptime -"
+        )
+        lines.append(
+            f"--{service.model} · {state_text} · {fmt_latency(service.latency_ms)}"
+            f" · {uptime} | color={color}"
+        )
+        if service.error:
+            lines.append(f"----{sanitize_text(service.error, 110)} | color=gray")
+    if status.error:
+        lines.append(f"--{sanitize_text(status.error, 110)} | color=gray")
+    lines.append(
+        "--Open official model monitor"
+        f" | bash=/usr/bin/open param1={AI_INPUT_STATUS_PAGE_URL} terminal=false"
+    )
+    lines.append("---")
 
 
 def totals_text(value: Totals) -> str:
@@ -1059,13 +1466,28 @@ def is_collapsible_background(runtime: Runtime) -> bool:
     )
 
 
-def render(rows: dict[int, Process], home: Path = HOME, now: str | None = None) -> str:
+def render(
+    rows: dict[int, Process],
+    home: Path = HOME,
+    now: str | None = None,
+    ai_input_status: AiInputStatus | None = None,
+) -> str:
     runtimes, unattributed_mcp = build_runtimes(rows, home)
     runtime_processes = tuple(process for runtime in runtimes for process in runtime.processes)
     overall = totals((*runtime_processes, *unattributed_mcp))
     color = title_color(overall.cpu_percent, overall.rss_bytes)
+    ai_input_title = ""
+    if ai_input_status is not None:
+        healthy, total = ai_input_counts(ai_input_status)
+        count_text = f"{healthy}/{total}" if total else "?"
+        ai_input_title = f" · API {count_text}"
+        if ai_input_status.health == "degraded":
+            color = "red"
+        elif ai_input_status.health == "unreachable" and color == "green":
+            color = "orange"
     lines = [
-        f"AI {len(runtimes)} · CPU {fmt_cpu(overall.cpu_percent)} · {fmt_bytes(overall.rss_bytes)} | color={color}",
+        f"AI {len(runtimes)} · CPU {fmt_cpu(overall.cpu_percent)}"
+        f" · {fmt_bytes(overall.rss_bytes)}{ai_input_title} | color={color}",
         "---",
         "Read-only agent process inventory | color=gray",
         f"Updated: {now or time.strftime('%H:%M:%S')} · refresh {REFRESH_SECONDS}s | color=gray",
@@ -1073,6 +1495,9 @@ def render(rows: dict[int, Process], home: Path = HOME, now: str | None = None) 
         "RSS is summed per process; shared pages may be counted more than once. | color=gray",
         "---",
     ]
+
+    if ai_input_status is not None:
+        append_ai_input_lines(lines, ai_input_status)
 
     by_agent: dict[str, list[Runtime]] = defaultdict(list)
     for runtime in runtimes:
@@ -1136,9 +1561,10 @@ def render(rows: dict[int, Process], home: Path = HOME, now: str | None = None) 
 
 
 def main() -> None:
+    ai_input_status = collect_ai_input_status()
     try:
         rows = ps_rows()
-        print(render(rows))
+        print(render(rows, ai_input_status=ai_input_status))
     except Exception as error:
         print("AI ? | color=red")
         print("---")

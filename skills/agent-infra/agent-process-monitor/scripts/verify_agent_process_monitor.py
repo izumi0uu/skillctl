@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import os
 import shlex
 import subprocess
 import sys
@@ -80,6 +81,11 @@ class RuntimeLike(Protocol):
     totals: TotalsLike
 
 
+class AiInputStatusLike(Protocol):
+    health: str
+    services: tuple[object, ...]
+
+
 class CompletedProcessLike(Protocol):
     stdout: str
 
@@ -117,7 +123,21 @@ class MonitorModule(Protocol):
         rows: dict[int, ProcessLike],
         home: Path,
         now: str | None = None,
+        ai_input_status: AiInputStatusLike | None = None,
     ) -> str: ...
+
+    def parse_ai_input_payload(
+        self,
+        payload: object,
+        now_epoch: int | None = None,
+    ) -> AiInputStatusLike: ...
+
+    def ai_input_notification_transition(
+        self,
+        previous: dict[str, object],
+        status: AiInputStatusLike,
+        checked_at: int,
+    ) -> tuple[dict[str, object], str | None]: ...
 
     def read_codex_session_handles_by_pid(
         self,
@@ -509,6 +529,119 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     assert not any(line.startswith("Pi:") for line in lines)
     assert any(line.startswith("Open Activity Monitor") for line in lines)
 
+    healthy_payload = {
+        "all_ok": True,
+        "generated_at": 2_000_000,
+        "services": [
+            {
+                "model": "gpt-fixture-fast",
+                "uptime_pct": 99.5,
+                "last": {"ok": True, "latency_ms": 750, "error": None},
+            },
+            {
+                "model": "gpt-fixture-slow",
+                "uptime_pct": 98.25,
+                "last": {"ok": True, "latency_ms": 2450, "error": None},
+            },
+        ],
+    }
+    healthy_status = monitor.parse_ai_input_payload(
+        healthy_payload,
+        now_epoch=2_000_010,
+    )
+    assert healthy_status.health == "healthy"
+    healthy_rendered = monitor.render(
+        fixture_rows,
+        home,
+        now="12:34:56",
+        ai_input_status=healthy_status,
+    )
+    healthy_lines = healthy_rendered.splitlines()
+    assert_supported_xbar_parameters(healthy_lines)
+    assert "· API 2/2 | color=" in healthy_lines[0]
+    assert any(
+        line.startswith("AI.INPUT.IM: 2/2 online · max 2.5s | color=green")
+        for line in healthy_lines
+    )
+    assert any(
+        line.startswith("--gpt-fixture-fast · online · 750ms · 99.50% / 60m")
+        for line in healthy_lines
+    )
+    assert any(line.startswith("--Open official model monitor") for line in healthy_lines)
+
+    degraded_payload = {
+        **healthy_payload,
+        "all_ok": False,
+        "services": [
+            healthy_payload["services"][0],
+            {
+                "model": "gpt-fixture-slow",
+                "uptime_pct": 95.0,
+                "last": {
+                    "ok": False,
+                    "latency_ms": None,
+                    "error": "HTTP 503 | upstream unavailable",
+                },
+            },
+        ],
+    }
+    degraded_status = monitor.parse_ai_input_payload(
+        degraded_payload,
+        now_epoch=2_000_010,
+    )
+    assert degraded_status.health == "degraded"
+    degraded_lines = monitor.render(
+        fixture_rows,
+        home,
+        now="12:34:56",
+        ai_input_status=degraded_status,
+    ).splitlines()
+    assert degraded_lines[0].endswith("· API 1/2 | color=red")
+    assert any(
+        line.startswith("AI.INPUT.IM: 1/2 online · model failure | color=red")
+        for line in degraded_lines
+    )
+    assert "| upstream" not in "\n".join(degraded_lines)
+
+    healthy_state, initial_notification = monitor.ai_input_notification_transition(
+        {}, healthy_status, checked_at=2_000_010
+    )
+    assert initial_notification is None
+    degraded_state, failure_notification = monitor.ai_input_notification_transition(
+        healthy_state, degraded_status, checked_at=2_000_070
+    )
+    assert failure_notification == "Model probe failed: gpt-fixture-slow"
+    repeated_state, repeated_notification = monitor.ai_input_notification_transition(
+        degraded_state, degraded_status, checked_at=2_000_130
+    )
+    assert repeated_notification is None
+    _, recovery_notification = monitor.ai_input_notification_transition(
+        repeated_state, healthy_status, checked_at=2_000_190
+    )
+    assert recovery_notification == "Recovered: 2/2 models online"
+
+    stale_status = monitor.parse_ai_input_payload(
+        healthy_payload,
+        now_epoch=2_000_181,
+    )
+    assert stale_status.health == "unreachable"
+    try:
+        _ = monitor.parse_ai_input_payload({"all_ok": True}, now_epoch=2_000_181)
+    except ValueError as error:
+        assert "generated_at" in str(error)
+    else:
+        raise AssertionError("malformed AI.INPUT.IM status payload was accepted")
+    unreachable_state, first_unreachable_notification = (
+        monitor.ai_input_notification_transition(
+            {}, stale_status, checked_at=2_000_181
+        )
+    )
+    assert first_unreachable_notification is None
+    _, second_unreachable_notification = monitor.ai_input_notification_transition(
+        unreachable_state, stale_status, checked_at=2_000_241
+    )
+    assert second_unreachable_notification == "Official model monitor is unreachable"
+
     missing_mapping_home = home / "missing"
     fallback = monitor.runtime_label(
         monitor.AGENT_ADAPTERS[0],
@@ -526,11 +659,23 @@ assert parsed[42].elapsed_seconds == 62
 assert parsed[42].tty == "ttys009"
 assert parsed[42].executable == "omp"
 
-live_output = subprocess.check_output([str(PLUGIN)], text=True)
+with tempfile.TemporaryDirectory() as status_state_directory:
+    live_environment = os.environ.copy()
+    live_environment["AI_INPUT_NOTIFICATIONS"] = "0"
+    live_environment["AI_INPUT_MONITOR_STATE_FILE"] = str(
+        Path(status_state_directory) / "ai-input-status.json"
+    )
+    live_output = subprocess.check_output(
+        [str(PLUGIN)],
+        text=True,
+        env=live_environment,
+    )
 live_lines = live_output.splitlines()
 assert_supported_xbar_parameters(live_lines)
 assert live_lines and live_lines[0].startswith("AI "), live_lines[:1]
+assert "· API " in live_lines[0], live_lines[:1]
 assert "---" in live_lines
+assert any(line.startswith("AI.INPUT.IM:") for line in live_lines)
 assert any(line.startswith("Open Activity Monitor") for line in live_lines)
 version_line = next(
     line
