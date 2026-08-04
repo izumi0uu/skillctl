@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # <xbar.title>Agent Process Monitor</xbar.title>
-# <xbar.version>2.6.1</xbar.version>
+# <xbar.version>2.7.0</xbar.version>
 # <xbar.author>Local</xbar.author>
 # <xbar.desc>Agent processes, AI.INPUT.IM health, and Spotify Web controls.</xbar.desc>
 # <xbar.dependencies>python3</xbar.dependencies>
@@ -580,7 +580,7 @@ def fetch_ai_input_status(
         url,
         headers={
             "Accept": "application/json",
-            "User-Agent": "skillctl-agent-process-monitor/2.6.1",
+            "User-Agent": "skillctl-agent-process-monitor/2.7.0",
         },
     )
     try:
@@ -754,6 +754,34 @@ SPOTIFY_TOGGLE_JAVASCRIPT = r"""
   return JSON.stringify({ok: true});
 })()
 """
+
+SPOTIFY_PREVIOUS_JAVASCRIPT = r"""
+(() => {
+  const button = document.querySelector(
+    '[data-testid="control-button-skip-back"], button[aria-label="Previous"], button[aria-label="Previous track"], button[aria-label="上一首"], button[aria-label="上一曲"]'
+  );
+  if (!button || button.disabled) return JSON.stringify({ok: false, error: "previous track control unavailable"});
+  button.click();
+  return JSON.stringify({ok: true});
+})()
+"""
+
+SPOTIFY_NEXT_JAVASCRIPT = r"""
+(() => {
+  const button = document.querySelector(
+    '[data-testid="control-button-skip-forward"], button[aria-label="Next"], button[aria-label="Next track"], button[aria-label="下一首"], button[aria-label="下一曲"]'
+  );
+  if (!button || button.disabled) return JSON.stringify({ok: false, error: "next track control unavailable"});
+  button.click();
+  return JSON.stringify({ok: true});
+})()
+"""
+
+SPOTIFY_ACTION_JAVASCRIPT = {
+    "toggle": SPOTIFY_TOGGLE_JAVASCRIPT,
+    "previous": SPOTIFY_PREVIOUS_JAVASCRIPT,
+    "next": SPOTIFY_NEXT_JAVASCRIPT,
+}
 
 
 def compact_javascript(source: str) -> str:
@@ -987,8 +1015,12 @@ def send_spotify_notification(message: str) -> None:
         pass
 
 
-def toggle_spotify_playback() -> None:
-    _, payload, error = run_spotify_javascript(SPOTIFY_TOGGLE_JAVASCRIPT)
+def control_spotify_playback(action: str) -> None:
+    javascript = SPOTIFY_ACTION_JAVASCRIPT.get(action)
+    if javascript is None:
+        send_spotify_notification("Unknown playback action")
+        return
+    _, payload, error = run_spotify_javascript(javascript)
     if error:
         send_spotify_notification(
             "Enable Chrome > View > Developer > Allow JavaScript from Apple Events"
@@ -1005,6 +1037,10 @@ def toggle_spotify_playback() -> None:
         send_spotify_notification(
             str(detail) if detail else "Playback control unavailable"
         )
+
+
+def toggle_spotify_playback() -> None:
+    control_spotify_playback("toggle")
 
 
 def fmt_latency(value: int | None) -> str:
@@ -1105,7 +1141,15 @@ def append_spotify_lines(
         action = "Pause Spotify" if status.playback == "playing" else "Play Spotify"
         executable = shlex.quote(str((plugin_path or Path(__file__)).resolve()))
         lines.append(
+            f"--Previous track | bash={executable} param1=spotify-previous"
+            " terminal=false refresh=true"
+        )
+        lines.append(
             f"--{action} | bash={executable} param1=spotify-toggle"
+            " terminal=false refresh=true"
+        )
+        lines.append(
+            f"--Next track | bash={executable} param1=spotify-next"
             " terminal=false refresh=true"
         )
         automute_text = "on" if SPOTIFY_WEB_AUTOMUTE else "off"
@@ -1950,8 +1994,13 @@ def render(
 
 
 def main() -> None:
-    if sys.argv[1:] == ["spotify-toggle"]:
-        toggle_spotify_playback()
+    spotify_actions = {
+        "spotify-toggle": "toggle",
+        "spotify-previous": "previous",
+        "spotify-next": "next",
+    }
+    if len(sys.argv) == 2 and sys.argv[1] in spotify_actions:
+        control_spotify_playback(spotify_actions[sys.argv[1]])
         return
     ai_input_status = collect_ai_input_status()
     spotify_status = collect_spotify_status()

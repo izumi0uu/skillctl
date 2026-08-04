@@ -118,6 +118,7 @@ class PatchableSqlite(Protocol):
 
 class MonitorModule(Protocol):
     AGENT_ADAPTERS: tuple[AdapterLike, ...]
+    SPOTIFY_ACTION_JAVASCRIPT: dict[str, str]
     subprocess: PatchableSubprocess
     sqlite3: PatchableSqlite
 
@@ -680,6 +681,9 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     assert "(ASCII character 9)" in spotify_script
     assert " & tab & " not in spotify_script
     assert "id of spotifyTab is 17" in monitor.spotify_apple_script("return 1", tab_id=17)
+    assert set(monitor.SPOTIFY_ACTION_JAVASCRIPT) == {"toggle", "previous", "next"}
+    assert "control-button-skip-back" in monitor.SPOTIFY_ACTION_JAVASCRIPT["previous"]
+    assert "control-button-skip-forward" in monitor.SPOTIFY_ACTION_JAVASCRIPT["next"]
     spotify_playing_lines = monitor.render(
         fixture_rows,
         home,
@@ -695,6 +699,18 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     assert any(
         line.startswith("--Pause Spotify | bash=")
         and "param1=spotify-toggle" in line
+        and "refresh=true" in line
+        for line in spotify_playing_lines
+    )
+    assert any(
+        line.startswith("--Previous track | bash=")
+        and "param1=spotify-previous" in line
+        and "refresh=true" in line
+        for line in spotify_playing_lines
+    )
+    assert any(
+        line.startswith("--Next track | bash=")
+        and "param1=spotify-next" in line
         and "refresh=true" in line
         for line in spotify_playing_lines
     )
