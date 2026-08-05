@@ -4,7 +4,7 @@ Every process is assigned to at most one top-level agent runtime by ancestry.
 Session titles are shown only when a reliable PID/TTY mapping exists. The script
 never sends signals, reads process environments, or writes agent runtime state.
 It stores only its own model-status, subscription-quota, notification, and
-Spotify mute state.
+Spotify mute state; rotating AI.INPUT.IM credentials remain in macOS Keychain.
 """
 
 from __future__ import annotations
@@ -16,15 +16,26 @@ import shlex
 import sqlite3
 import subprocess
 import tempfile
+import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections import defaultdict, deque
 from collections.abc import Iterable
+from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import cast
+
+from . import ai_input_auth
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - macOS and the verifier have fcntl.
+    fcntl = None  # type: ignore[assignment]
 
 REFRESH_SECONDS = 15
 HOME = Path.home()
@@ -52,7 +63,26 @@ AI_INPUT_STATE_FILE = Path(
 AI_INPUT_SUBSCRIPTIONS_ENABLED = (
     os.environ.get("AI_INPUT_SUBSCRIPTIONS_ENABLED", "1") != "0"
 )
+AI_INPUT_SUBSCRIPTIONS_DIRECT_ENABLED = (
+    os.environ.get("AI_INPUT_SUBSCRIPTIONS_DIRECT", "1") != "0"
+)
 AI_INPUT_SUBSCRIPTIONS_ORIGIN = "https://ai.input.im/"
+AI_INPUT_API_ORIGIN = "https://ai.input.im"
+AI_INPUT_API_BASE = f"{AI_INPUT_API_ORIGIN}/api/v1"
+AI_INPUT_API_TIMEOUT_SECONDS = 4.0
+AI_INPUT_API_BODY_LIMIT = 1024 * 1024
+AI_INPUT_REFRESH_LEAD_SECONDS = 120
+AI_INPUT_REFRESH_LOCK_FILE = Path(
+    os.environ.get(
+        "AI_INPUT_REFRESH_LOCK_FILE",
+        HOME
+        / "Library"
+        / "Caches"
+        / "skillctl"
+        / "personal-xbar"
+        / ".ai-input-refresh.lock",
+    )
+)
 AI_INPUT_SUBSCRIPTIONS_TAB_PREFIX = "https://ai.input.im/subscriptions"
 AI_INPUT_SUBSCRIPTIONS_PAGE_URL = os.environ.get(
     "AI_INPUT_SUBSCRIPTIONS_PAGE_URL", "https://ai.input.im/subscriptions"
@@ -186,6 +216,7 @@ class SubscriptionQuotaStatus:
     health: str
     plans: tuple[SubscriptionPlan, ...] = ()
     error: str | None = None
+    source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -454,7 +485,10 @@ def sanitize_text(value: str, max_length: int = 90) -> str:
 def numeric_int(value: object) -> int | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    return int(value)
+    try:
+        return int(value)
+    except (ValueError, OverflowError):
+        return None
 
 
 def numeric_float(value: object) -> float | None:
@@ -753,6 +787,410 @@ def collect_ai_input_status(
     return status
 
 
+class AiInputApiError(RuntimeError):
+    """A bounded, redacted error from the direct AI.INPUT.IM API."""
+
+    def __init__(self, kind: str, message: str):
+        super().__init__(message)
+        self.kind = kind
+
+
+class ExactAiInputRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Allow redirects only when they remain on the exact HTTPS origin."""
+
+    def redirect_request(
+        self,
+        request: urllib.request.Request,
+        fp: object,
+        code: int,
+        msg: str,
+        headers: object,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        target = urllib.parse.urlsplit(urllib.parse.urljoin(request.full_url, newurl))
+        try:
+            target_port = target.port
+        except ValueError:
+            raise AiInputApiError("redirect", "AI INPUT API redirect was rejected") from None
+        if (
+            target.scheme.lower() != "https"
+            or target.hostname != "ai.input.im"
+            or target_port not in (None, 443)
+            or target.username is not None
+            or target.password is not None
+        ):
+            raise AiInputApiError("redirect", "AI INPUT API redirect was rejected")
+        return super().redirect_request(request, fp, code, msg, headers, newurl)
+
+
+def read_ai_input_credentials() -> ai_input_auth.AiInputCredentials | None:
+    return ai_input_auth.read_credentials()
+
+
+def write_ai_input_credentials(credentials: ai_input_auth.AiInputCredentials) -> None:
+    ai_input_auth.write_credentials(credentials)
+
+
+def delete_ai_input_credentials() -> None:
+    ai_input_auth.delete_credentials()
+
+
+def ai_input_credentials_summary(now_epoch: int | None = None) -> dict[str, object]:
+    now_value = int(time.time()) if now_epoch is None else now_epoch
+    credentials = read_ai_input_credentials()
+    return ai_input_auth.credentials_summary(credentials, now_value)
+
+
+def api_request_json(
+    path: str,
+    access_token: str | None = None,
+    *,
+    method: str = "GET",
+    body: dict[str, object] | None = None,
+) -> object:
+    if not path.startswith("/") or path.startswith("//"):
+        raise AiInputApiError("request", "AI INPUT API path is invalid")
+    url = f"{AI_INPUT_API_BASE}{path}"
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "Personal-xbar/3",
+    }
+    encoded_body: bytes | None = None
+    if body is not None:
+        encoded_body = json.dumps(body, separators=(",", ":")).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    if access_token:
+        headers["Authorization"] = f"Bearer {access_token}"
+    request = urllib.request.Request(
+        url,
+        data=encoded_body,
+        headers=headers,
+        method=method,
+    )
+    opener = urllib.request.build_opener(ExactAiInputRedirectHandler())
+    try:
+        response = opener.open(request, timeout=AI_INPUT_API_TIMEOUT_SECONDS)
+        with response:
+            status_code = int(getattr(response, "status", 200))
+            content_length = response.headers.get("Content-Length")
+            if content_length:
+                try:
+                    if int(content_length) > AI_INPUT_API_BODY_LIMIT:
+                        raise AiInputApiError("response", "AI INPUT API response is too large")
+                except ValueError:
+                    pass
+            raw_body = response.read(AI_INPUT_API_BODY_LIMIT + 1)
+    except AiInputApiError:
+        raise
+    except urllib.error.HTTPError as error:
+        if error.code == 401:
+            raise AiInputApiError("unauthorized", "AI INPUT API authorization expired") from None
+        if error.code in (403, 407):
+            raise AiInputApiError("forbidden", "AI INPUT API access was denied") from None
+        raise AiInputApiError("http", f"AI INPUT API returned HTTP {error.code}") from None
+    except (urllib.error.URLError, TimeoutError, OSError):
+        raise AiInputApiError("network", "AI INPUT API network request failed") from None
+    if status_code == 401:
+        raise AiInputApiError("unauthorized", "AI INPUT API authorization expired")
+    if status_code < 200 or status_code >= 300:
+        raise AiInputApiError("http", f"AI INPUT API returned HTTP {status_code}")
+    if len(raw_body) > AI_INPUT_API_BODY_LIMIT:
+        raise AiInputApiError("response", "AI INPUT API response is too large")
+    try:
+        return json.loads(raw_body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise AiInputApiError("response", "AI INPUT API returned invalid JSON") from None
+
+
+def _unwrap_ai_input_api_payload(payload: object) -> object:
+    if not isinstance(payload, dict) or "code" not in payload:
+        return payload
+    code = payload.get("code")
+    if code not in (0, "0", "success", "SUCCESS"):
+        if code in (401, "401", "UNAUTHORIZED"):
+            raise AiInputApiError("unauthorized", "AI INPUT API authorization expired")
+        raise AiInputApiError("api", "AI INPUT API returned an error")
+    return payload.get("data")
+
+
+def _parse_api_epoch(value: object) -> int | None:
+    integer = numeric_int(value)
+    if integer is not None:
+        return integer if integer > 0 else None
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    try:
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        epoch = int(parsed.timestamp())
+        return epoch if epoch > 0 else None
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _local_timezone_name() -> str | None:
+    candidate = os.environ.get("TZ", "").strip()
+    if not candidate:
+        try:
+            localtime = os.path.realpath("/etc/localtime")
+            marker = "/zoneinfo/"
+            if marker in localtime:
+                candidate = localtime.split(marker, 1)[1]
+        except OSError:
+            candidate = ""
+    if re.fullmatch(r"[A-Za-z0-9._+-]+(?:/[A-Za-z0-9._+-]+)+", candidate):
+        return candidate
+    return None
+
+
+def _api_subscription_request_path() -> str:
+    timezone_name = _local_timezone_name()
+    if not timezone_name:
+        return "/subscriptions"
+    return "/subscriptions?timezone=" + urllib.parse.quote(timezone_name, safe="")
+
+
+def _refresh_lock_path(_state_file: Path) -> Path:
+    # One global lock protects the single rotating Keychain credential pair.
+    return AI_INPUT_REFRESH_LOCK_FILE
+
+
+_AI_INPUT_REFRESH_THREAD_LOCK = threading.Lock()
+
+
+@contextmanager
+def ai_input_refresh_lock(state_file: Path) -> Iterable[None]:
+    lock_path = _refresh_lock_path(state_file)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with _AI_INPUT_REFRESH_THREAD_LOCK:
+        try:
+            lock_file = lock_path.open("a+")
+        except OSError as error:
+            raise AiInputApiError("lock", "AI INPUT refresh lock is unavailable") from error
+        try:
+            lock_path.chmod(0o600)
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            yield
+        finally:
+            if fcntl is not None:
+                try:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                except OSError:
+                    pass
+            lock_file.close()
+
+
+def refresh_ai_input_credentials(
+    current: ai_input_auth.AiInputCredentials,
+    state_file: Path,
+    now_epoch: int,
+    *,
+    force: bool,
+) -> ai_input_auth.AiInputCredentials:
+    with ai_input_refresh_lock(state_file):
+        latest = read_ai_input_credentials()
+        if latest is None:
+            raise ai_input_auth.MissingCredentials(
+                "AI.INPUT.IM credentials are not configured"
+            )
+        if latest.access_token != current.access_token:
+            if not force or not ai_input_auth.credentials_need_refresh(
+                latest, now_epoch, AI_INPUT_REFRESH_LEAD_SECONDS
+            ):
+                return latest
+        payload = _unwrap_ai_input_api_payload(
+            api_request_json(
+                "/auth/refresh",
+                method="POST",
+                body={"refresh_token": latest.refresh_token},
+            )
+        )
+        if not isinstance(payload, dict):
+            raise AiInputApiError("refresh", "AI INPUT refresh response is invalid")
+        expires_in = numeric_int(payload.get("expires_in"))
+        if expires_in is None or expires_in <= 0:
+            raise AiInputApiError("refresh", "AI INPUT refresh response has no expiry")
+        try:
+            refreshed = ai_input_auth.make_credentials(
+                payload.get("access_token"),
+                payload.get("refresh_token"),
+                now_epoch + expires_in,
+            )
+            write_ai_input_credentials(refreshed)
+        except ai_input_auth.AuthError as error:
+            raise AiInputApiError("refresh", "AI INPUT refresh response is invalid") from error
+        return refreshed
+
+
+def parse_subscription_api_payload(
+    payload: object,
+    now_epoch: int | None = None,
+) -> SubscriptionQuotaStatus:
+    raw = _unwrap_ai_input_api_payload(payload)
+    if isinstance(raw, dict) and isinstance(raw.get("subscriptions"), list):
+        raw_subscriptions = raw["subscriptions"]
+    elif isinstance(raw, list):
+        raw_subscriptions = raw
+    else:
+        raise ValueError("AI INPUT API returned no subscriptions")
+    now_value = int(time.time()) if now_epoch is None else now_epoch
+    plans: list[SubscriptionPlan] = []
+    seen_ids: set[str] = set()
+    for raw_subscription in raw_subscriptions:
+        if not isinstance(raw_subscription, dict):
+            raise ValueError("AI INPUT API returned an invalid subscription")
+        raw_id = raw_subscription.get("id")
+        if isinstance(raw_id, bool) or not isinstance(raw_id, (str, int)):
+            raise ValueError("AI INPUT subscription has no id")
+        plan_id = sanitize_text(str(raw_id), 100)
+        if not plan_id or plan_id in seen_ids:
+            raise ValueError("AI INPUT API returned duplicate subscriptions")
+        raw_status = raw_subscription.get("status")
+        if not isinstance(raw_status, str) or not raw_status.strip():
+            raise ValueError("AI INPUT subscription has no status")
+        status = normalize_subscription_plan_status(raw_status)
+        expires_at = _parse_api_epoch(raw_subscription.get("expires_at"))
+        if status == "active" and expires_at is not None and expires_at <= now_value:
+            status = "inactive"
+        group = raw_subscription.get("group")
+        group_dict = group if isinstance(group, dict) else {}
+        name_value = group_dict.get("name", raw_subscription.get("group_name"))
+        if not isinstance(name_value, str) or not name_value.strip():
+            name_value = raw_subscription.get("name")
+        if not isinstance(name_value, str) or not name_value.strip():
+            raise ValueError("AI INPUT subscription has no plan name")
+        quotas: list[SubscriptionQuota] = []
+        for period, usage_key, limit_key, window_key, window_seconds in (
+            ("daily", "daily_usage_usd", "daily_limit_usd", "daily_window_start", 86400),
+            ("weekly", "weekly_usage_usd", "weekly_limit_usd", "weekly_window_start", 604800),
+            ("monthly", "monthly_usage_usd", "monthly_limit_usd", "monthly_window_start", 2592000),
+        ):
+            limit_value = group_dict.get(limit_key, raw_subscription.get(limit_key))
+            limit_cents = usd_to_cents(limit_value)
+            if limit_cents is None or limit_cents <= 0:
+                continue
+            used_cents = usd_to_cents(raw_subscription.get(usage_key))
+            if used_cents is None or used_cents < 0:
+                raise ValueError("AI INPUT subscription quota has invalid usage")
+            reset_at = _parse_api_epoch(raw_subscription.get(window_key))
+            if reset_at is not None:
+                reset_at += window_seconds
+                if expires_at is not None:
+                    reset_at = min(reset_at, expires_at)
+            quotas.append(
+                SubscriptionQuota(
+                    period=period,
+                    used_cents=used_cents,
+                    limit_cents=limit_cents,
+                    reset_at=reset_at,
+                )
+            )
+        quota_state = "available" if quotas else (
+            "unlimited" if group or any(
+                key in raw_subscription
+                for key in ("daily_limit_usd", "weekly_limit_usd", "monthly_limit_usd")
+            ) else "unavailable"
+        )
+        plans.append(
+            SubscriptionPlan(
+                plan_id=plan_id,
+                name=sanitize_text(name_value, 80),
+                status=status,
+                expires_at=expires_at,
+                quotas=tuple(quotas),
+                quota_state=quota_state,
+            )
+        )
+        seen_ids.add(plan_id)
+    return SubscriptionQuotaStatus(
+        health="ready",
+        plans=tuple(plans),
+        source="api",
+    )
+
+
+def _direct_subscription_status(
+    state_file: Path,
+    now_epoch: int,
+) -> SubscriptionQuotaStatus:
+    try:
+        credentials = read_ai_input_credentials()
+    except ai_input_auth.MissingCredentials:
+        credentials = None
+    except ai_input_auth.AuthError:
+        return SubscriptionQuotaStatus(
+            health="error", error="AI INPUT keychain unavailable", source="keychain"
+        )
+    if credentials is None:
+        return SubscriptionQuotaStatus(health="not-configured", source="keychain")
+
+    active_credentials = credentials
+    try:
+        if ai_input_auth.credentials_need_refresh(
+            active_credentials, now_epoch, AI_INPUT_REFRESH_LEAD_SECONDS
+        ):
+            try:
+                active_credentials = refresh_ai_input_credentials(
+                    active_credentials, state_file, now_epoch, force=False
+                )
+            except AiInputApiError:
+                if active_credentials.expires_at is None or active_credentials.expires_at <= now_epoch:
+                    return SubscriptionQuotaStatus(
+                        health="session-expired",
+                        error="AI INPUT access token needs refresh",
+                        source="api",
+                    )
+        try:
+            payload = api_request_json(
+                _api_subscription_request_path(), active_credentials.access_token
+            )
+        except AiInputApiError as error:
+            if error.kind != "unauthorized":
+                raise
+            active_credentials = refresh_ai_input_credentials(
+                active_credentials, state_file, now_epoch, force=True
+            )
+            payload = api_request_json(
+                _api_subscription_request_path(), active_credentials.access_token
+            )
+        return parse_subscription_api_payload(payload, now_epoch=now_epoch)
+    except ai_input_auth.AuthError:
+        return SubscriptionQuotaStatus(
+            health="error", error="AI INPUT keychain unavailable", source="keychain"
+        )
+    except AiInputApiError as error:
+        if error.kind in {"unauthorized", "forbidden", "refresh"}:
+            return SubscriptionQuotaStatus(
+                health="session-expired",
+                error="AI INPUT sign-in required; refresh token was rejected",
+                source="api",
+            )
+        return SubscriptionQuotaStatus(
+            health="error", error=str(error), source="api"
+        )
+    except ValueError as error:
+        return SubscriptionQuotaStatus(
+            health="error", error=sanitize_text(str(error), 140), source="api"
+        )
+
+
+def collect_subscription_quota_api_status(
+    state_file: Path = AI_INPUT_SUBSCRIPTIONS_STATE_FILE,
+    now_epoch: int | None = None,
+) -> SubscriptionQuotaStatus:
+    """Run the direct, browser-independent quota probe once."""
+
+    return _direct_subscription_status(
+        state_file,
+        int(time.time()) if now_epoch is None else now_epoch,
+    )
+
+
 AI_INPUT_SUBSCRIPTIONS_JAVASCRIPT = r"""
 (() => {
   /* The app renders data from its authenticated /api/v1/subscriptions request. */
@@ -1024,6 +1462,7 @@ def subscription_quota_status_payload(
     return {
         "health": status.health,
         "error": status.error,
+        "source": status.source,
         "plans": [
             {
                 "id": plan.plan_id,
@@ -1062,6 +1501,7 @@ def subscription_quota_status_from_state(
         "session-expired",
         "loading",
         "error",
+        "not-configured",
     }:
         return None
     raw_plans = raw_status.get("plans")
@@ -1123,10 +1563,12 @@ def subscription_quota_status_from_state(
         )
         seen_plan_ids.add(cast(str, plan_id))
     error_value = raw_status.get("error")
+    source_value = raw_status.get("source")
     return SubscriptionQuotaStatus(
         health=cast(str, health),
         plans=tuple(plans),
         error=error_value if isinstance(error_value, str) else None,
+        source=source_value if isinstance(source_value, str) else None,
     )
 
 
@@ -1396,36 +1838,63 @@ def collect_subscription_quota_status(
     ):
         return cached
 
-    _, payload, runner_error = run_ai_input_subscriptions_javascript()
-    if runner_error:
-        health = (
-            runner_error
-            if runner_error
-            in {
-                "not-running",
-                "not-found",
-                "automation-permission",
-                "javascript-permission",
-            }
-            else "error"
-        )
-        status = SubscriptionQuotaStatus(
-            health=health,
-            error=None if health != "error" else sanitize_text(runner_error, 140),
-        )
-    elif payload is None:
-        status = SubscriptionQuotaStatus(
-            health="error",
-            error="AI INPUT page returned no subscription data",
-        )
+    direct_status = (
+        _direct_subscription_status(state_file, now_value)
+        if AI_INPUT_SUBSCRIPTIONS_DIRECT_ENABLED
+        else SubscriptionQuotaStatus(health="not-configured", source="keychain")
+    )
+    if direct_status.health == "ready":
+        status = direct_status
     else:
-        try:
-            status = parse_subscription_quota_payload(payload)
-        except ValueError as error:
-            status = SubscriptionQuotaStatus(
-                health="error",
-                error=sanitize_text(str(error), 140),
+        _, payload, runner_error = run_ai_input_subscriptions_javascript()
+        if runner_error:
+            health = (
+                runner_error
+                if runner_error
+                in {
+                    "not-running",
+                    "not-found",
+                    "automation-permission",
+                    "javascript-permission",
+                }
+                else "error"
             )
+            browser_status = SubscriptionQuotaStatus(
+                health=health,
+                error=None if health != "error" else sanitize_text(runner_error, 140),
+                source="browser",
+            )
+        elif payload is None:
+            browser_status = SubscriptionQuotaStatus(
+                health="error",
+                error="AI INPUT page returned no subscription data",
+                source="browser",
+            )
+        else:
+            try:
+                browser_status = parse_subscription_quota_payload(payload)
+                browser_status = SubscriptionQuotaStatus(
+                    health=browser_status.health,
+                    plans=browser_status.plans,
+                    error=browser_status.error,
+                    source="browser",
+                )
+            except ValueError as error:
+                browser_status = SubscriptionQuotaStatus(
+                    health="error",
+                    error=sanitize_text(str(error), 140),
+                    source="browser",
+                )
+        if browser_status.health == "ready":
+            status = browser_status
+        elif direct_status.health != "not-configured" and browser_status.health in {
+            "not-running",
+            "not-found",
+        }:
+            # A configured token is more actionable than a missing browser tab.
+            status = direct_status
+        else:
+            status = browser_status
 
     next_state, notifications = subscription_quota_notification_transition(
         previous,
@@ -1947,9 +2416,12 @@ def append_subscription_quota_lines(
         lines.append("--Enable Allow JavaScript from Apple Events | color=orange")
     elif status.health == "loading":
         lines.append("AI INPUT quota: refreshing account view | color=gray")
+    elif status.health == "not-configured":
+        lines.append("AI INPUT quota: secure token not configured | color=gray")
+        lines.append("--Run Personal xbar manager: auth set | color=gray")
     elif status.health == "session-expired":
         lines.append("AI INPUT quota: sign-in required | color=orange")
-        lines.append("--Sign in to ai.input.im in Chrome | color=gray")
+        lines.append("--Run Personal xbar manager: auth set, or sign in via Chrome | color=gray")
     elif status.health == "error":
         lines.append("AI INPUT quota: unavailable | color=orange")
         if status.error:

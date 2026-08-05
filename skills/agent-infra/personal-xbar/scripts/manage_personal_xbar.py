@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import hashlib
 import json
 import os
@@ -12,12 +13,14 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol, cast
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
+PLUGIN_IMPORT_ROOT = SKILL_ROOT / "plugin"
 DEFAULT_SOURCE = SKILL_ROOT / "plugin" / "personal-xbar.15s.py"
 DEFAULT_VERIFIER = SKILL_ROOT / "scripts" / "verify_personal_xbar.py"
 DEFAULT_TARGET = (
@@ -54,6 +57,8 @@ class ParsedArgs(Protocol):
     command: str
     installed: bool
     backup_name: str
+    auth_command: str | None
+    expires_in: int | None
 
 
 def sha256_file(path: Path) -> str:
@@ -538,6 +543,104 @@ def rollback(
     }
 
 
+def load_auth_modules() -> tuple[object, object]:
+    """Load the canonical auth/runtime modules without copying credentials."""
+
+    import importlib
+
+    import_path = str(PLUGIN_IMPORT_ROOT)
+    if import_path not in sys.path:
+        sys.path.insert(0, import_path)
+    auth_module = importlib.import_module("personal_xbar.ai_input_auth")
+    runtime_module = importlib.import_module("personal_xbar.runtime")
+    return auth_module, runtime_module
+
+
+def auth_set(expires_in: int | None) -> dict[str, object]:
+    auth_module, _runtime_module = load_auth_modules()
+    try:
+        access_token = getpass.getpass("AI.INPUT.IM access token (hidden): ").strip()
+        refresh_token = getpass.getpass("AI.INPUT.IM refresh token (hidden): ").strip()
+        expiry = None if expires_in is None else int(time.time()) + expires_in
+        credentials = auth_module.make_credentials(access_token, refresh_token, expiry)
+        auth_module.write_credentials(credentials)
+    except (EOFError, KeyboardInterrupt):
+        raise MonitorManagerError("credential input was cancelled") from None
+    except auth_module.AuthError as error:
+        raise MonitorManagerError(str(error)) from error
+    return {
+        "status": "configured",
+        "keychain_service": auth_module.KEYCHAIN_SERVICE,
+        "keychain_account": auth_module.KEYCHAIN_ACCOUNT,
+        "credentials": auth_module.credentials_summary(credentials, int(time.time())),
+    }
+
+
+def auth_status() -> dict[str, object]:
+    auth_module, _runtime_module = load_auth_modules()
+    try:
+        credentials = auth_module.read_credentials()
+    except auth_module.AuthError as error:
+        return {
+            "status": "error",
+            "error": str(error),
+            "keychain_service": auth_module.KEYCHAIN_SERVICE,
+            "keychain_account": auth_module.KEYCHAIN_ACCOUNT,
+        }
+    return {
+        "status": "configured" if credentials is not None else "not-configured",
+        "keychain_service": auth_module.KEYCHAIN_SERVICE,
+        "keychain_account": auth_module.KEYCHAIN_ACCOUNT,
+        "credentials": auth_module.credentials_summary(
+            credentials, int(time.time())
+        ),
+    }
+
+
+def auth_test() -> dict[str, object]:
+    _auth_module, runtime_module = load_auth_modules()
+    state_file = runtime_module.AI_INPUT_SUBSCRIPTIONS_STATE_FILE
+    status = runtime_module.collect_subscription_quota_api_status(
+        state_file, now_epoch=int(time.time())
+    )
+    if status.health != "ready":
+        return {
+            "status": "error",
+            "health": status.health,
+            "error": status.error,
+        }
+    quotas = [
+        quota
+        for plan in status.plans
+        if plan.status == "active"
+        for quota in plan.quotas
+    ]
+    max_percent = max(
+        (quota.used_cents * 100 // quota.limit_cents for quota in quotas),
+        default=None,
+    )
+    return {
+        "status": "ok",
+        "source": status.source or "api",
+        "active_plans": sum(plan.status == "active" for plan in status.plans),
+        "quota_count": len(quotas),
+        "max_percent": max_percent,
+    }
+
+
+def auth_delete() -> dict[str, object]:
+    auth_module, _runtime_module = load_auth_modules()
+    try:
+        auth_module.delete_credentials()
+    except auth_module.AuthError as error:
+        return {"status": "error", "error": str(error)}
+    return {
+        "status": "deleted",
+        "keychain_service": auth_module.KEYCHAIN_SERVICE,
+        "keychain_account": auth_module.KEYCHAIN_ACCOUNT,
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Manage the skillctl-owned Personal xbar plugin bundle."
@@ -553,6 +656,17 @@ def build_parser() -> argparse.ArgumentParser:
     _ = commands.add_parser("list-backups")
     rollback_parser = commands.add_parser("rollback")
     _ = rollback_parser.add_argument("backup_name")
+    auth_parser = commands.add_parser("auth")
+    auth_commands = auth_parser.add_subparsers(dest="auth_command", required=True)
+    auth_set_parser = auth_commands.add_parser("set")
+    _ = auth_set_parser.add_argument(
+        "--expires-in",
+        type=int,
+        help="Access-token lifetime in seconds; omit to use a JWT exp claim or refresh on 401.",
+    )
+    _ = auth_commands.add_parser("status")
+    _ = auth_commands.add_parser("test")
+    _ = auth_commands.add_parser("delete")
     return parser
 
 
@@ -582,13 +696,26 @@ def main() -> int:
                 state_root,
                 args.backup_name,
             )
+        elif args.command == "auth":
+            if args.auth_command == "set":
+                if args.expires_in is not None and args.expires_in <= 0:
+                    raise MonitorManagerError("--expires-in must be positive")
+                output = auth_set(args.expires_in)
+            elif args.auth_command == "status":
+                output = auth_status()
+            elif args.auth_command == "test":
+                output = auth_test()
+            elif args.auth_command == "delete":
+                output = auth_delete()
+            else:
+                raise MonitorManagerError(f"unsupported auth command: {args.auth_command}")
         else:
             raise MonitorManagerError(f"unsupported command: {args.command}")
     except (OSError, MonitorManagerError) as error:
         print(json.dumps({"status": "error", "error": str(error)}, indent=2))
         return 1
     print(json.dumps(output, indent=2, sort_keys=True))
-    return 0
+    return 1 if output.get("status") == "error" else 0
 
 
 if __name__ == "__main__":

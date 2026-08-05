@@ -11,7 +11,9 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
@@ -108,6 +110,7 @@ class SubscriptionQuotaStatusLike(Protocol):
     health: str
     plans: tuple[SubscriptionPlanLike, ...]
     error: str | None
+    source: str | None
 
 
 class SpotifyStatusLike(Protocol):
@@ -152,6 +155,7 @@ class MonitorModule(Protocol):
     SPOTIFY_ACTION_JAVASCRIPT: dict[str, str]
     subprocess: PatchableSubprocess
     sqlite3: PatchableSqlite
+    ai_input_auth: object
 
     def build_registry(self) -> RegistryLike: ...
 
@@ -189,6 +193,18 @@ class MonitorModule(Protocol):
     def parse_subscription_quota_payload(
         self,
         payload: str,
+    ) -> SubscriptionQuotaStatusLike: ...
+
+    def parse_subscription_api_payload(
+        self,
+        payload: object,
+        now_epoch: int | None = None,
+    ) -> SubscriptionQuotaStatusLike: ...
+
+    def collect_subscription_quota_api_status(
+        self,
+        state_file: Path,
+        now_epoch: int | None = None,
     ) -> SubscriptionQuotaStatusLike: ...
 
     def collect_subscription_quota_status(
@@ -274,6 +290,40 @@ assert monitor.build_registry().plugin_ids == (
     "spotify",
     "processes",
 )
+
+manager_path = PLUGIN.parents[1] / "scripts" / "manage_personal_xbar.py"
+manager_spec = importlib.util.spec_from_file_location("personal_xbar_manager", manager_path)
+assert manager_spec is not None and manager_spec.loader is not None
+manager_module = importlib.util.module_from_spec(manager_spec)
+sys.modules[manager_spec.name] = manager_module
+manager_spec.loader.exec_module(manager_module)
+parsed_auth_set = manager_module.build_parser().parse_args(
+    ["auth", "set", "--expires-in", "900"]
+)
+assert parsed_auth_set.command == "auth"
+assert parsed_auth_set.auth_command == "set"
+assert parsed_auth_set.expires_in == 900
+
+auth_module_for_manager = monitor.ai_input_auth
+original_manager_loader = manager_module.load_auth_modules
+original_getpass = manager_module.getpass.getpass
+original_manager_writer = auth_module_for_manager.write_credentials
+manager_inputs = iter(("manager-access-secret", "manager-refresh-secret"))
+manager_written: list[object] = []
+try:
+    manager_module.load_auth_modules = lambda: (auth_module_for_manager, monitor)
+    manager_module.getpass.getpass = lambda _prompt: next(manager_inputs)
+    auth_module_for_manager.write_credentials = manager_written.append
+    manager_auth_output = manager_module.auth_set(900)
+finally:
+    manager_module.load_auth_modules = original_manager_loader
+    manager_module.getpass.getpass = original_getpass
+    auth_module_for_manager.write_credentials = original_manager_writer
+assert len(manager_written) == 1
+manager_auth_text = json.dumps(manager_auth_output)
+assert "manager-access-secret" not in manager_auth_text
+assert "manager-refresh-secret" not in manager_auth_text
+assert manager_auth_output["status"] == "configured"
 
 with tempfile.TemporaryDirectory() as temporary_directory:
     home = Path(temporary_directory)
@@ -847,6 +897,327 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         == "javascript-permission"
     )
 
+    direct_subscription_payload = {
+        "code": 0,
+        "message": "success",
+        "data": [
+            {
+                "id": 42,
+                "status": "active",
+                "expires_at": "2030-01-02T00:00:00Z",
+                "daily_window_start": "2029-12-31T12:00:00Z",
+                "weekly_window_start": None,
+                "monthly_window_start": "2029-12-20T00:00:00Z",
+                "daily_usage_usd": 79.995,
+                "weekly_usage_usd": 0,
+                "monthly_usage_usd": 231.275,
+                "group": {
+                    "name": "Direct API Plan",
+                    "daily_limit_usd": 100,
+                    "weekly_limit_usd": None,
+                    "monthly_limit_usd": 300,
+                },
+            }
+        ],
+    }
+    direct_status = monitor.parse_subscription_api_payload(
+        direct_subscription_payload,
+        now_epoch=1_700_000_000,
+    )
+    assert direct_status.health == "ready"
+    assert direct_status.source == "api"
+    assert len(direct_status.plans) == 1
+    direct_plan = direct_status.plans[0]
+    assert direct_plan.plan_id == "42"
+    assert direct_plan.name == "Direct API Plan"
+    assert direct_plan.status == "active"
+    assert [quota.period for quota in direct_plan.quotas] == ["daily", "monthly"]
+    assert [quota.used_cents for quota in direct_plan.quotas] == [8_000, 23_128]
+    assert [quota.limit_cents for quota in direct_plan.quotas] == [10_000, 30_000]
+    assert direct_plan.quotas[0].reset_at == 1_893_499_200
+    assert direct_plan.quotas[1].reset_at == direct_plan.expires_at
+
+    unlimited_direct_status = monitor.parse_subscription_api_payload(
+        {
+            "code": 0,
+            "data": [
+                {
+                    "id": "unlimited-api",
+                    "status": "active",
+                    "expires_at": None,
+                    "daily_usage_usd": 0,
+                    "weekly_usage_usd": 0,
+                    "monthly_usage_usd": 0,
+                    "group": {
+                        "name": "Unlimited API Plan",
+                        "daily_limit_usd": None,
+                        "weekly_limit_usd": None,
+                        "monthly_limit_usd": None,
+                    },
+                }
+            ],
+        },
+        now_epoch=1_700_000_000,
+    )
+    assert unlimited_direct_status.plans[0].quota_state == "unlimited"
+
+    auth_module = monitor.ai_input_auth
+
+    class MemoryKeychain:
+        def __init__(self) -> None:
+            self.value: str | None = None
+
+        def read(self) -> str | None:
+            return self.value
+
+        def write(self, value: str) -> None:
+            self.value = value
+
+        def delete(self) -> None:
+            self.value = None
+
+    memory_keychain = MemoryKeychain()
+    jwt_access = "e30.eyJleHAiOjIwMDAwMDAwMDB9.fixture"
+    keychain_credentials = auth_module.make_credentials(
+        jwt_access,
+        "refresh-fixture-secret",
+    )
+    try:
+        _ = auth_module.make_credentials(
+            "access-fixture\ninjected-header",
+            "refresh-fixture-secret",
+        )
+    except auth_module.AuthError:
+        pass
+    else:
+        raise AssertionError("credential header injection was accepted")
+    assert keychain_credentials.expires_at == 2_000_000_000
+    auth_module.write_credentials(keychain_credentials, memory_keychain)
+    assert auth_module.read_credentials(memory_keychain) == keychain_credentials
+    redacted_representation = repr(keychain_credentials)
+    assert jwt_access not in redacted_representation
+    assert "refresh-fixture-secret" not in redacted_representation
+    redacted_summary = auth_module.credentials_summary(
+        keychain_credentials, 1_999_999_900
+    )
+    assert "access_token" not in redacted_summary
+    assert "refresh_token" not in redacted_summary
+    auth_module.delete_credentials(memory_keychain)
+    assert auth_module.read_credentials(memory_keychain) is None
+
+    redirect_handler = monitor.ExactAiInputRedirectHandler()
+    redirect_request = urllib.request.Request(
+        "https://ai.input.im/api/v1/subscriptions"
+    )
+    try:
+        _ = redirect_handler.redirect_request(
+            redirect_request,
+            None,
+            302,
+            "Found",
+            {},
+            "https://example.invalid/capture",
+        )
+    except monitor.AiInputApiError as error:
+        assert error.kind == "redirect"
+    else:
+        raise AssertionError("cross-origin AI INPUT redirect was accepted")
+    same_origin_redirect = redirect_handler.redirect_request(
+        redirect_request,
+        None,
+        302,
+        "Found",
+        {},
+        "https://ai.input.im/api/v1/subscriptions?next=1",
+    )
+    assert same_origin_redirect is not None
+    assert same_origin_redirect.full_url.startswith("https://ai.input.im/api/v1/")
+
+    direct_globals = monitor.collect_subscription_quota_api_status.__globals__
+    original_credential_reader = direct_globals["read_ai_input_credentials"]
+    original_credential_writer = direct_globals["write_ai_input_credentials"]
+    original_api_request = direct_globals["api_request_json"]
+    original_refresh_lock_file = direct_globals["AI_INPUT_REFRESH_LOCK_FILE"]
+    credential_box = {
+        "value": auth_module.make_credentials(
+            "access-before-refresh",
+            "refresh-before-rotation",
+            2_001_900,
+        )
+    }
+    written_credentials: list[object] = []
+    direct_api_calls: list[str] = []
+
+    def fake_credential_reader() -> object:
+        return credential_box["value"]
+
+    def fake_credential_writer(credentials: object) -> None:
+        credential_box["value"] = credentials
+        written_credentials.append(credentials)
+
+    def retrying_api_request(
+        path: str,
+        access_token: str | None = None,
+        *,
+        method: str = "GET",
+        body: dict[str, object] | None = None,
+    ) -> object:
+        if path == "/auth/refresh":
+            direct_api_calls.append("refresh")
+            assert method == "POST"
+            assert body == {"refresh_token": "refresh-before-rotation"}
+            return {
+                "code": 0,
+                "data": {
+                    "access_token": "access-after-refresh",
+                    "refresh_token": "refresh-after-rotation",
+                    "expires_in": 600,
+                    "token_type": "Bearer",
+                },
+            }
+        assert path.startswith("/subscriptions")
+        direct_api_calls.append(f"subscriptions:{access_token}")
+        if access_token == "access-before-refresh":
+            raise monitor.AiInputApiError(
+                "unauthorized", "AI INPUT API authorization expired"
+            )
+        assert access_token == "access-after-refresh"
+        return direct_subscription_payload
+
+    try:
+        direct_globals["read_ai_input_credentials"] = fake_credential_reader
+        direct_globals["write_ai_input_credentials"] = fake_credential_writer
+        direct_globals["api_request_json"] = retrying_api_request
+        direct_globals["AI_INPUT_REFRESH_LOCK_FILE"] = home / "api-refresh.lock"
+        retried_direct_status = monitor.collect_subscription_quota_api_status(
+            home / "direct-api-state.json",
+            now_epoch=2_001_000,
+        )
+        assert retried_direct_status.health == "ready"
+        assert direct_api_calls == [
+            "subscriptions:access-before-refresh",
+            "refresh",
+            "subscriptions:access-after-refresh",
+        ]
+        assert len(written_credentials) == 1
+        rotated = credential_box["value"]
+        assert rotated.access_token == "access-after-refresh"
+        assert rotated.refresh_token == "refresh-after-rotation"
+        assert rotated.expires_at == 2_001_600
+        persisted_status, _ = monitor.subscription_quota_notification_transition(
+            {}, retried_direct_status, checked_at=2_001_000
+        )
+        persisted_text = json.dumps(persisted_status)
+        assert not any(
+            secret in persisted_text
+            for secret in (
+                "access-before-refresh",
+                "refresh-before-rotation",
+                "access-after-refresh",
+                "refresh-after-rotation",
+            )
+        )
+
+        credential_box["value"] = auth_module.make_credentials(
+            "proactive-old-access",
+            "proactive-old-refresh",
+            2_002_060,
+        )
+        written_credentials.clear()
+        proactive_calls: list[str] = []
+
+        def proactive_api_request(
+            path: str,
+            access_token: str | None = None,
+            *,
+            method: str = "GET",
+            body: dict[str, object] | None = None,
+        ) -> object:
+            if path == "/auth/refresh":
+                proactive_calls.append("refresh")
+                assert body == {"refresh_token": "proactive-old-refresh"}
+                return {
+                    "code": 0,
+                    "data": {
+                        "access_token": "proactive-new-access",
+                        "refresh_token": "proactive-new-refresh",
+                        "expires_in": 900,
+                    },
+                }
+            proactive_calls.append(f"subscriptions:{access_token}")
+            return direct_subscription_payload
+
+        direct_globals["api_request_json"] = proactive_api_request
+        proactive_status = monitor.collect_subscription_quota_api_status(
+            home / "proactive-api-state.json",
+            now_epoch=2_002_000,
+        )
+        assert proactive_status.health == "ready"
+        assert proactive_calls == ["refresh", "subscriptions:proactive-new-access"]
+        assert len(written_credentials) == 1
+
+        expired_credentials = auth_module.make_credentials(
+            "concurrent-old-access",
+            "concurrent-old-refresh",
+            2_003_000,
+        )
+        credential_box["value"] = expired_credentials
+        written_credentials.clear()
+        concurrent_refresh_calls: list[str] = []
+
+        def concurrent_api_request(
+            path: str,
+            access_token: str | None = None,
+            *,
+            method: str = "GET",
+            body: dict[str, object] | None = None,
+        ) -> object:
+            assert path == "/auth/refresh"
+            assert body == {"refresh_token": "concurrent-old-refresh"}
+            concurrent_refresh_calls.append("refresh")
+            time.sleep(0.03)
+            return {
+                "code": 0,
+                "data": {
+                    "access_token": "concurrent-new-access",
+                    "refresh_token": "concurrent-new-refresh",
+                    "expires_in": 900,
+                },
+            }
+
+        direct_globals["api_request_json"] = concurrent_api_request
+        refresh_function = direct_globals["refresh_ai_input_credentials"]
+        concurrent_results: list[object] = []
+
+        def refresh_worker() -> None:
+            concurrent_results.append(
+                refresh_function(
+                    expired_credentials,
+                    home / "concurrent-api-state.json",
+                    2_003_000,
+                    force=False,
+                )
+            )
+
+        workers = [threading.Thread(target=refresh_worker) for _ in range(2)]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(timeout=2)
+            assert not worker.is_alive()
+        assert concurrent_refresh_calls == ["refresh"]
+        assert len(written_credentials) == 1
+        assert len(concurrent_results) == 2
+        assert all(
+            result.access_token == "concurrent-new-access"
+            for result in concurrent_results
+        )
+    finally:
+        direct_globals["read_ai_input_credentials"] = original_credential_reader
+        direct_globals["write_ai_input_credentials"] = original_credential_writer
+        direct_globals["api_request_json"] = original_api_request
+        direct_globals["AI_INPUT_REFRESH_LOCK_FILE"] = original_refresh_lock_file
+
     def threshold_status(used_usd: str) -> SubscriptionQuotaStatusLike:
         return monitor.parse_subscription_quota_payload(
             """{
@@ -1062,6 +1433,11 @@ with tempfile.TemporaryDirectory() as temporary_directory:
 
     subscription_status_type = type(subscription_status)
     subscription_failure_expectations = (
+        (
+            "not-configured",
+            None,
+            "AI INPUT quota: secure token not configured | color=gray",
+        ),
         ("not-running", None, "AI INPUT quota: Chrome not running | color=gray"),
         ("not-found", None, "AI INPUT quota: no open account tab | color=gray"),
         (
@@ -1108,6 +1484,9 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     original_subscription_enabled = collector_globals[
         "AI_INPUT_SUBSCRIPTIONS_ENABLED"
     ]
+    original_direct_enabled = collector_globals[
+        "AI_INPUT_SUBSCRIPTIONS_DIRECT_ENABLED"
+    ]
     original_subscription_notifier = collector_globals[
         "send_subscription_quota_notification"
     ]
@@ -1138,6 +1517,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     quota_state_file = home / "subscription-quota-state.json"
     try:
         collector_globals["AI_INPUT_SUBSCRIPTIONS_ENABLED"] = True
+        collector_globals["AI_INPUT_SUBSCRIPTIONS_DIRECT_ENABLED"] = False
         collector_globals["run_ai_input_subscriptions_javascript"] = (
             fake_subscription_runner
         )
@@ -1177,6 +1557,9 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         )
         collector_globals["AI_INPUT_SUBSCRIPTIONS_ENABLED"] = (
             original_subscription_enabled
+        )
+        collector_globals["AI_INPUT_SUBSCRIPTIONS_DIRECT_ENABLED"] = (
+            original_direct_enabled
         )
         collector_globals["send_subscription_quota_notification"] = (
             original_subscription_notifier
@@ -1411,6 +1794,11 @@ system_python_render = subprocess.check_output(
 assert system_python_render.startswith("AI "), system_python_render.splitlines()[:1]
 
 with tempfile.TemporaryDirectory() as status_state_directory:
+    fixture_bin = Path(status_state_directory) / "bin"
+    fixture_bin.mkdir()
+    fixture_ps = fixture_bin / "ps"
+    _ = fixture_ps.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    fixture_ps.chmod(0o755)
     quota_cache_path = Path(status_state_directory) / "subscription-quota.json"
     _ = quota_cache_path.write_text(
         json.dumps(
@@ -1448,6 +1836,9 @@ with tempfile.TemporaryDirectory() as status_state_directory:
     )
     quota_cache_path.chmod(0o600)
     live_environment = os.environ.copy()
+    live_environment["PATH"] = (
+        str(fixture_bin) + os.pathsep + live_environment.get("PATH", "")
+    )
     live_environment["AI_INPUT_NOTIFICATIONS"] = "0"
     live_environment["AI_INPUT_SUBSCRIPTIONS_ENABLED"] = "1"
     live_environment["AI_INPUT_SUBSCRIPTIONS_NOTIFICATIONS"] = "0"
