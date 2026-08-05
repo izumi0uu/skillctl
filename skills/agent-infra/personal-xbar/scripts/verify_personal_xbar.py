@@ -159,6 +159,8 @@ class PatchableSqlite(Protocol):
 
 class MonitorModule(Protocol):
     AGENT_ADAPTERS: tuple[AdapterLike, ...]
+    AI_INPUT_CACHE_SECONDS: int
+    AI_INPUT_SUBSCRIPTIONS_CACHE_SECONDS: int
     SPOTIFY_ACTION_JAVASCRIPT: dict[str, str]
     TITLE_COMPONENTS: tuple[tuple[str, str], ...]
     TitleBarSettings: Callable[..., TitleBarSettingsLike]
@@ -204,6 +206,12 @@ class MonitorModule(Protocol):
     def parse_ai_input_payload(
         self,
         payload: object,
+        now_epoch: int | None = None,
+    ) -> AiInputStatusLike: ...
+
+    def collect_ai_input_status(
+        self,
+        state_file: Path,
         now_epoch: int | None = None,
     ) -> AiInputStatusLike: ...
 
@@ -966,6 +974,39 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         now_epoch=2_000_010,
     )
     assert healthy_status.health == "healthy"
+    assert monitor.AI_INPUT_CACHE_SECONDS == 15
+    assert monitor.AI_INPUT_SUBSCRIPTIONS_CACHE_SECONDS == 55
+    status_cache_path = home / "ai-input-status.json"
+    cached_state, _ = monitor.ai_input_notification_transition(
+        {}, healthy_status, checked_at=2_000_010
+    )
+    _ = status_cache_path.write_text(json.dumps(cached_state), encoding="utf-8")
+    status_runtime_globals = monitor.collect_ai_input_status.__globals__
+    original_status_fetcher = status_runtime_globals["fetch_ai_input_status"]
+    status_fetches: list[int | None] = []
+
+    def fixture_status_fetcher(now_epoch: int | None = None) -> AiInputStatusLike:
+        status_fetches.append(now_epoch)
+        return healthy_status
+
+    try:
+        status_runtime_globals["fetch_ai_input_status"] = fixture_status_fetcher
+        cached_boundary_status = monitor.collect_ai_input_status(
+            status_cache_path,
+            now_epoch=2_000_024,
+        )
+        assert cached_boundary_status.health == "healthy"
+        assert status_fetches == []
+        refreshed_boundary_status = monitor.collect_ai_input_status(
+            status_cache_path,
+            now_epoch=2_000_025,
+        )
+        assert refreshed_boundary_status.health == "healthy"
+        assert status_fetches == [2_000_025]
+    finally:
+        status_runtime_globals["fetch_ai_input_status"] = original_status_fetcher
+    refreshed_state = json.loads(status_cache_path.read_text(encoding="utf-8"))
+    assert refreshed_state["checked_at"] == 2_000_025
     healthy_rendered = monitor.render(
         fixture_rows,
         home,

@@ -85,7 +85,7 @@ PERSONAL_XBAR_TITLE_SETTINGS_FILE=/custom/preferences/title-settings.json
 
 ## Model Health Behavior
 
-- The public official status API is polled at most once every 55 seconds, matching its approximately 60-second probe cadence.
+- The public official status API is polled at most once every 15 seconds, aligned with xbar's refresh interval. The endpoint may return unchanged data because AI.INPUT.IM controls the cadence of its underlying model probes.
 - The xbar title shows `API healthy/total`; the submenu shows each model's latest state, latency, and 60-sample uptime.
 - A reported model failure notifies once. Continued failures do not repeat the notification.
 - Status API connectivity must fail twice consecutively before it notifies, while the menu reports the first failure immediately.
