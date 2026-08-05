@@ -3,8 +3,9 @@
 Every process is assigned to at most one top-level agent runtime by ancestry.
 Session titles are shown only when a reliable PID/TTY mapping exists. The script
 never sends signals, reads process environments, or writes agent runtime state.
-It stores only its own model-status, subscription-quota, notification, and
-Spotify mute state; rotating AI.INPUT.IM credentials remain in macOS Keychain.
+It stores only its own title preferences, model-status, subscription-quota,
+notification, and Spotify mute state; rotating AI.INPUT.IM credentials remain
+in macOS Keychain.
 """
 
 from __future__ import annotations
@@ -110,6 +111,26 @@ SPOTIFY_STATE_FILE = Path(
         / "spotify-web.json",
     )
 )
+TITLE_SETTINGS_FILE = Path(
+    os.environ.get(
+        "PERSONAL_XBAR_TITLE_SETTINGS_FILE",
+        HOME
+        / "Library"
+        / "Application Support"
+        / "skillctl"
+        / "personal-xbar"
+        / "title-settings.json",
+    )
+)
+TITLE_COMPONENTS = (
+    ("agents", "Agent count"),
+    ("cpu", "CPU"),
+    ("memory", "Memory"),
+    ("api", "Model API"),
+    ("quota", "Subscription quota"),
+    ("spotify", "Spotify"),
+)
+TITLE_COMPONENT_KEYS = frozenset(key for key, _label in TITLE_COMPONENTS)
 
 
 @dataclass(frozen=True)
@@ -221,6 +242,14 @@ class SpotifyStatus:
     media_muted: bool | None = None
     auto_muted: bool = False
     error: str | None = None
+
+
+@dataclass(frozen=True)
+class TitleBarSettings:
+    hidden: frozenset[str] = frozenset()
+
+    def is_visible(self, component: str) -> bool:
+        return component not in self.hidden
 
 
 @dataclass(frozen=True)
@@ -640,6 +669,97 @@ def write_ai_input_state(path: Path, payload: dict[str, object]) -> None:
                 temporary_path.unlink()
             except FileNotFoundError:
                 pass
+
+
+def title_bar_settings_from_state(state: dict[str, object]) -> TitleBarSettings:
+    raw_visibility = state.get("title_visibility")
+    if state.get("schema_version") != 1 or not isinstance(raw_visibility, dict):
+        return TitleBarSettings()
+    hidden = frozenset(
+        component
+        for component in TITLE_COMPONENT_KEYS
+        if raw_visibility.get(component, True) is False
+    )
+    return TitleBarSettings(hidden=hidden)
+
+
+def read_title_bar_settings(
+    path: Path = TITLE_SETTINGS_FILE,
+) -> TitleBarSettings:
+    return title_bar_settings_from_state(read_ai_input_state(path))
+
+
+def write_title_bar_settings(
+    settings: TitleBarSettings,
+    path: Path = TITLE_SETTINGS_FILE,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.chmod(0o700)
+    write_ai_input_state(
+        path,
+        {
+            "schema_version": 1,
+            "title_visibility": {
+                component: settings.is_visible(component)
+                for component, _label in TITLE_COMPONENTS
+            },
+        },
+    )
+
+
+_TITLE_SETTINGS_THREAD_LOCK = threading.Lock()
+
+
+@contextmanager
+def title_settings_lock(path: Path) -> Iterable[None]:
+    lock_path = path.with_name(f".{path.name}.lock")
+    with _TITLE_SETTINGS_THREAD_LOCK:
+        lock_file = None
+        try:
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
+            lock_path.parent.chmod(0o700)
+            lock_file = lock_path.open("a+")
+            lock_path.chmod(0o600)
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        except OSError as error:
+            if lock_file is not None:
+                try:
+                    lock_file.close()
+                except OSError:
+                    pass
+            raise OSError("title settings lock is unavailable") from error
+        try:
+            yield
+        finally:
+            if fcntl is not None:
+                try:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                except OSError:
+                    pass
+            try:
+                lock_file.close()
+            except OSError:
+                pass
+
+
+def toggle_title_component(
+    component: str,
+    path: Path = TITLE_SETTINGS_FILE,
+) -> None:
+    if component not in TITLE_COMPONENT_KEYS:
+        raise ValueError("unsupported title component")
+    with title_settings_lock(path):
+        settings = read_title_bar_settings(path)
+        hidden = set(settings.hidden)
+        if component in hidden:
+            hidden.remove(component)
+        else:
+            hidden.add(component)
+        write_title_bar_settings(
+            TitleBarSettings(hidden=frozenset(hidden)),
+            path,
+        )
 
 
 def fetch_ai_input_status(
@@ -1383,6 +1503,19 @@ def subscription_quota_percent_label(quota: SubscriptionQuota) -> str:
     return f"{quota.used_cents * 100 // quota.limit_cents}%"
 
 
+def subscription_quota_remaining_percent(quota: SubscriptionQuota) -> int:
+    remaining_cents = max(quota.limit_cents - quota.used_cents, 0)
+    return (
+        remaining_cents * 100 + quota.limit_cents - 1
+    ) // quota.limit_cents
+
+
+def subscription_quota_remaining_percent_label(
+    quota: SubscriptionQuota,
+) -> str:
+    return f"{subscription_quota_remaining_percent(quota)}%"
+
+
 def format_subscription_quota_notice(
     plan: SubscriptionPlan,
     quota: SubscriptionQuota,
@@ -1628,31 +1761,205 @@ def compact_javascript(source: str) -> str:
     return " ".join(line.strip() for line in source.splitlines() if line.strip())
 
 
-def spotify_apple_script(
+SPOTIFY_JXA_TEMPLATE = r"""
+ObjC.import("AppKit");
+ObjC.import("Foundation");
+
+const browserName = __BROWSER_NAME__;
+const source = __SOURCE__;
+const requestedTabId = __TAB_ID__;
+const descriptor = $.NSAppleEventDescriptor;
+
+function fourCharCode(value) {
+  return (
+    (value.charCodeAt(0) << 24)
+    | (value.charCodeAt(1) << 16)
+    | (value.charCodeAt(2) << 8)
+    | value.charCodeAt(3)
+  ) >>> 0;
+}
+
+function typeDescriptor(value) {
+  return descriptor.descriptorWithTypeCode(fourCharCode(value));
+}
+
+function objectSpecifier(wantedClass, keyForm, keyData, container) {
+  const record = descriptor.recordDescriptor;
+  record.setDescriptorForKeyword(typeDescriptor(wantedClass), fourCharCode("want"));
+  record.setDescriptorForKeyword(typeDescriptor(keyForm), fourCharCode("form"));
+  record.setDescriptorForKeyword(keyData, fourCharCode("seld"));
+  record.setDescriptorForKeyword(container, fourCharCode("from"));
+  return record.coerceToDescriptorType(fourCharCode("obj "));
+}
+
+function indexedElement(classCode, index, container) {
+  return objectSpecifier(
+    classCode,
+    "indx",
+    descriptor.descriptorWithInt32(index),
+    container
+  );
+}
+
+function identifiedElement(classCode, identifier, container) {
+  return objectSpecifier(
+    classCode,
+    "ID  ",
+    descriptor.descriptorWithString(identifier),
+    container
+  );
+}
+
+function propertySpecifier(propertyCode, container) {
+  return objectSpecifier(
+    "prop",
+    "prop",
+    typeDescriptor(propertyCode),
+    container
+  );
+}
+
+function sendEvent(pid, eventClass, eventId, parameters) {
+  const event = descriptor.appleEventWithEventClassEventIDTargetDescriptorReturnIDTransactionID(
+    fourCharCode(eventClass),
+    fourCharCode(eventId),
+    descriptor.descriptorWithProcessIdentifier(pid),
+    -1,
+    0
+  );
+  for (const [keyword, value] of parameters) {
+    event.setParamDescriptorForKeyword(value, fourCharCode(keyword));
+  }
+  const reply = event.sendEventWithOptionsTimeoutError(19, 3, null);
+  if (!reply) throw new Error("Chrome AppleEvent failed");
+  const errorNumberDescriptor = reply.paramDescriptorForKeyword(
+    fourCharCode("errn")
+  );
+  const errorNumber = Number(errorNumberDescriptor.int32Value);
+  if (Number.isFinite(errorNumber) && errorNumber !== 0) {
+    const errorTextDescriptor = reply.paramDescriptorForKeyword(
+      fourCharCode("errs")
+    );
+    const errorText = errorTextDescriptor
+      ? ObjC.unwrap(errorTextDescriptor.stringValue)
+      : "";
+    throw new Error(errorText || `Chrome AppleEvent error ${errorNumber}`);
+  }
+  return reply.paramDescriptorForKeyword(fourCharCode("----"));
+}
+
+function elementCount(pid, container, classCode) {
+  return Number(
+    sendEvent(pid, "core", "cnte", [
+      ["----", container],
+      ["kocl", typeDescriptor(classCode)],
+    ]).int32Value
+  );
+}
+
+function stringProperty(pid, propertyCode, container) {
+  const result = sendEvent(pid, "core", "getd", [
+    ["----", propertySpecifier(propertyCode, container)],
+  ]);
+  return result ? String(ObjC.unwrap(result.stringValue) || "") : "";
+}
+
+function executeJavascript(pid, tab, javascript) {
+  const result = sendEvent(pid, "CrSu", "ExJa", [
+    ["----", tab],
+    ["JvSc", descriptor.descriptorWithString(javascript)],
+  ]);
+  return result ? String(ObjC.unwrap(result.stringValue) || "") : "";
+}
+
+function regularBrowserPids() {
+  const applications = $.NSWorkspace.sharedWorkspace.runningApplications;
+  const pids = [];
+  let namedApplicationSeen = false;
+  for (let index = 0; index < applications.count; index += 1) {
+    const application = applications.objectAtIndex(index);
+    const applicationName = application.localizedName
+      ? String(ObjC.unwrap(application.localizedName))
+      : "";
+    if (applicationName !== browserName) continue;
+    namedApplicationSeen = true;
+    if (Number(application.activationPolicy) === 0) {
+      pids.push(Number(application.processIdentifier));
+    }
+  }
+  return {namedApplicationSeen, pids};
+}
+
+function spotifyUrl(value) {
+  return /^https:\/\/open\.spotify\.com(?:[/?#]|$)/.test(value);
+}
+
+function executeInSpotifyTab(pid) {
+  const root = descriptor.nullDescriptor;
+  const windowCount = elementCount(pid, root, "cwin");
+  for (let windowIndex = 1; windowIndex <= windowCount; windowIndex += 1) {
+    const window = indexedElement("cwin", windowIndex, root);
+    const tabCount = elementCount(pid, window, "CrTb");
+    for (let tabIndex = 1; tabIndex <= tabCount; tabIndex += 1) {
+      const tab = indexedElement("CrTb", tabIndex, window);
+      let tabId = "";
+      if (requestedTabId !== null) {
+        tabId = stringProperty(pid, "ID  ", tab);
+        if (tabId !== requestedTabId) continue;
+      }
+      const url = stringProperty(pid, "URL ", tab);
+      if (!spotifyUrl(url)) continue;
+      if (!tabId) tabId = stringProperty(pid, "ID  ", tab);
+      const windowId = stringProperty(pid, "ID  ", window);
+      const stableWindow = identifiedElement("cwin", windowId, root);
+      const stableTab = identifiedElement("CrTb", tabId, stableWindow);
+      if (!spotifyUrl(stringProperty(pid, "URL ", stableTab))) continue;
+      return `${tabId}\t${executeJavascript(pid, stableTab, source)}`;
+    }
+  }
+  return null;
+}
+
+function main() {
+  const browsers = regularBrowserPids();
+  if (!browsers.namedApplicationSeen || browsers.pids.length === 0) {
+    return "__NOT_RUNNING__";
+  }
+  let firstError = null;
+  for (const pid of browsers.pids) {
+    try {
+      const result = executeInSpotifyTab(pid);
+      if (result !== null) return result;
+    } catch (error) {
+      if (firstError === null) {
+        firstError = String(error.message || error);
+      }
+    }
+  }
+  if (firstError !== null) throw new Error(firstError);
+  return "__NO_TAB__";
+}
+
+main();
+"""
+
+
+def spotify_jxa_script(
     javascript: str,
     tab_id: int | None = None,
 ) -> str:
-    browser = apple_script_string(SPOTIFY_BROWSER_APP)
-    source = apple_script_string(compact_javascript(javascript))
-    tab_condition = 'URL of spotifyTab starts with "https://open.spotify.com/"'
-    if tab_id is not None:
-        tab_condition = (
-            f'(id of spotifyTab as text) is "{tab_id}" and {tab_condition}'
+    return (
+        SPOTIFY_JXA_TEMPLATE.replace(
+            "__BROWSER_NAME__",
+            json.dumps(SPOTIFY_BROWSER_APP),
         )
-    return "\n".join(
-        (
-            f'if application "{browser}" is not running then return "__NOT_RUNNING__"',
-            f'tell application "{browser}"',
-            "repeat with spotifyWindow in windows",
-            "repeat with spotifyTab in tabs of spotifyWindow",
-            f"if {tab_condition} then",
-            f'set spotifyResult to execute spotifyTab javascript "{source}"',
-            "return (id of spotifyTab as text) & (ASCII character 9) & spotifyResult",
-            "end if",
-            "end repeat",
-            "end repeat",
-            'return "__NO_TAB__"',
-            "end tell",
+        .replace(
+            "__SOURCE__",
+            json.dumps(compact_javascript(javascript)),
+        )
+        .replace(
+            "__TAB_ID__",
+            json.dumps(str(tab_id)) if tab_id is not None else "null",
         )
     )
 
@@ -1661,10 +1968,10 @@ def run_spotify_javascript(
     javascript: str,
     tab_id: int | None = None,
 ) -> tuple[int | None, str | None, str | None]:
-    script = spotify_apple_script(javascript, tab_id=tab_id)
+    script = spotify_jxa_script(javascript, tab_id=tab_id)
     try:
         completed = subprocess.run(
-            ["/usr/bin/osascript", "-e", script],
+            ["/usr/bin/osascript", "-l", "JavaScript", "-e", script],
             capture_output=True,
             text=True,
             timeout=SPOTIFY_SCRIPT_TIMEOUT_SECONDS,
@@ -1677,8 +1984,11 @@ def run_spotify_javascript(
         lowered = detail.lower()
         if (
             "allow javascript from apple events" in lowered
+            or "not authorized to send apple events" in lowered
+            or "-1743" in detail
             or "javascript 的功能已关闭" in detail
             or "允许 Apple 事件中的 JavaScript" in detail
+            or "未获授权发送 Apple 事件" in detail
         ):
             return None, None, "permission"
         return None, None, sanitize_text(detail, 140)
@@ -1975,16 +2285,25 @@ def active_subscription_plans(
     return tuple(plan for plan in status.plans if plan.status == "active")
 
 
-def subscription_quota_max(
+def subscription_quota_total(
     status: SubscriptionQuotaStatus,
 ) -> SubscriptionQuota | None:
-    quotas = [
-        quota
-        for plan in active_subscription_plans(status)
-        for quota in plan.quotas
-    ]
+    totals_by_period: dict[str, tuple[int, int]] = {}
+    for plan in active_subscription_plans(status):
+        for quota in plan.quotas:
+            used_cents, limit_cents = totals_by_period.get(quota.period, (0, 0))
+            totals_by_period[quota.period] = (
+                used_cents + quota.used_cents,
+                limit_cents + quota.limit_cents,
+            )
+
     highest: SubscriptionQuota | None = None
-    for quota in quotas:
+    for period, (used_cents, limit_cents) in totals_by_period.items():
+        quota = SubscriptionQuota(
+            period=period,
+            used_cents=used_cents,
+            limit_cents=limit_cents,
+        )
         if (
             highest is None
             or quota.used_cents * highest.limit_cents
@@ -2019,9 +2338,9 @@ def append_subscription_quota_lines(
             lines.append(f"--{sanitize_text(status.error, 110)} | color=gray")
     else:
         active_plans = active_subscription_plans(status)
-        max_quota = subscription_quota_max(status)
+        total_quota = subscription_quota_total(status)
         has_unavailable = subscription_quota_has_unavailable_plan(status)
-        if max_quota is None:
+        if total_quota is None:
             if not active_plans:
                 lines.append("AI INPUT quota: no active subscription | color=gray")
             elif has_unavailable:
@@ -2029,14 +2348,15 @@ def append_subscription_quota_lines(
             else:
                 lines.append("AI INPUT quota: unlimited | color=green")
         else:
-            level = subscription_quota_level(max_quota)
+            level = subscription_quota_level(total_quota)
             color = "red" if level >= 2 else (
                 "orange" if level == 1 or has_unavailable else "green"
             )
             suffix = " · some plans unavailable" if has_unavailable else ""
             lines.append(
                 "AI INPUT quota: "
-                f"{subscription_quota_percent_label(max_quota)} max{suffix}"
+                f"{subscription_quota_remaining_percent_label(total_quota)} "
+                f"left{suffix}"
                 f" | color={color}"
             )
         for plan in active_plans:
@@ -2052,7 +2372,8 @@ def append_subscription_quota_lines(
                 lines.append(
                     f"----{period} · {fmt_money(quota.used_cents)} / "
                     f"{fmt_money(quota.limit_cents)} · "
-                    f"{subscription_quota_percent_label(quota)} | color={color}"
+                    f"{subscription_quota_percent_label(quota)} used"
+                    f" | color={color}"
                 )
                 if quota.reset_at is not None:
                     lines.append(
@@ -2072,6 +2393,22 @@ def append_subscription_quota_lines(
         "--Open subscriptions"
         f" | bash=/usr/bin/open param1={AI_INPUT_SUBSCRIPTIONS_PAGE_URL} terminal=false"
     )
+    lines.append("---")
+
+
+def append_title_bar_settings_lines(
+    lines: list[str],
+    settings: TitleBarSettings,
+    plugin_path: Path | None = None,
+) -> None:
+    executable = shlex.quote(str((plugin_path or Path(__file__)).resolve()))
+    lines.append("Menu bar fields")
+    for component, label in TITLE_COMPONENTS:
+        marker = "☑" if settings.is_visible(component) else "☐"
+        lines.append(
+            f"--{marker} {label} | bash={executable}"
+            f" param1=title-toggle-{component} terminal=false refresh=true"
+        )
     lines.append("---")
 
 
@@ -2863,29 +3200,37 @@ def render(
     subscription_quota_status: SubscriptionQuotaStatus | None = None,
     spotify_status: SpotifyStatus | None = None,
     plugin_path: Path | None = None,
+    title_settings: TitleBarSettings | None = None,
 ) -> str:
+    active_title_settings = title_settings or TitleBarSettings()
     runtimes, unattributed_mcp = build_runtimes(rows, home)
     runtime_processes = tuple(process for runtime in runtimes for process in runtime.processes)
     overall = totals((*runtime_processes, *unattributed_mcp))
     color = title_color(overall.cpu_percent, overall.rss_bytes)
-    ai_input_title = ""
+    title_parts: list[str] = []
+    if active_title_settings.is_visible("agents"):
+        title_parts.append(f"AI {len(runtimes)}")
+    if active_title_settings.is_visible("cpu"):
+        title_parts.append(f"CPU {fmt_cpu(overall.cpu_percent)}")
+    if active_title_settings.is_visible("memory"):
+        title_parts.append(fmt_bytes(overall.rss_bytes))
     if ai_input_status is not None:
         healthy, total = ai_input_counts(ai_input_status)
         count_text = f"{healthy}/{total}" if total else "?"
-        ai_input_title = f" · API {count_text}"
+        if active_title_settings.is_visible("api"):
+            title_parts.append(f"API {count_text}")
         if ai_input_status.health == "degraded":
             color = "red"
         elif ai_input_status.health == "unreachable" and color == "green":
             color = "orange"
-    subscription_quota_title = ""
     if subscription_quota_status is not None:
         if subscription_quota_status.health == "ready":
-            max_quota = subscription_quota_max(subscription_quota_status)
+            total_quota = subscription_quota_total(subscription_quota_status)
             active_plans = active_subscription_plans(subscription_quota_status)
             has_unavailable = subscription_quota_has_unavailable_plan(
                 subscription_quota_status
             )
-            if max_quota is None:
+            if total_quota is None:
                 if not active_plans:
                     count_text = "none"
                 elif has_unavailable:
@@ -2895,31 +3240,40 @@ def render(
                 else:
                     count_text = "unlimited"
             else:
-                count_text = subscription_quota_percent_label(max_quota)
-                level = subscription_quota_level(max_quota)
+                count_text = subscription_quota_remaining_percent_label(
+                    total_quota
+                )
+                level = subscription_quota_level(total_quota)
                 if level >= 2:
                     color = "red"
                 elif (level == 1 or has_unavailable) and color == "green":
                     color = "orange"
-            subscription_quota_title = f" · Q {count_text}"
+            if active_title_settings.is_visible("quota"):
+                title_parts.append(f"Q {count_text}")
         else:
-            subscription_quota_title = " · Q ?"
+            if active_title_settings.is_visible("quota"):
+                title_parts.append("Q ?")
             if subscription_quota_status.health != "loading" and color == "green":
                 color = "orange"
-    spotify_title = ""
     if spotify_status is not None and spotify_status.health == "ready":
         if spotify_status.is_ad:
-            spotify_title = " · SP ad"
+            if active_title_settings.is_visible("spotify"):
+                title_parts.append("SP ad")
             if color == "green":
                 color = "orange"
-        elif spotify_status.playback == "playing":
-            spotify_title = " · SP play"
-        elif spotify_status.playback == "paused":
-            spotify_title = " · SP pause"
+        elif (
+            spotify_status.playback == "playing"
+            and active_title_settings.is_visible("spotify")
+        ):
+            title_parts.append("SP play")
+        elif (
+            spotify_status.playback == "paused"
+            and active_title_settings.is_visible("spotify")
+        ):
+            title_parts.append("SP pause")
+    title_text = " · ".join(title_parts) if title_parts else "PX"
     lines = [
-        f"AI {len(runtimes)} · CPU {fmt_cpu(overall.cpu_percent)}"
-        f" · {fmt_bytes(overall.rss_bytes)}{ai_input_title}"
-        f"{subscription_quota_title}{spotify_title} | color={color}",
+        f"{title_text} | color={color}",
         "---",
         "Read-only agent process inventory | color=gray",
         f"Updated: {now or time.strftime('%H:%M:%S')} · refresh {REFRESH_SECONDS}s | color=gray",
@@ -2927,6 +3281,12 @@ def render(
         "RSS is summed per process; shared pages may be counted more than once. | color=gray",
         "---",
     ]
+
+    append_title_bar_settings_lines(
+        lines,
+        active_title_settings,
+        plugin_path=plugin_path,
+    )
 
     if spotify_status is not None:
         append_spotify_lines(lines, spotify_status, plugin_path=plugin_path)

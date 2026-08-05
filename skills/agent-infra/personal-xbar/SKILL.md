@@ -15,6 +15,8 @@ Own the local Personal xbar bundle as a canonical `skillctl`-managed product. It
 - `plugins/ai_input.py` collects model probe status and owns health transitions;
 - `plugins/subscription_quota.py` collects authenticated subscription quota and owns its threshold transitions;
 - `plugins/spotify.py` collects playback state and registers playback actions;
+- `plugins/title_settings.py` reads persistent title preferences and registers the
+  six fixed menu-bar toggle actions;
 - `runtime.py` contains shared domain behavior retained by those plugins;
   `ai_input_auth.py` owns the Keychain credential record and refresh-safe locking.
 
@@ -25,6 +27,8 @@ Derived copies are not source:
 - the hidden live package at `~/Library/Application Support/xbar/plugins/.personal-xbar/personal_xbar/`;
 - install metadata and transactional backups under `~/.local/state/skillctl/personal-xbar/`;
 - model-status, subscription-quota notification, and Spotify mute ownership state under `~/Library/Caches/skillctl/personal-xbar/`.
+- title preferences and their lock under
+  `~/Library/Application Support/skillctl/personal-xbar/`.
 
 Never hand-edit a derived copy. Change the canonical plugin, update its deterministic verifier, sync the skill, then install it through the lifecycle manager.
 
@@ -40,6 +44,8 @@ Never hand-edit a derived copy. Change the canonical plugin, update its determin
   `/usr/bin/python3 scripts/manage_personal_xbar.py auth set`; do not put tokens in shell
   arguments or chat. The quota monitor never reads a Chrome login session.
 - Google Chrome with an `open.spotify.com` tab is required only for Spotify Web controls.
+- Multiple same-name Chrome processes are supported: Apple Events are sent directly to
+  foreground browser process IDs, so a background headless Chrome cannot capture the probe.
 - macOS `System Settings > Privacy & Security > Automation` permission for xbar to
   control Google Chrome when Spotify controls are used.
 - Chrome menu `View > Developer > Allow JavaScript from Apple Events` enabled for
@@ -52,9 +58,30 @@ one JSON value, together with the non-secret request User-Agent, in
 the user's login Keychain item
 `skillctl.personal-xbar.ai-input-auth` / `subscriptions`; they are never written to
 the cache, command line, or logs. Its filesystem writes are limited to its own
-mode-`0600` model-status, subscription-quota, refresh-lock, and Spotify
-mute-ownership state files. A status outage, expired token, or Spotify browser
+mode-`0600` title-preference, model-status, subscription-quota, refresh-lock, and
+Spotify mute-ownership state files. A status outage, expired token, or Spotify browser
 permission failure degrades visibly without hiding the local process inventory.
+
+## Menu Bar Title Behavior
+
+- The `Menu bar fields` submenu provides persistent checkboxes for agent count,
+  CPU, memory, model API health, subscription quota, and Spotify playback.
+- A toggle changes only the compact menu-bar text. All collectors, submenu details,
+  notifications, and Spotify advertisement auto-mute continue to run.
+- Global title color continues to reflect monitored health even when the related text
+  field is hidden, so hiding quota or API text does not silence a critical state.
+- If all six fields are hidden, the title falls back to `PX` so the menu remains
+  clickable and its fields can be restored.
+- Preferences are schema-validated, atomically replaced with mode `0600`, and guarded
+  by a separate process lock so rapid changes to different fields are not lost.
+- Missing, damaged, partial, or older preference data fails open: every unspecified
+  field remains visible. Newly introduced fields therefore appear by default.
+
+Optional environment override:
+
+```text
+PERSONAL_XBAR_TITLE_SETTINGS_FILE=/custom/preferences/title-settings.json
+```
 
 ## Model Health Behavior
 
@@ -92,11 +119,16 @@ AI_INPUT_MONITOR_STATE_FILE=/custom/cache/path.json
 - Legacy browser-sourced cache entries are rejected immediately, so installing this
   version cannot continue displaying quota captured from Chrome during the old cache TTL.
 - Successful quota results are cached for 55 seconds. The xbar 15-second refresh therefore does not repeatedly call the account endpoint.
+- The menu summary combines usage and limits across active plans for each quota
+  period, selects the highest-utilization period, and shows that period's remaining
+  quota. This is limit-weighted, not a single-plan maximum or an unweighted average;
+  daily, weekly, and monthly limits are never added together.
 - The menu shows each active plan's status, expiration, and quota usage, including its reset time when supplied by the service.
 - A plan is shown as unlimited only when the API supplies explicit limit fields with no
   finite limits. An active plan whose quota fields are incomplete is marked unavailable
   instead of silently disabling alerts.
-- Whole-number percentages are rounded down, so `99.99%` never appears exhausted before usage actually reaches the limit.
+- Plan usage percentages are rounded down. Summary remaining percentages are rounded
+  up, so `99.99%` used shows `1%` left and only usage at or above the limit shows `0%`.
 - Usage crossing 80%, 90%, or 100% (exhausted) sends one transition notification at each threshold. Continued refreshes in the same band stay quiet.
 - A reset or recovery sends one notification after usage falls below 80%. Initial startup below 80% stays quiet.
 - Missing credentials, a rejected refresh token, and API/network failures are reported
@@ -180,7 +212,7 @@ Installation is transactional: verify source, back up a changed target, atomical
 python3 "$SKILL_DIR/scripts/manage_personal_xbar.py" verify --installed
 ```
 
-Then allow one 15-second xbar refresh and inspect the live menu. Session rows must remain evidence-only; the Worker row owns MCP and Support submenus. The title must include the API healthy/total count, and the AI.INPUT.IM health and subscription submenus must preserve process inventory when either service is unavailable. Quota must come only from the direct API; without Keychain credentials it must show `secure token not configured`, regardless of Chrome state.
+Then allow one 15-second xbar refresh and inspect the live menu. Session rows must remain evidence-only; the Worker row owns MCP and Support submenus. Enabled title fields must render without empty separators, and the `Menu bar fields` checkboxes must match their persisted state. The AI.INPUT.IM health and subscription submenus must preserve process inventory when either service is unavailable. Quota must come only from the direct API; without Keychain credentials it must show `secure token not configured`, regardless of Chrome state.
 
 To manage the local credential record, use the lifecycle manager on the same Mac:
 
@@ -192,7 +224,9 @@ To manage the local credential record, use the lifecycle manager on the same Mac
 ```
 
 `auth set` prompts for both tokens without echoing them and refuses a terminal that
-cannot guarantee hidden input. It never inspects Chrome. Supply the token's
+cannot guarantee hidden input. The access-token prompt explicitly asks for the
+token value only; do not include the `Bearer ` prefix from an HTTP header. It never
+inspects Chrome. Supply the token's
 non-secret request User-Agent with `auth set --user-agent '<value>'`, or enter it at
 the plain-text prompt. It derives a JWT expiry when possible;
 `auth set --expires-in <seconds>` can supply an opaque token's access expiry. The
@@ -238,6 +272,8 @@ Lifecycle-manager-only changes update the skill catalog hash but do not require 
 - Session evidence is accepted only from requested PID records and canonical paths under `~/.codex/sessions`.
 - Unknown xbar parameters are forbidden.
 - Collection failures fail visibly without killing or cleaning processes.
+- Title visibility never disables collection, notifications, advertisement auto-mute,
+  or submenu details; an all-hidden title retains the `PX` menu entry.
 - Model-status, subscription-quota, refresh-lock, and Spotify mute-ownership state contain no credentials and are written atomically with mode `0600`; rotating tokens exist only in the Keychain item.
 - Model failure and recovery notifications are transition-only; verifier runs disable notifications and use isolated state.
 - Subscription quota alerts are transition-only at 80%, 90%, and exhausted; reset recovery occurs only below 80%.

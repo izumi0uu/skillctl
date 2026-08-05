@@ -50,7 +50,7 @@ def assert_supported_xbar_parameters(lines: list[str]) -> None:
         if not separator:
             continue
         for parameter in shlex.split(parameters):
-            key, assignment, _ = parameter.partition("=")
+            key, assignment, _value = parameter.partition("=")
             assert assignment and key in SUPPORTED_XBAR_PARAMETERS, (
                 line,
                 parameter,
@@ -125,8 +125,17 @@ class SpotifyStatusLike(Protocol):
     error: str | None
 
 
+class TitleBarSettingsLike(Protocol):
+    hidden: frozenset[str]
+
+    def is_visible(self, component: str) -> bool: ...
+
+
 class RegistryLike(Protocol):
     plugin_ids: tuple[str, ...]
+    action_ids: tuple[str, ...]
+
+    def execute(self, entrypoint: Path, arguments: list[str]) -> str | None: ...
 
 
 class CompletedProcessLike(Protocol):
@@ -151,11 +160,16 @@ class PatchableSqlite(Protocol):
 class MonitorModule(Protocol):
     AGENT_ADAPTERS: tuple[AdapterLike, ...]
     SPOTIFY_ACTION_JAVASCRIPT: dict[str, str]
+    TITLE_COMPONENTS: tuple[tuple[str, str], ...]
+    TitleBarSettings: Callable[..., TitleBarSettingsLike]
     subprocess: PatchableSubprocess
     sqlite3: PatchableSqlite
     ai_input_auth: object
 
-    def build_registry(self) -> RegistryLike: ...
+    def build_registry(
+        self,
+        title_settings_file: Path | None = None,
+    ) -> RegistryLike: ...
 
     def parse_ps_output(self, output: str) -> dict[int, ProcessLike]: ...
 
@@ -173,7 +187,19 @@ class MonitorModule(Protocol):
         ai_input_status: AiInputStatusLike | None = None,
         subscription_quota_status: SubscriptionQuotaStatusLike | None = None,
         spotify_status: SpotifyStatusLike | None = None,
+        plugin_path: Path | None = None,
+        title_settings: TitleBarSettingsLike | None = None,
     ) -> str: ...
+
+    def read_title_bar_settings(self, path: Path) -> TitleBarSettingsLike: ...
+
+    def write_title_bar_settings(
+        self,
+        settings: TitleBarSettingsLike,
+        path: Path,
+    ) -> None: ...
+
+    def toggle_title_component(self, component: str, path: Path) -> None: ...
 
     def parse_ai_input_payload(
         self,
@@ -213,6 +239,21 @@ class MonitorModule(Protocol):
         quota: SubscriptionQuotaLike,
     ) -> str: ...
 
+    def subscription_quota_remaining_percent(
+        self,
+        quota: SubscriptionQuotaLike,
+    ) -> int: ...
+
+    def subscription_quota_remaining_percent_label(
+        self,
+        quota: SubscriptionQuotaLike,
+    ) -> str: ...
+
+    def subscription_quota_total(
+        self,
+        status: SubscriptionQuotaStatusLike,
+    ) -> SubscriptionQuotaLike | None: ...
+
     def subscription_quota_notification_transition(
         self,
         previous: dict[str, object],
@@ -222,11 +263,17 @@ class MonitorModule(Protocol):
 
     def parse_spotify_payload(self, payload: str) -> SpotifyStatusLike: ...
 
-    def spotify_apple_script(
+    def spotify_jxa_script(
         self,
         javascript: str,
         tab_id: int | None = None,
     ) -> str: ...
+
+    def run_spotify_javascript(
+        self,
+        javascript: str,
+        tab_id: int | None = None,
+    ) -> tuple[int | None, str | None, str | None]: ...
 
     def spotify_ad_mute_transition(
         self,
@@ -271,7 +318,19 @@ assert monitor.build_registry().plugin_ids == (
     "ai-input",
     "subscription-quota",
     "spotify",
+    "title-settings",
     "processes",
+)
+assert monitor.build_registry().action_ids == (
+    "spotify-next",
+    "spotify-previous",
+    "spotify-toggle",
+    "title-toggle-agents",
+    "title-toggle-api",
+    "title-toggle-cpu",
+    "title-toggle-memory",
+    "title-toggle-quota",
+    "title-toggle-spotify",
 )
 for removed_browser_quota_api in (
     "AI_INPUT_SUBSCRIPTIONS_JAVASCRIPT",
@@ -310,9 +369,11 @@ original_manager_lock = monitor.ai_input_refresh_lock
 manager_inputs = iter(("manager-access-secret", "manager-refresh-secret"))
 manager_written: list[object] = []
 manager_events: list[str] = []
+manager_prompts: list[str] = []
 
 
-def fake_manager_getpass(_prompt: str) -> str:
+def fake_manager_getpass(prompt: str) -> str:
+    manager_prompts.append(prompt)
     manager_events.append("prompt")
     return next(manager_inputs)
 
@@ -366,6 +427,23 @@ assert "manager-refresh-secret" not in manager_auth_text
 assert manager_auth_output["status"] == "configured"
 assert manager_auth_output["credentials"]["has_user_agent"] is True
 assert manager_delete_output["status"] == "deleted"
+assert manager_prompts == [
+    "AI.INPUT.IM access token (paste value only; omit 'Bearer ' prefix, hidden): ",
+    "AI.INPUT.IM refresh token (paste value only, hidden): ",
+]
+
+try:
+    manager_module.getpass.getpass = lambda _prompt: "Bearer manager-access-secret"
+    try:
+        manager_module.auth_set(900, "Fixture Client/123")
+    except manager_module.MonitorManagerError as error:
+        assert str(error) == (
+            "paste the access token value only; omit the 'Bearer ' prefix"
+        )
+    else:
+        raise AssertionError("Bearer access-token prefix was accepted")
+finally:
+    manager_module.getpass.getpass = original_getpass
 
 
 def warning_getpass(_prompt: str) -> str:
@@ -389,6 +467,122 @@ finally:
 
 with tempfile.TemporaryDirectory() as temporary_directory:
     home = Path(temporary_directory)
+    title_settings_path = home / "preferences" / "title-settings.json"
+    title_settings_path.parent.mkdir()
+    title_components = tuple(
+        component for component, _label in monitor.TITLE_COMPONENTS
+    )
+    assert title_components == (
+        "agents",
+        "cpu",
+        "memory",
+        "api",
+        "quota",
+        "spotify",
+    )
+    default_title_settings = monitor.read_title_bar_settings(title_settings_path)
+    assert all(
+        default_title_settings.is_visible(component)
+        for component in title_components
+    )
+
+    for invalid_state in (
+        "{",
+        "[]",
+        '{"schema_version":2,"title_visibility":{"cpu":false}}',
+        '{"schema_version":1,"title_visibility":[]}',
+    ):
+        _ = title_settings_path.write_text(invalid_state, encoding="utf-8")
+        invalid_settings = monitor.read_title_bar_settings(title_settings_path)
+        assert all(
+            invalid_settings.is_visible(component)
+            for component in title_components
+        )
+
+    _ = title_settings_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "title_visibility": {
+                    "cpu": False,
+                    "memory": 0,
+                    "future-field": False,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    partial_title_settings = monitor.read_title_bar_settings(title_settings_path)
+    assert partial_title_settings.is_visible("cpu") is False
+    assert partial_title_settings.is_visible("memory") is True
+    assert partial_title_settings.is_visible("api") is True
+
+    title_settings_path.chmod(0o644)
+    monitor.toggle_title_component("cpu", title_settings_path)
+    assert monitor.read_title_bar_settings(title_settings_path).is_visible("cpu")
+    assert title_settings_path.stat().st_mode & 0o777 == 0o600
+    title_lock_path = title_settings_path.with_name(
+        f".{title_settings_path.name}.lock"
+    )
+    assert title_lock_path.stat().st_mode & 0o777 == 0o600
+    normalized_title_payload = json.loads(
+        title_settings_path.read_text(encoding="utf-8")
+    )
+    assert set(normalized_title_payload["title_visibility"]) == set(
+        title_components
+    )
+    assert not list(title_settings_path.parent.glob("*.tmp"))
+
+    try:
+        monitor.toggle_title_component("unknown", title_settings_path)
+    except ValueError as error:
+        assert str(error) == "unsupported title component"
+    else:
+        raise AssertionError("unknown title component was accepted")
+
+    registry_settings_path = home / "registry-preferences.json"
+    title_registry = monitor.build_registry(registry_settings_path)
+    assert title_registry.execute(PLUGIN, ["title-toggle-cpu"]) is None
+    assert (
+        monitor.read_title_bar_settings(registry_settings_path).is_visible("cpu")
+        is False
+    )
+    reloaded_title_registry = monitor.build_registry(registry_settings_path)
+    assert reloaded_title_registry.execute(PLUGIN, ["title-toggle-cpu"]) is None
+    assert monitor.read_title_bar_settings(registry_settings_path).is_visible("cpu")
+    for invalid_arguments in (
+        ["title-toggle-unknown"],
+        ["title-toggle-cpu", "unexpected"],
+    ):
+        try:
+            title_registry.execute(PLUGIN, invalid_arguments)
+        except ValueError as error:
+            assert str(error) == "unsupported Personal xbar action"
+        else:
+            raise AssertionError("unsupported title action was accepted")
+
+    concurrent_settings_path = home / "concurrent-preferences.json"
+    concurrent_barrier = threading.Barrier(3)
+
+    def concurrent_toggle(component: str) -> None:
+        concurrent_barrier.wait()
+        monitor.toggle_title_component(component, concurrent_settings_path)
+
+    concurrent_threads = [
+        threading.Thread(target=concurrent_toggle, args=(component,))
+        for component in ("cpu", "quota")
+    ]
+    for thread in concurrent_threads:
+        thread.start()
+    concurrent_barrier.wait()
+    for thread in concurrent_threads:
+        thread.join()
+    concurrent_settings = monitor.read_title_bar_settings(
+        concurrent_settings_path
+    )
+    assert concurrent_settings.is_visible("cpu") is False
+    assert concurrent_settings.is_visible("quota") is False
+
     session = home / "session.jsonl"
     _ = session.write_text(
         "\n".join(
@@ -897,6 +1091,108 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     assert [quota.period for quota in fixture_plan.quotas] == ["daily", "weekly"]
     assert [quota.used_cents for quota in fixture_plan.quotas] == [8_000, 23_128]
     assert [quota.limit_cents for quota in fixture_plan.quotas] == [10_000, 30_000]
+    fixture_total = monitor.subscription_quota_total(subscription_status)
+    assert fixture_total is not None
+    assert fixture_total.period == "daily"
+    assert fixture_total.used_cents == 8_000
+    assert fixture_total.limit_cents == 10_000
+
+    weighted_total_status = monitor.parse_subscription_api_payload(
+        {
+            "code": 0,
+            "data": [
+                {
+                    "id": "small-exhausted-plan",
+                    "status": "active",
+                    "daily_usage_usd": 100,
+                    "group": {
+                        "name": "Small Exhausted Plan",
+                        "daily_limit_usd": 100,
+                    },
+                },
+                {
+                    "id": "large-unused-plan",
+                    "status": "active",
+                    "daily_usage_usd": 0,
+                    "group": {
+                        "name": "Large Unused Plan",
+                        "daily_limit_usd": 300,
+                    },
+                },
+            ],
+        },
+        now_epoch=2_000_000,
+    )
+    weighted_total = monitor.subscription_quota_total(weighted_total_status)
+    assert weighted_total is not None
+    assert weighted_total.period == "daily"
+    assert weighted_total.used_cents == 10_000
+    assert weighted_total.limit_cents == 40_000
+    assert monitor.subscription_quota_percent_label(weighted_total) == "25%"
+    assert monitor.subscription_quota_remaining_percent(weighted_total) == 75
+    weighted_total_lines = monitor.render(
+        fixture_rows,
+        home,
+        now="12:34:56",
+        subscription_quota_status=weighted_total_status,
+    ).splitlines()
+    assert "· Q 75% | color=" in weighted_total_lines[0]
+    assert "AI INPUT quota: 75% left | color=green" in weighted_total_lines
+
+    exhausted_total_status = monitor.parse_subscription_api_payload(
+        {
+            "code": 0,
+            "data": [
+                {
+                    "id": "codex-plus-plan",
+                    "status": "active",
+                    "daily_usage_usd": "500.49",
+                    "group": {
+                        "name": "CodeX Plus",
+                        "daily_limit_usd": "500.00",
+                    },
+                },
+                {
+                    "id": "codex-air-plan",
+                    "status": "active",
+                    "daily_usage_usd": "300.33",
+                    "group": {
+                        "name": "CodeX Air",
+                        "daily_limit_usd": "300.00",
+                    },
+                },
+            ],
+        },
+        now_epoch=2_000_000,
+    )
+    exhausted_total = monitor.subscription_quota_total(exhausted_total_status)
+    assert exhausted_total is not None
+    assert exhausted_total.used_cents == 80_082
+    assert exhausted_total.limit_cents == 80_000
+    assert monitor.subscription_quota_remaining_percent(exhausted_total) == 0
+    exhausted_total_lines = monitor.render(
+        fixture_rows,
+        home,
+        now="12:34:56",
+        subscription_quota_status=exhausted_total_status,
+    ).splitlines()
+    assert "\u00b7 Q 0% | color=red" in exhausted_total_lines[0]
+    assert "AI INPUT quota: 0% left | color=red" in exhausted_total_lines
+
+    original_quota_collector = monitor.collect_subscription_quota_api_status
+    try:
+        manager_module.load_auth_modules = lambda: (auth_module_for_manager, monitor)
+        monitor.collect_subscription_quota_api_status = (
+            lambda _state_file, now_epoch=None: weighted_total_status
+        )
+        manager_auth_test_output = manager_module.auth_test()
+    finally:
+        manager_module.load_auth_modules = original_manager_loader
+        monitor.collect_subscription_quota_api_status = original_quota_collector
+    assert manager_auth_test_output["remaining_percent"] == 75
+    assert manager_auth_test_output["total_period"] == "daily"
+    assert "total_percent" not in manager_auth_test_output
+    assert "max_percent" not in manager_auth_test_output
 
     direct_subscription_payload = {
         "code": 0,
@@ -1339,6 +1635,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     status_90 = threshold_status("90")
     status_99_99 = threshold_status("99.99")
     status_100 = threshold_status("100")
+    status_over_limit = threshold_status("100.01")
     assert monitor.subscription_quota_level(status_79_99.plans[0].quotas[0]) == 0
     assert monitor.subscription_quota_level(status_80.plans[0].quotas[0]) == 1
     assert monitor.subscription_quota_level(status_90.plans[0].quotas[0]) == 2
@@ -1347,6 +1644,24 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     assert (
         monitor.subscription_quota_percent_label(status_99_99.plans[0].quotas[0])
         == "99%"
+    )
+    assert (
+        monitor.subscription_quota_remaining_percent_label(
+            status_99_99.plans[0].quotas[0]
+        )
+        == "1%"
+    )
+    assert (
+        monitor.subscription_quota_remaining_percent(
+            status_100.plans[0].quotas[0]
+        )
+        == 0
+    )
+    assert (
+        monitor.subscription_quota_remaining_percent(
+            status_over_limit.plans[0].quotas[0]
+        )
+        == 0
     )
 
     for status_text in ("Inactive", "Not active", "\u65e0\u6548"):
@@ -1429,6 +1744,14 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         checked_at=2_000_450,
     )
     assert near_exhausted_notice == ("Quota 90%: Threshold Plan daily 99%",)
+    _, exhausted_notice = monitor.subscription_quota_notification_transition(
+        {},
+        status_100,
+        checked_at=2_000_451,
+    )
+    assert exhausted_notice == (
+        "Quota exhausted: Threshold Plan daily 100%",
+    )
     _, reset_notice = monitor.subscription_quota_notification_transition(
         escalation_state,
         threshold_status("0"),
@@ -1443,15 +1766,15 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         subscription_quota_status=subscription_status,
     ).splitlines()
     assert_supported_xbar_parameters(subscription_lines)
-    assert "· Q 80% | color=" in subscription_lines[0]
-    assert "AI INPUT quota: 80% max | color=orange" in subscription_lines
+    assert "· Q 20% | color=" in subscription_lines[0]
+    assert "AI INPUT quota: 20% left | color=orange" in subscription_lines
     assert "--Fixture CodeX Plan" in subscription_lines
     assert (
-        "----Daily · $80.00 / $100.00 · 80% | color=orange"
+        "----Daily · $80.00 / $100.00 · 80% used | color=orange"
         in subscription_lines
     )
     assert (
-        "----Weekly · $231.28 / $300.00 · 77% | color=green"
+        "----Weekly · $231.28 / $300.00 · 77% used | color=green"
         in subscription_lines
     )
     assert any(
@@ -1466,8 +1789,27 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         now="12:34:56",
         subscription_quota_status=status_99_99,
     ).splitlines()
-    assert "\u00b7 Q 99% | color=red" in near_exhausted_lines[0]
-    assert any("$99.99 / $100.00 \u00b7 99%" in line for line in near_exhausted_lines)
+    assert "\u00b7 Q 1% | color=red" in near_exhausted_lines[0]
+    assert "AI INPUT quota: 1% left | color=red" in near_exhausted_lines
+    assert any(
+        "$99.99 / $100.00 \u00b7 99% used" in line
+        for line in near_exhausted_lines
+    )
+
+    for exhausted_status in (status_100, status_over_limit):
+        exhausted_lines = monitor.render(
+            fixture_rows,
+            home,
+            now="12:34:56",
+            subscription_quota_status=exhausted_status,
+        ).splitlines()
+        assert "\u00b7 Q 0% | color=red" in exhausted_lines[0]
+        assert "AI INPUT quota: 0% left | color=red" in exhausted_lines
+        assert any(
+            "$100.00 / $100.00 \u00b7 100% used" in line
+            or "$100.01 / $100.00 \u00b7 100% used" in line
+            for line in exhausted_lines
+        )
     assert not any("$99.99 / $100.00 \u00b7 100%" in line for line in near_exhausted_lines)
 
     unavailable_quota_status = monitor.parse_subscription_api_payload(
@@ -1683,12 +2025,85 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         '{"playback":"playing","title":"Fixture Song",'
         '"artist":"Fixture Artist","is_ad":false,"media_muted":false}'
     )
-    spotify_script = monitor.spotify_apple_script("return JSON.stringify({ok: true})")
-    assert "(ASCII character 9)" in spotify_script
-    assert " & tab & " not in spotify_script
-    scoped_spotify_script = monitor.spotify_apple_script("return 1", tab_id=17)
-    assert '(id of spotifyTab as text) is "17"' in scoped_spotify_script
-    assert "id of spotifyTab is 17" not in scoped_spotify_script
+    spotify_script = monitor.spotify_jxa_script("return JSON.stringify({ok: true})")
+    assert 'ObjC.import("AppKit")' in spotify_script
+    assert "descriptorWithProcessIdentifier(pid)" in spotify_script
+    assert "sendEventWithOptionsTimeoutError(19, 3, null)" in spotify_script
+    assert "Number(application.activationPolicy) === 0" in spotify_script
+    assert "Application(browserName)" not in spotify_script
+    assert r"^https:\/\/open\.spotify\.com(?:[/?#]|$)" in spotify_script
+    assert 'identifiedElement("cwin", windowId, root)' in spotify_script
+    assert 'identifiedElement("CrTb", tabId, stableWindow)' in spotify_script
+    assert 'spotifyUrl(stringProperty(pid, "URL ", stableTab))' in spotify_script
+    assert "const requestedTabId = null;" in spotify_script
+    scoped_spotify_script = monitor.spotify_jxa_script("return 1", tab_id=17)
+    assert 'const requestedTabId = "17";' in scoped_spotify_script
+    assert "if (tabId !== requestedTabId) continue;" in scoped_spotify_script
+    assert "[\"-l\", \"JavaScript\"]" not in scoped_spotify_script
+
+    original_spotify_subprocess_run = monitor.subprocess.run
+    captured_spotify_commands: list[tuple[str, ...]] = []
+
+    class SpotifyCompleted:
+        def __init__(
+            self,
+            returncode: int,
+            stdout: str,
+            stderr: str = "",
+        ) -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    spotify_completed = SpotifyCompleted(
+        0,
+        '17\t{"playback":"paused"}\n',
+    )
+
+    def fake_spotify_subprocess_run(
+        args: object,
+        **kwargs: object,
+    ) -> CompletedProcessLike:
+        assert isinstance(args, list)
+        command = tuple(str(item) for item in args)
+        captured_spotify_commands.append(command)
+        assert command[:4] == (
+            "/usr/bin/osascript",
+            "-l",
+            "JavaScript",
+            "-e",
+        )
+        assert "descriptorWithProcessIdentifier(pid)" in command[4]
+        assert kwargs["capture_output"] is True
+        assert kwargs["text"] is True
+        return spotify_completed
+
+    try:
+        monitor.subprocess.run = fake_spotify_subprocess_run
+        assert monitor.run_spotify_javascript("return 1") == (
+            17,
+            '{"playback":"paused"}',
+            None,
+        )
+        spotify_completed = SpotifyCompleted(0, "__NO_TAB__\n")
+        assert monitor.run_spotify_javascript("return 1") == (
+            None,
+            None,
+            "not-found",
+        )
+        spotify_completed = SpotifyCompleted(
+            1,
+            "",
+            "Not authorized to send Apple events (-1743)",
+        )
+        assert monitor.run_spotify_javascript("return 1") == (
+            None,
+            None,
+            "permission",
+        )
+    finally:
+        monitor.subprocess.run = original_spotify_subprocess_run
+    assert len(captured_spotify_commands) == 3
     assert set(monitor.SPOTIFY_ACTION_JAVASCRIPT) == {"toggle", "previous", "next"}
     assert "control-button-skip-back" in monitor.SPOTIFY_ACTION_JAVASCRIPT["previous"]
     assert "control-button-skip-forward" in monitor.SPOTIFY_ACTION_JAVASCRIPT["next"]
@@ -1865,6 +2280,122 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         for line in spotify_ad_lines
     )
 
+    spaced_entrypoint = home / "Plugin With Spaces.15s.py"
+    partial_title_settings = monitor.TitleBarSettings(
+        hidden=frozenset({"cpu", "api", "spotify"})
+    )
+    partial_title_lines = monitor.render(
+        fixture_rows,
+        home,
+        now="12:34:56",
+        ai_input_status=healthy_status,
+        subscription_quota_status=exhausted_total_status,
+        spotify_status=spotify_playing,
+        plugin_path=spaced_entrypoint,
+        title_settings=partial_title_settings,
+    ).splitlines()
+    assert_supported_xbar_parameters(partial_title_lines)
+    partial_title = partial_title_lines[0].partition(" | ")[0]
+    assert partial_title.startswith("AI ")
+    assert "CPU " not in partial_title
+    assert "API " not in partial_title
+    assert "SP play" not in partial_title
+    assert "Q 0%" in partial_title
+    assert not partial_title.startswith(" · ")
+    assert not partial_title.endswith(" · ")
+    assert " ·  · " not in partial_title
+    partial_setting_lines = [
+        line
+        for line in partial_title_lines
+        if line.startswith("--") and "param1=title-toggle-" in line
+    ]
+    assert len(partial_setting_lines) == len(title_components)
+    assert any(
+        line.startswith("--☐ CPU | ")
+        and f"bash={shlex.quote(str(spaced_entrypoint.resolve()))}" in line
+        and "param1=title-toggle-cpu" in line
+        and "terminal=false" in line
+        and "refresh=true" in line
+        for line in partial_setting_lines
+    )
+    assert any(
+        line.startswith("--☑ Agent count | ")
+        for line in partial_setting_lines
+    )
+
+    all_hidden_title_settings = monitor.TitleBarSettings(
+        hidden=frozenset(title_components)
+    )
+    all_hidden_lines = monitor.render(
+        fixture_rows,
+        home,
+        now="12:34:56",
+        ai_input_status=healthy_status,
+        subscription_quota_status=exhausted_total_status,
+        spotify_status=spotify_playing,
+        plugin_path=PLUGIN,
+        title_settings=all_hidden_title_settings,
+    ).splitlines()
+    assert all_hidden_lines[0] == "PX | color=red"
+    assert "AI INPUT quota: 0% left | color=red" in all_hidden_lines
+    assert any(line.startswith("AI.INPUT.IM:") for line in all_hidden_lines)
+    assert any(line.startswith("Spotify Web: Playing") for line in all_hidden_lines)
+    assert any(line.startswith("OMP:") for line in all_hidden_lines)
+    assert sum(
+        line.startswith("--☐ ") and "param1=title-toggle-" in line
+        for line in all_hidden_lines
+    ) == len(title_components)
+
+    isolated_settings_path = home / "isolated-title-settings.json"
+    monitor.write_title_bar_settings(
+        all_hidden_title_settings,
+        isolated_settings_path,
+    )
+    runtime_globals = monitor.render.__globals__
+    collector_names = (
+        "collect_ai_input_status",
+        "collect_subscription_quota_status",
+        "collect_spotify_status",
+        "ps_rows",
+    )
+    original_collectors = {
+        name: runtime_globals[name]
+        for name in collector_names
+    }
+    collector_calls: list[str] = []
+    try:
+        runtime_globals["collect_ai_input_status"] = lambda: (
+            collector_calls.append("ai-input") or healthy_status
+        )
+        runtime_globals["collect_subscription_quota_status"] = lambda: (
+            collector_calls.append("subscription-quota")
+            or exhausted_total_status
+        )
+        runtime_globals["collect_spotify_status"] = lambda: (
+            collector_calls.append("spotify") or spotify_playing
+        )
+        runtime_globals["ps_rows"] = lambda: (
+            collector_calls.append("processes") or fixture_rows
+        )
+        isolated_output = monitor.build_registry(
+            isolated_settings_path
+        ).execute(PLUGIN, [])
+    finally:
+        runtime_globals.update(original_collectors)
+    assert collector_calls == [
+        "ai-input",
+        "subscription-quota",
+        "spotify",
+        "processes",
+    ]
+    assert isolated_output is not None
+    isolated_lines = isolated_output.splitlines()
+    assert isolated_lines[0] == "PX | color=red"
+    assert "AI INPUT quota: 0% left | color=red" in isolated_lines
+    assert any(line.startswith("AI.INPUT.IM:") for line in isolated_lines)
+    assert any(line.startswith("Spotify Web: Playing") for line in isolated_lines)
+    assert any(line.startswith("OMP:") for line in isolated_lines)
+
     missing_mapping_home = home / "missing"
     fallback = monitor.runtime_label(
         monitor.AGENT_ADAPTERS[0],
@@ -1962,6 +2493,9 @@ with tempfile.TemporaryDirectory() as status_state_directory:
     live_environment["AI_INPUT_MONITOR_STATE_FILE"] = str(
         Path(status_state_directory) / "ai-input-status.json"
     )
+    live_environment["PERSONAL_XBAR_TITLE_SETTINGS_FILE"] = str(
+        Path(status_state_directory) / "title-settings.json"
+    )
     live_output = subprocess.check_output(
         [str(PLUGIN)],
         text=True,
@@ -1974,8 +2508,12 @@ assert "· API " in live_lines[0], live_lines[:1]
 assert "· Q 50%" in live_lines[0], live_lines[:1]
 assert "---" in live_lines
 assert any(line.startswith("AI.INPUT.IM:") for line in live_lines)
-assert "AI INPUT quota: 50% max | color=green" in live_lines
-assert any("$50.00 / $100.00 · 50%" in line for line in live_lines)
+assert "AI INPUT quota: 50% left | color=green" in live_lines
+assert any("$50.00 / $100.00 · 50% used" in line for line in live_lines)
+assert sum(
+    line.startswith("--☑ ") and "param1=title-toggle-" in line
+    for line in live_lines
+) == len(monitor.TITLE_COMPONENTS)
 assert any(line.startswith("Open Activity Monitor") for line in live_lines)
 version_line = next(
     line

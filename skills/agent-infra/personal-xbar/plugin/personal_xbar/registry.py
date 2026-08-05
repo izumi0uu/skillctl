@@ -44,6 +44,10 @@ class PluginRegistry:
     def plugin_ids(self) -> tuple[str, ...]:
         return tuple(plugin.plugin_id for plugin in self._plugins)
 
+    @property
+    def action_ids(self) -> tuple[str, ...]:
+        return tuple(sorted(self._actions))
+
     def execute(self, entrypoint: Path, arguments: list[str]) -> str | None:
         if arguments:
             if len(arguments) != 1 or arguments[0] not in self._actions:

@@ -9,14 +9,18 @@ from personal_xbar.plugins.ai_input import AiInputPlugin
 from personal_xbar.plugins.processes import ProcessInventoryPlugin
 from personal_xbar.plugins.spotify import SpotifyPlugin
 from personal_xbar.plugins.subscription_quota import SubscriptionQuotaPlugin
+from personal_xbar.plugins.title_settings import TitleBarSettingsPlugin
 from personal_xbar.registry import PluginRegistry
 
 
-def build_registry() -> PluginRegistry:
+def build_registry(
+    title_settings_file: Path = runtime.TITLE_SETTINGS_FILE,
+) -> PluginRegistry:
     registry = PluginRegistry()
     registry.register(AiInputPlugin())
     registry.register(SubscriptionQuotaPlugin())
     registry.register(SpotifyPlugin())
+    registry.register(TitleBarSettingsPlugin(title_settings_file))
     registry.register(ProcessInventoryPlugin())
     return registry
 

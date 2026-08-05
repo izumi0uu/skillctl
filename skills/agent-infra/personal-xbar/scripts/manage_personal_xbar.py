@@ -571,6 +571,18 @@ def hidden_credential(prompt: str) -> str:
         ) from None
 
 
+def validate_access_token_input(value: str) -> str:
+    """Reject a copied HTTP auth scheme before it can enter the Keychain."""
+
+    token = value.strip()
+    first_word = token.split(None, 1)[0] if token else ""
+    if first_word.casefold() == "bearer":
+        raise MonitorManagerError(
+            "paste the access token value only; omit the 'Bearer ' prefix"
+        )
+    return token
+
+
 def resolve_request_user_agent(supplied_user_agent: str | None) -> str:
     if supplied_user_agent is not None and supplied_user_agent.strip():
         return supplied_user_agent.strip()
@@ -590,8 +602,15 @@ def auth_set(
     auth_module, runtime_module = load_auth_modules()
     try:
         resolved_user_agent = resolve_request_user_agent(user_agent)
-        access_token = hidden_credential("AI.INPUT.IM access token (hidden): ")
-        refresh_token = hidden_credential("AI.INPUT.IM refresh token (hidden): ")
+        access_token = validate_access_token_input(
+            hidden_credential(
+                "AI.INPUT.IM access token "
+                "(paste value only; omit 'Bearer ' prefix, hidden): "
+            )
+        )
+        refresh_token = hidden_credential(
+            "AI.INPUT.IM refresh token (paste value only, hidden): "
+        )
         expiry = None if expires_in is None else int(time.time()) + expires_in
         credentials = auth_module.make_credentials(
             access_token,
@@ -660,16 +679,18 @@ def auth_test() -> dict[str, object]:
         if plan.status == "active"
         for quota in plan.quotas
     ]
-    max_percent = max(
-        (quota.used_cents * 100 // quota.limit_cents for quota in quotas),
-        default=None,
-    )
+    total_quota = runtime_module.subscription_quota_total(status)
     return {
         "status": "ok",
         "source": status.source or "api",
         "active_plans": sum(plan.status == "active" for plan in status.plans),
         "quota_count": len(quotas),
-        "max_percent": max_percent,
+        "remaining_percent": (
+            runtime_module.subscription_quota_remaining_percent(total_quota)
+            if total_quota is not None
+            else None
+        ),
+        "total_period": total_quota.period if total_quota is not None else None,
     }
 
 
