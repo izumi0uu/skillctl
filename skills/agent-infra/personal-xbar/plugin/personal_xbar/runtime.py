@@ -63,10 +63,6 @@ AI_INPUT_STATE_FILE = Path(
 AI_INPUT_SUBSCRIPTIONS_ENABLED = (
     os.environ.get("AI_INPUT_SUBSCRIPTIONS_ENABLED", "1") != "0"
 )
-AI_INPUT_SUBSCRIPTIONS_DIRECT_ENABLED = (
-    os.environ.get("AI_INPUT_SUBSCRIPTIONS_DIRECT", "1") != "0"
-)
-AI_INPUT_SUBSCRIPTIONS_ORIGIN = "https://ai.input.im/"
 AI_INPUT_API_ORIGIN = "https://ai.input.im"
 AI_INPUT_API_BASE = f"{AI_INPUT_API_ORIGIN}/api/v1"
 AI_INPUT_API_TIMEOUT_SECONDS = 4.0
@@ -84,15 +80,10 @@ AI_INPUT_REFRESH_LOCK_FILE = Path(
         / ".ai-input-refresh.lock",
     )
 )
-AI_INPUT_SUBSCRIPTIONS_TAB_PREFIX = "https://ai.input.im/subscriptions"
 AI_INPUT_SUBSCRIPTIONS_PAGE_URL = os.environ.get(
     "AI_INPUT_SUBSCRIPTIONS_PAGE_URL", "https://ai.input.im/subscriptions"
 )
-AI_INPUT_SUBSCRIPTIONS_BROWSER_APP = os.environ.get(
-    "AI_INPUT_SUBSCRIPTIONS_BROWSER_APP", "Google Chrome"
-)
 AI_INPUT_SUBSCRIPTIONS_CACHE_SECONDS = 55
-AI_INPUT_SUBSCRIPTIONS_SCRIPT_TIMEOUT_SECONDS = 5.0
 AI_INPUT_SUBSCRIPTIONS_STATE_FILE = Path(
     os.environ.get(
         "AI_INPUT_SUBSCRIPTIONS_STATE_FILE",
@@ -1215,149 +1206,6 @@ def collect_subscription_quota_api_status(
     )
 
 
-AI_INPUT_SUBSCRIPTIONS_JAVASCRIPT = r"""
-(() => {
-  /* The app renders data from its authenticated /api/v1/subscriptions request. */
-  const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
-  const parseExpiry = (text) => {
-    const match = clean(text).match(
-      /\(?(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?\)?/
-    );
-    if (!match) return null;
-    const hasTime = match[4] !== undefined;
-    const milliseconds = new Date(
-      Number(match[1]),
-      Number(match[2]) - 1,
-      Number(match[3]),
-      hasTime ? Number(match[4]) : 23,
-      hasTime ? Number(match[5]) : 59,
-      hasTime ? 0 : 59
-    ).getTime();
-    return Number.isFinite(milliseconds) ? Math.floor(milliseconds / 1000) : null;
-  };
-  const parseReset = (text, expiresAt) => {
-    const value = clean(text);
-    const days = Number((value.match(/(\d+)\s*d/i) || [0, 0])[1]);
-    const hours = Number((value.match(/(\d+)\s*h/i) || [0, 0])[1]);
-    const minutes = Number((value.match(/(\d+)\s*m/i) || [0, 0])[1]);
-    if (!days && !hours && !minutes) return null;
-    const resetAt = Math.floor(Date.now() / 1000) + days * 86400 + hours * 3600 + minutes * 60;
-    return expiresAt && expiresAt < resetAt ? expiresAt : resetAt;
-  };
-  const periodFromLabel = (label) => {
-    const value = clean(label).toLowerCase();
-    if (/daily|\u6bcf\u65e5|\u65e5\u989d\u5ea6/.test(value)) return "daily";
-    if (/weekly|\u6bcf\u5468|\u6bcf\u9031|\u5468\u989d\u5ea6|\u9031\u984d\u5ea6/.test(value)) return "weekly";
-    if (/monthly|\u6bcf\u6708|\u6708\u989d\u5ea6/.test(value)) return "monthly";
-    return null;
-  };
-  const parseDocument = (doc) => {
-    if (!doc) return {ok: false, error: "loading"};
-    const path = String(doc.location && doc.location.pathname || "");
-    if (/\/login(?:\/|$)/i.test(path) || doc.querySelector('input[type="password"]')) {
-      return {ok: false, error: "session-expired"};
-    }
-    const main = doc.querySelector("main");
-    if (!main) return {ok: false, error: "loading"};
-    const subscriptions = [];
-    const headings = Array.from(main.querySelectorAll("h3"));
-    for (let cardIndex = 0; cardIndex < headings.length; cardIndex++) {
-      const heading = headings[cardIndex];
-      const card = heading.closest("div.border");
-      if (!card) continue;
-      const name = clean(heading.textContent);
-      if (!name) continue;
-      const cardText = clean(card.innerText);
-      const statusText = clean(card.querySelector("span.rounded-full")?.textContent);
-      const expiresAt = parseExpiry(cardText);
-      const quotas = [];
-      const seenPeriods = new Set();
-      for (const span of card.querySelectorAll("span")) {
-        const amount = clean(span.textContent).match(
-          /^\$\s*([\d,]+(?:\.\d+)?)\s*\/\s*\$\s*([\d,]+(?:\.\d+)?)$/
-        );
-        if (!amount) continue;
-        const row = span.parentElement;
-        const label = clean(row?.querySelector("span:first-child")?.textContent);
-        const period = periodFromLabel(label);
-        if (!period || seenPeriods.has(period)) continue;
-        const resetText = clean(row?.parentElement?.querySelector("p")?.textContent);
-        quotas.push({
-          period,
-          used_usd: amount[1].replace(/,/g, ""),
-          limit_usd: amount[2].replace(/,/g, ""),
-          reset_at: parseReset(resetText, expiresAt)
-        });
-        seenPeriods.add(period);
-      }
-      const quotaState = quotas.length
-        ? "available"
-        : (/\bunlimited\b|\u65e0\u9650|\u7121\u9650/i.test(cardText)
-          ? "unlimited"
-          : "unavailable");
-      subscriptions.push({
-        id: `dom:${cardIndex}:${name}:${expiresAt || "none"}`,
-        name,
-        status_text: statusText,
-        expires_at: expiresAt,
-        quota_state: quotaState,
-        quotas
-      });
-    }
-    if (subscriptions.length) return {ok: true, subscriptions, source: "rendered-page"};
-    const text = clean(main.innerText);
-    if (/no active subscriptions|\u6682\u65e0\u6709\u6548\u8ba2\u9605|\u66ab\u7121\u6709\u6548\u8a02\u95b1/i.test(text)) {
-      return {ok: true, subscriptions: [], source: "rendered-page"};
-    }
-    return {ok: false, error: "loading"};
-  };
-  try {
-    const selector = 'iframe[data-personal-xbar-quota-frame="1"]';
-    const startedAtAttribute = "data-personal-xbar-quota-started-at";
-    const nowMilliseconds = Date.now();
-    let frame = document.querySelector(selector);
-    let frameSnapshot = {ok: false, error: "loading"};
-    if (frame) {
-      try {
-        if (frame.contentDocument) frameSnapshot = parseDocument(frame.contentDocument);
-      } catch (_error) {
-        frameSnapshot = {ok: false, error: "frame-unavailable"};
-      }
-    }
-    const pageSnapshot = parseDocument(document);
-    const snapshot = frameSnapshot.ok ? frameSnapshot : (
-      pageSnapshot.ok ? pageSnapshot : (
-        frameSnapshot.error === "session-expired" ? frameSnapshot : pageSnapshot
-      )
-    );
-    const frameStartedAt = frame
-      ? Number(frame.getAttribute(startedAtAttribute) || 0)
-      : 0;
-    const frameStale = !frameStartedAt || nowMilliseconds - frameStartedAt >= 30000;
-    const shouldRefreshFrame = !frame || frameSnapshot.ok || frameStale ||
-      frameSnapshot.error !== "loading";
-    let appendFrame = false;
-    if (!frame) {
-      frame = document.createElement("iframe");
-      frame.setAttribute("data-personal-xbar-quota-frame", "1");
-      frame.setAttribute("aria-hidden", "true");
-      frame.tabIndex = -1;
-      frame.style.cssText = "position:absolute;width:1px;height:1px;left:-10000px;border:0;";
-      appendFrame = true;
-    }
-    if (shouldRefreshFrame) {
-      frame.setAttribute(startedAtAttribute, String(nowMilliseconds));
-      frame.src = `/subscriptions?personal_xbar_quota=${nowMilliseconds}`;
-    }
-    if (appendFrame) {
-      (document.body || document.documentElement).appendChild(frame);
-    }
-    return JSON.stringify(snapshot);
-  } catch (error) {
-    return JSON.stringify({ok: false, error: "render", detail: clean(error?.message || error)});
-  }
-})()
-"""
 
 
 def usd_to_cents(value: object) -> int | None:
@@ -1399,87 +1247,6 @@ def normalize_subscription_quota_state(value: object, has_quotas: bool) -> str:
     return "unavailable"
 
 
-def parse_subscription_quota_payload(payload: str) -> SubscriptionQuotaStatus:
-    try:
-        raw = json.loads(payload)
-    except json.JSONDecodeError as error:
-        raise ValueError("AI INPUT returned invalid subscription data") from error
-    if not isinstance(raw, dict):
-        raise ValueError("AI INPUT subscription data is not an object")
-    if raw.get("ok") is not True:
-        error_code = raw.get("error")
-        if error_code == "session-expired":
-            return SubscriptionQuotaStatus(health="session-expired")
-        if error_code == "loading":
-            return SubscriptionQuotaStatus(health="loading")
-        detail = raw.get("detail")
-        message = (
-            sanitize_text(detail, 140)
-            if isinstance(detail, str) and detail.strip()
-            else "AI INPUT subscription page returned an error"
-        )
-        return SubscriptionQuotaStatus(health="error", error=message)
-
-    raw_plans = raw.get("subscriptions")
-    if not isinstance(raw_plans, list):
-        raise ValueError("AI INPUT subscription data has no subscriptions")
-    plans: list[SubscriptionPlan] = []
-    seen_plan_ids: set[str] = set()
-    for raw_plan in raw_plans:
-        if not isinstance(raw_plan, dict):
-            raise ValueError("AI INPUT subscription data contains an invalid plan")
-        plan_id = raw_plan.get("id")
-        name = raw_plan.get("name")
-        status_value = raw_plan.get("status_text", raw_plan.get("status"))
-        if not isinstance(plan_id, str) or not plan_id.strip():
-            raise ValueError("AI INPUT subscription plan has no id")
-        normalized_plan_id = sanitize_text(plan_id, 100)
-        if normalized_plan_id in seen_plan_ids:
-            raise ValueError("AI INPUT subscription data has duplicate plan ids")
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError("AI INPUT subscription plan has no name")
-        if not isinstance(status_value, str) or not status_value.strip():
-            raise ValueError("AI INPUT subscription plan has no status")
-        raw_quotas = raw_plan.get("quotas")
-        if not isinstance(raw_quotas, list):
-            raise ValueError("AI INPUT subscription plan has invalid quotas")
-        quotas: list[SubscriptionQuota] = []
-        seen_periods: set[str] = set()
-        for raw_quota in raw_quotas:
-            if not isinstance(raw_quota, dict):
-                raise ValueError("AI INPUT subscription quota is invalid")
-            period = raw_quota.get("period")
-            if period not in {"daily", "weekly", "monthly"} or period in seen_periods:
-                raise ValueError("AI INPUT subscription quota has an invalid period")
-            used_cents = usd_to_cents(raw_quota.get("used_usd"))
-            limit_cents = usd_to_cents(raw_quota.get("limit_usd"))
-            if used_cents is None or limit_cents is None or limit_cents <= 0:
-                raise ValueError("AI INPUT subscription quota has invalid amounts")
-            reset_at = numeric_int(raw_quota.get("reset_at"))
-            quotas.append(
-                SubscriptionQuota(
-                    period=period,
-                    used_cents=used_cents,
-                    limit_cents=limit_cents,
-                    reset_at=reset_at,
-                )
-            )
-            seen_periods.add(period)
-        plans.append(
-            SubscriptionPlan(
-                plan_id=normalized_plan_id,
-                name=sanitize_text(name, 80),
-                status=normalize_subscription_plan_status(status_value),
-                expires_at=numeric_int(raw_plan.get("expires_at")),
-                quotas=tuple(quotas),
-                quota_state=normalize_subscription_quota_state(
-                    raw_plan.get("quota_state"),
-                    bool(quotas),
-                ),
-            )
-        )
-        seen_plan_ids.add(normalized_plan_id)
-    return SubscriptionQuotaStatus(health="ready", plans=tuple(plans))
 
 
 def subscription_quota_status_payload(
@@ -1517,15 +1284,14 @@ def subscription_quota_status_from_state(
     raw_status = state.get("status")
     if not isinstance(raw_status, dict):
         return None
+    source_value = raw_status.get("source")
+    # Invalidate state written by the removed Chrome-session collector.
+    if source_value not in {"api", "keychain"}:
+        return None
     health = raw_status.get("health")
     if health not in {
         "ready",
-        "not-running",
-        "not-found",
-        "automation-permission",
-        "javascript-permission",
         "session-expired",
-        "loading",
         "error",
         "not-configured",
     }:
@@ -1589,7 +1355,6 @@ def subscription_quota_status_from_state(
         )
         seen_plan_ids.add(cast(str, plan_id))
     error_value = raw_status.get("error")
-    source_value = raw_status.get("source")
     return SubscriptionQuotaStatus(
         health=cast(str, health),
         plans=tuple(plans),
@@ -1598,142 +1363,6 @@ def subscription_quota_status_from_state(
     )
 
 
-def chrome_tab_apple_script(
-    browser: str,
-    url_prefix: str,
-    javascript: str,
-    tab_id: int | None = None,
-) -> str:
-    browser_literal = json.dumps(browser)
-    prefix_literal = json.dumps(url_prefix)
-    source_literal = json.dumps(compact_javascript(javascript))
-    tab_id_literal = "null" if tab_id is None else json.dumps(str(tab_id))
-    return "\n".join(
-        (
-            "(() => {",
-            'ObjC.import("AppKit");',
-            'ObjC.import("ScriptingBridge");',
-            f"const browserName = {browser_literal};",
-            f"const targetURL = {prefix_literal};",
-            f"const source = {source_literal};",
-            f"const requestedTabId = {tab_id_literal};",
-            "const runningApps = $.NSWorkspace.sharedWorkspace.runningApplications;",
-            "let browserFound = false;",
-            "let matchingTabFound = false;",
-            "let fallbackResult = null;",
-            "for (let appIndex = 0; appIndex < runningApps.count; appIndex++) {",
-            "const runningApp = runningApps.objectAtIndex(appIndex);",
-            "const name = ObjC.unwrap(runningApp.localizedName);",
-            "if (name !== browserName || Number(runningApp.activationPolicy) !== 0) continue;",
-            "browserFound = true;",
-            "const chrome = $.SBApplication.applicationWithProcessIdentifier(",
-            "runningApp.processIdentifier",
-            ");",
-            'const windows = chrome.valueForKey("windows");',
-            "for (let windowIndex = 0; windowIndex < windows.count; windowIndex++) {",
-            'const tabs = windows.objectAtIndex(windowIndex).valueForKey("tabs");',
-            "for (let tabIndex = 0; tabIndex < tabs.count; tabIndex++) {",
-            "const targetTab = tabs.objectAtIndex(tabIndex);",
-            'const url = ObjC.unwrap(targetTab.valueForKey("URL"));',
-            'const uniqueId = String(ObjC.unwrap(targetTab.valueForKey("id")));',
-            'const urlMatches = typeof url === "string" && (',
-            "url === targetURL || url.startsWith(`${targetURL}?`) ||",
-            "url.startsWith(`${targetURL}#`)",
-            ");",
-            "if (",
-            "urlMatches &&",
-            "(requestedTabId === null || uniqueId === requestedTabId)",
-            ") {",
-            "matchingTabFound = true;",
-            "const rawResult = targetTab.performSelectorWithObject(",
-            '"executeJavascript:",',
-            "$(source)",
-            ");",
-            'const pageResult = rawResult ? String(ObjC.unwrap(rawResult)) : "";',
-            'const combinedResult = `${uniqueId}\t${pageResult}`;',
-            "if (requestedTabId !== null) return combinedResult;",
-            "try {",
-            "const parsedResult = JSON.parse(pageResult);",
-            "if (parsedResult && parsedResult.ok === true) return combinedResult;",
-            "} catch (_error) {}",
-            "if (fallbackResult === null) fallbackResult = combinedResult;",
-            "}",
-            "}",
-            "}",
-            "}",
-            "if (fallbackResult !== null) return fallbackResult;",
-            'return browserFound && !matchingTabFound ? "__NO_TAB__" : "__NOT_RUNNING__";',
-            "})()",
-        )
-    )
-
-
-def classify_chrome_automation_error(detail: str) -> str:
-    lowered = detail.lower()
-    if (
-        "not authorized to send apple events" in lowered
-        or "not authorised to send apple events" in lowered
-        or "-1743" in lowered
-    ):
-        return "automation-permission"
-    if (
-        "allow javascript from apple events" in lowered
-        or "javascript 的功能已关闭" in detail
-        or "允许 apple 事件中的 javascript" in lowered
-    ):
-        return "javascript-permission"
-    return sanitize_text(detail, 140)
-
-
-def run_chrome_tab_javascript(
-    browser: str,
-    url_prefix: str,
-    javascript: str,
-    timeout_seconds: float,
-    tab_id: int | None = None,
-) -> tuple[int | None, str | None, str | None]:
-    script = chrome_tab_apple_script(
-        browser,
-        url_prefix,
-        javascript,
-        tab_id=tab_id,
-    )
-    try:
-        completed = subprocess.run(
-            ["/usr/bin/osascript", "-l", "JavaScript", "-e", script],
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-        )
-    except (OSError, subprocess.TimeoutExpired) as error:
-        return None, None, sanitize_text(str(error), 140)
-    output = completed.stdout.strip()
-    if completed.returncode != 0:
-        detail = completed.stderr.strip() or "Chrome JavaScript automation failed"
-        return None, None, classify_chrome_automation_error(detail)
-    if output == "__NOT_RUNNING__":
-        return None, None, "not-running"
-    if output == "__NO_TAB__":
-        return None, None, "not-found"
-    tab_id_text, separator, payload = output.partition("\t")
-    try:
-        result_tab_id = int(tab_id_text)
-    except ValueError:
-        return None, None, "Chrome returned an invalid tab identifier"
-    if not separator:
-        return None, None, "Chrome returned no page result"
-    return result_tab_id, payload, None
-
-
-def run_ai_input_subscriptions_javascript(
-    javascript: str = AI_INPUT_SUBSCRIPTIONS_JAVASCRIPT,
-) -> tuple[int | None, str | None, str | None]:
-    return run_chrome_tab_javascript(
-        AI_INPUT_SUBSCRIPTIONS_BROWSER_APP,
-        AI_INPUT_SUBSCRIPTIONS_TAB_PREFIX,
-        javascript,
-        AI_INPUT_SUBSCRIPTIONS_SCRIPT_TIMEOUT_SECONDS,
-    )
 
 
 def subscription_quota_level(quota: SubscriptionQuota) -> int:
@@ -1855,65 +1484,23 @@ def collect_subscription_quota_status(
     now_value = int(time.time()) if now_epoch is None else now_epoch
     previous = read_ai_input_state(state_file)
     cached = subscription_quota_status_from_state(previous)
+    if cached is None:
+        raw_status = previous.get("status")
+        if isinstance(raw_status, dict) and raw_status.get("source") not in {
+            "api",
+            "keychain",
+        }:
+            previous = {}
     checked_at = numeric_int(previous.get("checked_at"))
     if (
         cached is not None
         and checked_at is not None
         and 0 <= now_value - checked_at
-        < (10 if cached.health == "loading" else AI_INPUT_SUBSCRIPTIONS_CACHE_SECONDS)
+        < AI_INPUT_SUBSCRIPTIONS_CACHE_SECONDS
     ):
         return cached
 
-    direct_status = (
-        _direct_subscription_status(state_file, now_value)
-        if AI_INPUT_SUBSCRIPTIONS_DIRECT_ENABLED
-        else SubscriptionQuotaStatus(health="not-configured", source="keychain")
-    )
-    if direct_status.health != "not-configured":
-        # Once configured, the Keychain account is authoritative. Switching to a
-        # browser profile can monitor another account and duplicate threshold alerts.
-        status = direct_status
-    else:
-        _, payload, runner_error = run_ai_input_subscriptions_javascript()
-        if runner_error:
-            health = (
-                runner_error
-                if runner_error
-                in {
-                    "not-running",
-                    "not-found",
-                    "automation-permission",
-                    "javascript-permission",
-                }
-                else "error"
-            )
-            browser_status = SubscriptionQuotaStatus(
-                health=health,
-                error=None if health != "error" else sanitize_text(runner_error, 140),
-                source="browser",
-            )
-        elif payload is None:
-            browser_status = SubscriptionQuotaStatus(
-                health="error",
-                error="AI INPUT page returned no subscription data",
-                source="browser",
-            )
-        else:
-            try:
-                browser_status = parse_subscription_quota_payload(payload)
-                browser_status = SubscriptionQuotaStatus(
-                    health=browser_status.health,
-                    plans=browser_status.plans,
-                    error=browser_status.error,
-                    source="browser",
-                )
-            except ValueError as error:
-                browser_status = SubscriptionQuotaStatus(
-                    health="error",
-                    error=sanitize_text(str(error), 140),
-                    source="browser",
-                )
-        status = browser_status
+    status = _direct_subscription_status(state_file, now_value)
 
     next_state, notifications = subscription_quota_notification_transition(
         previous,
@@ -2420,27 +2007,12 @@ def append_subscription_quota_lines(
     lines: list[str],
     status: SubscriptionQuotaStatus,
 ) -> None:
-    if status.health == "not-running":
-        lines.append("AI INPUT quota: Chrome not running | color=gray")
-    elif status.health == "not-found":
-        lines.append("AI INPUT quota: no open account tab | color=gray")
-        lines.append("--Open ai.input.im and sign in | color=gray")
-    elif status.health == "automation-permission":
-        lines.append("AI INPUT quota: macOS Automation required | color=orange")
-        lines.append("--System Settings > Privacy & Security > Automation | color=gray")
-        lines.append("--Allow xbar to control Google Chrome | color=orange")
-    elif status.health == "javascript-permission":
-        lines.append("AI INPUT quota: Chrome JavaScript required | color=orange")
-        lines.append("--Chrome > View > Developer | color=gray")
-        lines.append("--Enable Allow JavaScript from Apple Events | color=orange")
-    elif status.health == "loading":
-        lines.append("AI INPUT quota: refreshing account view | color=gray")
-    elif status.health == "not-configured":
+    if status.health == "not-configured":
         lines.append("AI INPUT quota: secure token not configured | color=gray")
         lines.append("--Run Personal xbar manager: auth set | color=gray")
     elif status.health == "session-expired":
-        lines.append("AI INPUT quota: sign-in required | color=orange")
-        lines.append("--Run Personal xbar manager: auth set, or sign in via Chrome | color=gray")
+        lines.append("AI INPUT quota: token refresh required | color=orange")
+        lines.append("--Run Personal xbar manager: auth set | color=gray")
     elif status.health == "error":
         lines.append("AI INPUT quota: unavailable | color=orange")
         if status.error:

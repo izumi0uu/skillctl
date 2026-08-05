@@ -150,9 +150,6 @@ class PatchableSqlite(Protocol):
 
 class MonitorModule(Protocol):
     AGENT_ADAPTERS: tuple[AdapterLike, ...]
-    AI_INPUT_SUBSCRIPTIONS_JAVASCRIPT: str
-    AI_INPUT_SUBSCRIPTIONS_ORIGIN: str
-    AI_INPUT_SUBSCRIPTIONS_TAB_PREFIX: str
     SPOTIFY_ACTION_JAVASCRIPT: dict[str, str]
     subprocess: PatchableSubprocess
     sqlite3: PatchableSqlite
@@ -191,11 +188,6 @@ class MonitorModule(Protocol):
         checked_at: int,
     ) -> tuple[dict[str, object], str | None]: ...
 
-    def parse_subscription_quota_payload(
-        self,
-        payload: str,
-    ) -> SubscriptionQuotaStatusLike: ...
-
     def parse_subscription_api_payload(
         self,
         payload: object,
@@ -214,22 +206,12 @@ class MonitorModule(Protocol):
         now_epoch: int | None = None,
     ) -> SubscriptionQuotaStatusLike | None: ...
 
-    def chrome_tab_apple_script(
-        self,
-        browser: str,
-        url_prefix: str,
-        javascript: str,
-        tab_id: int | None = None,
-    ) -> str: ...
-
     def subscription_quota_level(self, quota: SubscriptionQuotaLike) -> int: ...
 
     def subscription_quota_percent_label(
         self,
         quota: SubscriptionQuotaLike,
     ) -> str: ...
-
-    def classify_chrome_automation_error(self, detail: str) -> str: ...
 
     def subscription_quota_notification_transition(
         self,
@@ -291,6 +273,12 @@ assert monitor.build_registry().plugin_ids == (
     "spotify",
     "processes",
 )
+for removed_browser_quota_api in (
+    "AI_INPUT_SUBSCRIPTIONS_JAVASCRIPT",
+    "parse_subscription_quota_payload",
+    "run_ai_input_subscriptions_javascript",
+):
+    assert not hasattr(monitor, removed_browser_quota_api), removed_browser_quota_api
 
 manager_path = Path(__file__).resolve().with_name("manage_personal_xbar.py")
 manager_spec = importlib.util.spec_from_file_location("personal_xbar_manager", manager_path)
@@ -305,34 +293,13 @@ parsed_auth_set = manager_module.build_parser().parse_args(
         "--expires-in",
         "900",
         "--user-agent",
-        "Fixture Browser/123",
+        "Fixture Client/123",
     ]
 )
 assert parsed_auth_set.command == "auth"
 assert parsed_auth_set.auth_command == "set"
 assert parsed_auth_set.expires_in == 900
-assert parsed_auth_set.user_agent == "Fixture Browser/123"
-
-original_manager_browser_runner = monitor.run_ai_input_subscriptions_javascript
-manager_browser_scripts: list[str] = []
-
-
-def fake_manager_browser_runner(
-    javascript: str,
-) -> tuple[int | None, str | None, str | None]:
-    manager_browser_scripts.append(javascript)
-    return 41, "Detected Browser/456", None
-
-
-try:
-    monitor.run_ai_input_subscriptions_javascript = fake_manager_browser_runner
-    assert (
-        manager_module.resolve_browser_user_agent(monitor, None)
-        == "Detected Browser/456"
-    )
-finally:
-    monitor.run_ai_input_subscriptions_javascript = original_manager_browser_runner
-assert manager_browser_scripts == ["navigator.userAgent"]
+assert parsed_auth_set.user_agent == "Fixture Client/123"
 
 auth_module_for_manager = monitor.ai_input_auth
 original_manager_loader = manager_module.load_auth_modules
@@ -374,7 +341,7 @@ try:
     auth_module_for_manager.write_credentials = fake_manager_writer
     auth_module_for_manager.delete_credentials = fake_manager_deleter
     monitor.ai_input_refresh_lock = fake_manager_lock
-    manager_auth_output = manager_module.auth_set(900, "Fixture Browser/123")
+    manager_auth_output = manager_module.auth_set(900, "Fixture Client/123")
     manager_delete_output = manager_module.auth_delete()
 finally:
     manager_module.load_auth_modules = original_manager_loader
@@ -397,7 +364,7 @@ manager_auth_text = json.dumps(manager_auth_output)
 assert "manager-access-secret" not in manager_auth_text
 assert "manager-refresh-secret" not in manager_auth_text
 assert manager_auth_output["status"] == "configured"
-assert manager_auth_output["credentials"]["has_browser_user_agent"] is True
+assert manager_auth_output["credentials"]["has_user_agent"] is True
 assert manager_delete_output["status"] == "deleted"
 
 
@@ -897,32 +864,27 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     )
     assert second_unreachable_notification == "Official model monitor is unreachable"
 
-    subscription_status = monitor.parse_subscription_quota_payload(
-        """{
-          "ok": true,
-          "subscriptions": [
-            {
-              "id": "fixture-plan",
-              "name": "Fixture CodeX Plan",
-              "status": "ACTIVE",
-              "expires_at": 4102444800,
-              "quotas": [
+    subscription_status = monitor.parse_subscription_api_payload(
+        {
+            "code": 0,
+            "data": [
                 {
-                  "period": "daily",
-                  "used_usd": "79.995",
-                  "limit_usd": "100.00",
-                  "reset_at": 4102358400
-                },
-                {
-                  "period": "weekly",
-                  "used_usd": "231.275",
-                  "limit_usd": "300.00",
-                  "reset_at": 4102444800
+                    "id": "fixture-plan",
+                    "status": "ACTIVE",
+                    "expires_at": 4_102_444_800,
+                    "daily_usage_usd": "79.995",
+                    "weekly_usage_usd": "231.275",
+                    "monthly_usage_usd": 0,
+                    "group": {
+                        "name": "Fixture CodeX Plan",
+                        "daily_limit_usd": "100.00",
+                        "weekly_limit_usd": "300.00",
+                        "monthly_limit_usd": None,
+                    },
                 }
-              ]
-            }
-          ]
-        }"""
+            ],
+        },
+        now_epoch=2_000_000,
     )
     assert subscription_status.health == "ready"
     assert len(subscription_status.plans) == 1
@@ -935,64 +897,6 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     assert [quota.period for quota in fixture_plan.quotas] == ["daily", "weekly"]
     assert [quota.used_cents for quota in fixture_plan.quotas] == [8_000, 23_128]
     assert [quota.limit_cents for quota in fixture_plan.quotas] == [10_000, 30_000]
-
-    subscription_javascript = monitor.AI_INPUT_SUBSCRIPTIONS_JAVASCRIPT
-    assert "/api/v1/subscriptions" in subscription_javascript
-    lowered_subscription_javascript = subscription_javascript.lower()
-    assert "document.cookie" not in lowered_subscription_javascript
-    assert "localstorage" not in lowered_subscription_javascript
-    assert "sessionstorage" not in lowered_subscription_javascript
-    assert "new xmlhttprequest" not in lowered_subscription_javascript
-    assert "fetch(" not in lowered_subscription_javascript
-    assert 'data-personal-xbar-quota-frame="1"' in subscription_javascript
-    assert "data-personal-xbar-quota-started-at" in subscription_javascript
-    assert "frameStale" in subscription_javascript
-    assert 'frameSnapshot.error !== "loading"' in subscription_javascript
-    assert "frame-unavailable" in subscription_javascript
-    assert "status_text: statusText" in subscription_javascript
-    assert "const hasTime = match[4] !== undefined" in subscription_javascript
-    assert "hasTime ? Number(match[4]) : 23" in subscription_javascript
-    assert 'id: `dom:${cardIndex}:${name}:${expiresAt || "none"}`' in (
-        subscription_javascript
-    )
-    assert 'quota_state: quotaState' in subscription_javascript
-    assert "/active|" not in subscription_javascript
-    assert monitor.AI_INPUT_SUBSCRIPTIONS_ORIGIN == "https://ai.input.im/"
-    assert (
-        monitor.AI_INPUT_SUBSCRIPTIONS_TAB_PREFIX
-        == "https://ai.input.im/subscriptions"
-    )
-    scoped_subscription_script = monitor.chrome_tab_apple_script(
-        "Google Chrome",
-        monitor.AI_INPUT_SUBSCRIPTIONS_TAB_PREFIX,
-        "return 1",
-    )
-    assert (
-        'const targetURL = "https://ai.input.im/subscriptions"'
-        in scoped_subscription_script
-    )
-    assert "url === targetURL" in scoped_subscription_script
-    assert "url.startsWith(`${targetURL}?`)" in scoped_subscription_script
-    assert "url.startsWith(`${targetURL}#`)" in scoped_subscription_script
-    assert "url.startsWith(urlPrefix)" not in scoped_subscription_script
-    assert "fallbackResult" in scoped_subscription_script
-    assert "JSON.parse(pageResult)" in scoped_subscription_script
-    assert "parsedResult.ok === true" in scoped_subscription_script
-    assert "runningApp.processIdentifier" in scoped_subscription_script
-    assert "Number(runningApp.activationPolicy) !== 0" in scoped_subscription_script
-    assert 'const targetURL = "http://ai.input.im/' not in scoped_subscription_script
-    assert (
-        monitor.classify_chrome_automation_error(
-            "Not authorized to send Apple events. (-1743)"
-        )
-        == "automation-permission"
-    )
-    assert (
-        monitor.classify_chrome_automation_error(
-            "Allow JavaScript from Apple Events is disabled"
-        )
-        == "javascript-permission"
-    )
 
     direct_subscription_payload = {
         "code": 0,
@@ -1093,7 +997,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     keychain_credentials = auth_module.make_credentials(
         jwt_access,
         "refresh-fixture-secret",
-        user_agent="Fixture Browser/123",
+        user_agent="Fixture Client/123",
     )
     try:
         _ = auth_module.make_credentials(
@@ -1108,7 +1012,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         _ = auth_module.make_credentials(
             "access-fixture",
             "refresh-fixture-secret",
-            user_agent="Fixture Browser\ninjected-header",
+            user_agent="Fixture Client\ninjected-header",
         )
     except auth_module.AuthError:
         pass
@@ -1120,19 +1024,19 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         "refresh-fixture-secret",
     ).expires_at is None
     assert keychain_credentials.expires_at == 2_000_000_000
-    assert keychain_credentials.user_agent == "Fixture Browser/123"
+    assert keychain_credentials.user_agent == "Fixture Client/123"
     auth_module.write_credentials(keychain_credentials, memory_keychain)
     assert auth_module.read_credentials(memory_keychain) == keychain_credentials
     redacted_representation = repr(keychain_credentials)
     assert jwt_access not in redacted_representation
     assert "refresh-fixture-secret" not in redacted_representation
-    assert "Fixture Browser/123" not in redacted_representation
+    assert "Fixture Client/123" not in redacted_representation
     redacted_summary = auth_module.credentials_summary(
         keychain_credentials, 1_999_999_900
     )
     assert "access_token" not in redacted_summary
     assert "refresh_token" not in redacted_summary
-    assert redacted_summary["has_browser_user_agent"] is True
+    assert redacted_summary["has_user_agent"] is True
     auth_module.delete_credentials(memory_keychain)
     assert auth_module.read_credentials(memory_keychain) is None
 
@@ -1195,14 +1099,14 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         _ = monitor.api_request_json(
             "/subscriptions",
             "fixture-access-secret",
-            user_agent="Fixture Browser/123",
+            user_agent="Fixture Client/123",
         )
     finally:
         urllib.request.build_opener = original_build_opener
     assert len(captured_api_requests) == 1
     captured_request = captured_api_requests[0]
     assert captured_request.full_url == "https://ai.input.im/api/v1/subscriptions"
-    assert captured_request.get_header("User-agent") == "Fixture Browser/123"
+    assert captured_request.get_header("User-agent") == "Fixture Client/123"
     assert captured_request.get_header("Authorization") == (
         "Bearer fixture-access-secret"
     )
@@ -1217,7 +1121,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
             "access-before-refresh",
             "refresh-before-rotation",
             2_001_900,
-            "Fixture Browser/123",
+            "Fixture Client/123",
         )
     }
     written_credentials: list[object] = []
@@ -1238,7 +1142,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         body: dict[str, object] | None = None,
         user_agent: str | None = None,
     ) -> object:
-        assert user_agent == "Fixture Browser/123"
+        assert user_agent == "Fixture Client/123"
         if path == "/auth/refresh":
             direct_api_calls.append("refresh")
             assert method == "POST"
@@ -1279,7 +1183,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         assert rotated.access_token == "access-after-refresh"
         assert rotated.refresh_token == "refresh-after-rotation"
         assert rotated.expires_at == 2_001_600
-        assert rotated.user_agent == "Fixture Browser/123"
+        assert rotated.user_agent == "Fixture Client/123"
         persisted_status, _ = monitor.subscription_quota_notification_transition(
             {}, retried_direct_status, checked_at=2_001_000
         )
@@ -1298,7 +1202,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
             "proactive-old-access",
             "proactive-old-refresh",
             2_002_060,
-            "Fixture Browser/123",
+            "Fixture Client/123",
         )
         written_credentials.clear()
         proactive_calls: list[str] = []
@@ -1311,7 +1215,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
             body: dict[str, object] | None = None,
             user_agent: str | None = None,
         ) -> object:
-            assert user_agent == "Fixture Browser/123"
+            assert user_agent == "Fixture Client/123"
             if path == "/auth/refresh":
                 proactive_calls.append("refresh")
                 assert body == {"refresh_token": "proactive-old-refresh"}
@@ -1339,7 +1243,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
             "concurrent-old-access",
             "concurrent-old-refresh",
             2_003_000,
-            "Fixture Browser/123",
+            "Fixture Client/123",
         )
         credential_box["value"] = expired_credentials
         written_credentials.clear()
@@ -1353,7 +1257,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
             body: dict[str, object] | None = None,
             user_agent: str | None = None,
         ) -> object:
-            assert user_agent == "Fixture Browser/123"
+            assert user_agent == "Fixture Client/123"
             assert path == "/auth/refresh"
             assert body == {"refresh_token": "concurrent-old-refresh"}
             concurrent_refresh_calls.append("refresh")
@@ -1411,23 +1315,23 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         direct_globals["AI_INPUT_REFRESH_LOCK_FILE"] = original_refresh_lock_file
 
     def threshold_status(used_usd: str) -> SubscriptionQuotaStatusLike:
-        return monitor.parse_subscription_quota_payload(
-            """{
-              "ok": true,
-              "subscriptions": [{
-                "id": "threshold-plan",
-                "name": "Threshold Plan",
-                "status": "active",
-                "expires_at": null,
-                "quotas": [{
-                  "period": "daily",
-                  "used_usd": %s,
-                  "limit_usd": 100,
-                  "reset_at": null
-                }]
-              }]
-            }"""
-            % used_usd
+        return monitor.parse_subscription_api_payload(
+            {
+                "code": 0,
+                "data": [
+                    {
+                        "id": "threshold-plan",
+                        "status": "active",
+                        "expires_at": None,
+                        "daily_usage_usd": used_usd,
+                        "group": {
+                            "name": "Threshold Plan",
+                            "daily_limit_usd": 100,
+                        },
+                    }
+                ],
+            },
+            now_epoch=2_000_000,
         )
 
     status_79_99 = threshold_status("79.99")
@@ -1446,54 +1350,45 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     )
 
     for status_text in ("Inactive", "Not active", "\u65e0\u6548"):
-        inactive_status = monitor.parse_subscription_quota_payload(
-            json.dumps(
-                {
-                    "ok": True,
-                    "subscriptions": [
-                        {
-                            "id": f"inactive-{status_text}",
-                            "name": "Inactive Fixture",
-                            "status_text": status_text,
-                            "expires_at": None,
-                            "quotas": [],
-                        }
-                    ],
-                }
-            )
+        inactive_status = monitor.parse_subscription_api_payload(
+            {
+                "code": 0,
+                "data": [
+                    {
+                        "id": f"inactive-{status_text}",
+                        "name": "Inactive Fixture",
+                        "status": status_text,
+                        "expires_at": None,
+                    }
+                ],
+            },
+            now_epoch=2_000_000,
         )
         assert inactive_status.plans[0].status == "inactive"
 
-    duplicate_plan_status = monitor.parse_subscription_quota_payload(
-        """{
-          "ok": true,
-          "subscriptions": [
-            {
-              "id": "duplicate-plan-0",
-              "name": "Duplicate Plan",
-              "status": "active",
-              "expires_at": 4102444800,
-              "quotas": [{
-                "period": "daily",
-                "used_usd": 90,
-                "limit_usd": 100,
-                "reset_at": null
-              }]
-            },
-            {
-              "id": "duplicate-plan-1",
-              "name": "Duplicate Plan",
-              "status": "active",
-              "expires_at": 4102444800,
-              "quotas": [{
-                "period": "daily",
-                "used_usd": 70,
-                "limit_usd": 100,
-                "reset_at": null
-              }]
-            }
-          ]
-        }"""
+    duplicate_plan_status = monitor.parse_subscription_api_payload(
+        {
+            "code": 0,
+            "data": [
+                {
+                    "id": "duplicate-plan-0",
+                    "name": "Duplicate Plan",
+                    "status": "active",
+                    "expires_at": 4_102_444_800,
+                    "daily_usage_usd": 90,
+                    "group": {"daily_limit_usd": 100},
+                },
+                {
+                    "id": "duplicate-plan-1",
+                    "name": "Duplicate Plan",
+                    "status": "active",
+                    "expires_at": 4_102_444_800,
+                    "daily_usage_usd": 70,
+                    "group": {"daily_limit_usd": 100},
+                },
+            ],
+        },
+        now_epoch=2_000_000,
     )
     duplicate_state, duplicate_notice = (
         monitor.subscription_quota_notification_transition(
@@ -1575,18 +1470,20 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     assert any("$99.99 / $100.00 \u00b7 99%" in line for line in near_exhausted_lines)
     assert not any("$99.99 / $100.00 \u00b7 100%" in line for line in near_exhausted_lines)
 
-    unavailable_quota_status = monitor.parse_subscription_quota_payload(
-        """{
-          "ok": true,
-          "subscriptions": [{
-            "id": "unparsed-plan",
-            "name": "Changed DOM Plan",
-            "status_text": "Active",
-            "quota_state": "unavailable",
-            "expires_at": null,
-            "quotas": []
-          }]
-        }"""
+    unavailable_quota_status = monitor.parse_subscription_api_payload(
+        {
+            "code": 0,
+            "data": [
+                {
+                    "id": "unparsed-plan",
+                    "name": "Partial API Plan",
+                    "status": "active",
+                    "expires_at": None,
+                    "group": {},
+                }
+            ],
+        },
+        now_epoch=2_000_000,
     )
     unavailable_quota_lines = monitor.render(
         fixture_rows,
@@ -1601,18 +1498,24 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     assert "----Usage unavailable | color=orange" in unavailable_quota_lines
     assert "----Unlimited | color=green" not in unavailable_quota_lines
 
-    unlimited_quota_status = monitor.parse_subscription_quota_payload(
-        """{
-          "ok": true,
-          "subscriptions": [{
-            "id": "unlimited-plan",
-            "name": "Explicit Unlimited Plan",
-            "status": "active",
-            "quota_state": "unlimited",
-            "expires_at": null,
-            "quotas": []
-          }]
-        }"""
+    unlimited_quota_status = monitor.parse_subscription_api_payload(
+        {
+            "code": 0,
+            "data": [
+                {
+                    "id": "unlimited-plan",
+                    "name": "Explicit Unlimited Plan",
+                    "status": "active",
+                    "expires_at": None,
+                    "group": {
+                        "daily_limit_usd": None,
+                        "weekly_limit_usd": None,
+                        "monthly_limit_usd": None,
+                    },
+                }
+            ],
+        },
+        now_epoch=2_000_000,
     )
     unlimited_quota_lines = monitor.render(
         fixture_rows,
@@ -1630,22 +1533,10 @@ with tempfile.TemporaryDirectory() as temporary_directory:
             None,
             "AI INPUT quota: secure token not configured | color=gray",
         ),
-        ("not-running", None, "AI INPUT quota: Chrome not running | color=gray"),
-        ("not-found", None, "AI INPUT quota: no open account tab | color=gray"),
-        (
-            "automation-permission",
-            None,
-            "AI INPUT quota: macOS Automation required | color=orange",
-        ),
-        (
-            "javascript-permission",
-            None,
-            "AI INPUT quota: Chrome JavaScript required | color=orange",
-        ),
         (
             "session-expired",
             None,
-            "AI INPUT quota: sign-in required | color=orange",
+            "AI INPUT quota: token refresh required | color=orange",
         ),
         ("error", "fixture quota failure", "AI INPUT quota: unavailable | color=orange"),
     )
@@ -1662,58 +1553,65 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         assert_supported_xbar_parameters(failure_lines)
         assert failure_lines[0].endswith("· Q ? | color=orange")
         assert expected_line in failure_lines
-        if health == "automation-permission":
-            assert any("Privacy & Security > Automation" in line for line in failure_lines)
-        if health == "javascript-permission":
-            assert any("Allow JavaScript from Apple Events" in line for line in failure_lines)
         if error is not None:
             assert f"--{error} | color=gray" in failure_lines
 
     collector_globals = monitor.collect_subscription_quota_status.__globals__
-    original_subscription_runner = collector_globals[
-        "run_ai_input_subscriptions_javascript"
-    ]
     original_subscription_enabled = collector_globals[
         "AI_INPUT_SUBSCRIPTIONS_ENABLED"
-    ]
-    original_direct_enabled = collector_globals[
-        "AI_INPUT_SUBSCRIPTIONS_DIRECT_ENABLED"
     ]
     original_direct_collector = collector_globals["_direct_subscription_status"]
     original_subscription_notifier = collector_globals[
         "send_subscription_quota_notification"
     ]
-    collector_calls: list[str] = []
-    collector_payload = """{
-      "ok": true,
-      "subscriptions": [{
-        "id": "collector-plan",
-        "name": "Collector Plan",
-        "status_text": "Active",
-        "quota_state": "available",
-        "expires_at": null,
-        "quotas": [{
-          "period": "daily",
-          "used_usd": 50,
-          "limit_usd": 100,
-          "reset_at": null
-        }]
-      }]
-    }"""
+    collector_calls: list[tuple[Path, int]] = []
 
-    def fake_subscription_runner(
-        javascript: str = subscription_javascript,
-    ) -> tuple[int | None, str | None, str | None]:
-        collector_calls.append(javascript)
-        return 77, collector_payload, None
+    def fake_direct_collector(
+        state_file: Path,
+        now_epoch: int,
+    ) -> SubscriptionQuotaStatusLike:
+        collector_calls.append((state_file, now_epoch))
+        return subscription_status
 
     quota_state_file = home / "subscription-quota-state.json"
+    _ = quota_state_file.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "checked_at": 2_001_000,
+                "health": "ready",
+                "quota_levels": {"legacy-browser-plan:daily": 2},
+                "status": {
+                    "health": "ready",
+                    "error": None,
+                    "source": "browser",
+                    "plans": [
+                        {
+                            "id": "legacy-browser-plan",
+                            "name": "Legacy Browser Plan",
+                            "status": "active",
+                            "expires_at": None,
+                            "quota_state": "available",
+                            "quotas": [
+                                {
+                                    "period": "daily",
+                                    "used_cents": 9_000,
+                                    "limit_cents": 10_000,
+                                    "reset_at": None,
+                                }
+                            ],
+                        }
+                    ],
+                },
+            },
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     try:
         collector_globals["AI_INPUT_SUBSCRIPTIONS_ENABLED"] = True
-        collector_globals["AI_INPUT_SUBSCRIPTIONS_DIRECT_ENABLED"] = False
-        collector_globals["run_ai_input_subscriptions_javascript"] = (
-            fake_subscription_runner
-        )
+        collector_globals["_direct_subscription_status"] = fake_direct_collector
         collector_globals["send_subscription_quota_notification"] = (
             lambda _message: None
         )
@@ -1722,18 +1620,22 @@ with tempfile.TemporaryDirectory() as temporary_directory:
             now_epoch=2_001_000,
         )
         assert collected_status is not None and collected_status.health == "ready"
-        assert len(collector_calls) == 1
+        assert collected_status.source == "api"
+        assert collector_calls == [(quota_state_file, 2_001_000)]
         cached_status = monitor.collect_subscription_quota_status(
             quota_state_file,
             now_epoch=2_001_030,
         )
         assert cached_status is not None and cached_status.health == "ready"
-        assert len(collector_calls) == 1
+        assert cached_status.source == "api"
+        assert collector_calls == [(quota_state_file, 2_001_000)]
         assert quota_state_file.stat().st_mode & 0o777 == 0o600
         quota_state_text = quota_state_file.read_text(encoding="utf-8")
         quota_state_payload = cast(object, json.loads(quota_state_text))
         assert isinstance(quota_state_payload, dict)
         assert cast(dict[str, object], quota_state_payload)["checked_at"] == 2_001_000
+        assert '"source":"api"' in quota_state_text
+        assert "legacy-browser-plan" not in quota_state_text
         assert not any(
             secret in quota_state_text.lower()
             for secret in ("authorization", "bearer", "cookie", "localstorage")
@@ -1743,33 +1645,34 @@ with tempfile.TemporaryDirectory() as temporary_directory:
             now_epoch=2_001_056,
         )
         assert refreshed_status is not None and refreshed_status.health == "ready"
-        assert len(collector_calls) == 2
+        assert collector_calls == [
+            (quota_state_file, 2_001_000),
+            (quota_state_file, 2_001_056),
+        ]
 
-        collector_calls.clear()
-        collector_globals["AI_INPUT_SUBSCRIPTIONS_DIRECT_ENABLED"] = True
-        collector_globals["_direct_subscription_status"] = (
-            lambda _state_file, _now_epoch: subscription_status_type(
+        def fake_direct_failure(
+            state_file: Path,
+            now_epoch: int,
+        ) -> SubscriptionQuotaStatusLike:
+            collector_calls.append((state_file, now_epoch))
+            return subscription_status_type(
                 health="session-expired",
                 error="AI INPUT sign-in required; refresh token was rejected",
                 source="api",
             )
-        )
+
+        collector_globals["_direct_subscription_status"] = fake_direct_failure
+        direct_failure_state_file = home / "direct-failure-state.json"
         direct_failure_status = monitor.collect_subscription_quota_status(
-            home / "direct-failure-state.json",
+            direct_failure_state_file,
             now_epoch=2_001_100,
         )
         assert direct_failure_status is not None
         assert direct_failure_status.health == "session-expired"
-        assert collector_calls == []
+        assert collector_calls[-1] == (direct_failure_state_file, 2_001_100)
     finally:
-        collector_globals["run_ai_input_subscriptions_javascript"] = (
-            original_subscription_runner
-        )
         collector_globals["AI_INPUT_SUBSCRIPTIONS_ENABLED"] = (
             original_subscription_enabled
-        )
-        collector_globals["AI_INPUT_SUBSCRIPTIONS_DIRECT_ENABLED"] = (
-            original_direct_enabled
         )
         collector_globals["_direct_subscription_status"] = original_direct_collector
         collector_globals["send_subscription_quota_notification"] = (
@@ -2021,6 +1924,7 @@ with tempfile.TemporaryDirectory() as status_state_directory:
                 "status": {
                     "health": "ready",
                     "error": None,
+                    "source": "api",
                     "plans": [
                         {
                             "id": "entry-plan",

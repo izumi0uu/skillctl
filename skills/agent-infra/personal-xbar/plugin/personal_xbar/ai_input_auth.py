@@ -1,9 +1,8 @@
 """Secure local credentials for the AI.INPUT.IM Personal xbar probe.
 
-The browser stores the site's session in local storage.  Personal xbar uses a
-separate, deliberately small credential record in the user's login keychain so
-the quota probe can run without a browser.  This module never prints or places
-the token values in process arguments.
+Personal xbar stores one deliberately small credential record in the user's
+login keychain. This module never reads a browser session, prints token values,
+or places token values in process arguments.
 """
 
 from __future__ import annotations
@@ -84,16 +83,16 @@ def _user_agent_value(value: object) -> str | None:
     if value is None or value == "":
         return None
     if not isinstance(value, str):
-        raise AuthError("browser user agent is invalid")
+        raise AuthError("request user agent is invalid")
     user_agent = value.strip()
     if not user_agent:
         return None
     if len(user_agent) > USER_AGENT_MAX_LENGTH:
-        raise AuthError("browser user agent is too long")
+        raise AuthError("request user agent is too long")
     if not user_agent.isascii() or any(
         ord(character) < 32 or ord(character) == 127 for character in user_agent
     ):
-        raise AuthError("browser user agent contains invalid characters")
+        raise AuthError("request user agent contains invalid characters")
     return user_agent
 
 
@@ -197,14 +196,14 @@ def credentials_summary(
             "configured": False,
             "has_access_token": False,
             "has_refresh_token": False,
-            "has_browser_user_agent": False,
+            "has_user_agent": False,
         }
     expiry = credentials.expires_at
     return {
         "configured": True,
         "has_access_token": True,
         "has_refresh_token": True,
-        "has_browser_user_agent": credentials.user_agent is not None,
+        "has_user_agent": credentials.user_agent is not None,
         "expires_at": expiry,
         "expires_in": expiry - now_epoch if expiry is not None else None,
         "refresh_due": credentials_need_refresh(credentials, now_epoch),

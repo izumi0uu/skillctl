@@ -36,28 +36,25 @@ Never hand-edit a derived copy. Change the canonical plugin, update its determin
 - Network access to `https://status.input.im/api/status` for model health.
 - `/usr/bin/osascript` for failure and recovery notifications.
 - macOS Keychain access for the generic-password item used by the direct quota probe.
-- For browser-independent quota monitoring, configure credentials locally with
+- Configure quota credentials locally with
   `/usr/bin/python3 scripts/manage_personal_xbar.py auth set`; do not put tokens in shell
-  arguments or chat. Keep the token-source `ai.input.im` Chrome tab open during
-  setup so the manager can capture its exact User-Agent for session-bound refresh.
-- Google Chrome with an already authenticated `https://ai.input.im/subscriptions` tab
-  is an optional quota fallback. An `open.spotify.com` tab is still required for
-  Spotify Web controls.
+  arguments or chat. The quota monitor never reads a Chrome login session.
+- Google Chrome with an `open.spotify.com` tab is required only for Spotify Web controls.
 - macOS `System Settings > Privacy & Security > Automation` permission for xbar to
-  control Google Chrome when the browser fallback or Spotify controls are used.
+  control Google Chrome when Spotify controls are used.
 - Chrome menu `View > Developer > Allow JavaScript from Apple Events` enabled for
-  browser fallback, Spotify playback inspection, and page-local media control.
+  Spotify playback inspection and page-local media control.
 - Read access to local agent session metadata when evidence-backed titles are desired.
 
-The plugin never sends signals, reads process environments, copies browser cookies,
+The plugin never sends signals, reads process environments, reads browser sessions,
 or writes agent runtime state. Rotating access and refresh tokens are stored only as
-one JSON value, together with the non-secret token-source browser User-Agent, in
+one JSON value, together with the non-secret request User-Agent, in
 the user's login Keychain item
 `skillctl.personal-xbar.ai-input-auth` / `subscriptions`; they are never written to
 the cache, command line, or logs. Its filesystem writes are limited to its own
 mode-`0600` model-status, subscription-quota, refresh-lock, and Spotify
-mute-ownership state files. A status outage, expired token, or missing browser
-permission degrades visibly without hiding the local process inventory.
+mute-ownership state files. A status outage, expired token, or Spotify browser
+permission failure degrades visibly without hiding the local process inventory.
 
 ## Model Health Behavior
 
@@ -80,55 +77,43 @@ AI_INPUT_MONITOR_STATE_FILE=/custom/cache/path.json
 ## Subscription Quota Behavior
 
 - Subscription quota is a separate registered plugin from public model health. Disabling it does not disable the public status probe or local process inventory.
-- When Keychain credentials are configured, the monitor calls the official
-  `https://ai.input.im/api/v1/subscriptions` endpoint directly and does not require
-  Chrome.
+- The monitor calls the official `https://ai.input.im/api/v1/subscriptions` endpoint
+  directly with credentials from macOS Keychain. Chrome login state is never used.
 - The direct request sends only `Authorization: Bearer <access_token>` and the
-  token-source browser User-Agent to the exact HTTPS `ai.input.im` origin.
+  configured request User-Agent to the exact HTTPS `ai.input.im` origin.
   Redirects to another origin are rejected and response bodies are bounded and
   never copied into errors.
 - The access token is refreshed about 120 seconds before its server-provided
   `expires_in` deadline. A refresh atomically replaces the rotated access/refresh
   pair in Keychain; a 401 triggers one refresh-and-retry. There is deliberately no
   fixed three-day schedule because the service controls refresh-token TTL.
-- Once direct credentials exist, that Keychain account remains authoritative; a
-  direct error is never silently replaced with quota from another Chrome profile.
-  If direct credentials are absent or direct mode is disabled, the monitor uses its
-  browser fallback through Apple Events JavaScript only in an already open
-  `https://ai.input.im/subscriptions` Chrome tab, with an optional query or fragment
-  but no other path. It prefers a successful authenticated snapshot when multiple
-  matching tabs or regular Chrome instances exist.
-- The browser fallback reads plan and quota values rendered by the official page after
-  that page makes its normal authenticated `/api/v1/subscriptions` request.
-- An invisible same-origin subscriptions frame refreshes the official view in the background for the next poll. Failed or stale frames are retried; the visible tab is not reloaded or activated.
-- Chrome is selected by its normal visible macOS process ID, so unrelated headless Chrome instances cannot capture the Apple Events request.
-- The account must be configured either in Keychain or through an existing Chrome
-  login. The monitor does not perform login, read Chrome's cookie database or browser
-  storage, copy cookies, or capture browser session values.
+- Keychain credentials are the only quota identity. If they are absent, the menu shows
+  `secure token not configured`; it does not inspect or fall back to any browser profile.
+- Legacy browser-sourced cache entries are rejected immediately, so installing this
+  version cannot continue displaying quota captured from Chrome during the old cache TTL.
 - Successful quota results are cached for 55 seconds. The xbar 15-second refresh therefore does not repeatedly call the account endpoint.
 - The menu shows each active plan's status, expiration, and quota usage, including its reset time when supplied by the service.
-- A plan is shown as unlimited only when the official page says so explicitly. An active card whose quota rows cannot be parsed is marked unavailable instead of silently disabling alerts.
+- A plan is shown as unlimited only when the API supplies explicit limit fields with no
+  finite limits. An active plan whose quota fields are incomplete is marked unavailable
+  instead of silently disabling alerts.
 - Whole-number percentages are rounded down, so `99.99%` never appears exhausted before usage actually reaches the limit.
 - Usage crossing 80%, 90%, or 100% (exhausted) sends one transition notification at each threshold. Continued refreshes in the same band stay quiet.
 - A reset or recovery sends one notification after usage falls below 80%. Initial startup below 80% stays quiet.
-- Closing Chrome, having no open subscriptions tab, denying macOS Automation, disabling JavaScript from Apple Events, losing network access, or letting the account session expire is reported as a distinct unavailable quota state without suppressing other menu sections.
+- Missing credentials, a rejected refresh token, and API/network failures are reported
+  as distinct unavailable quota states without suppressing other menu sections.
 
 Optional environment overrides:
 
 ```text
 AI_INPUT_SUBSCRIPTIONS_ENABLED=0
 AI_INPUT_SUBSCRIPTIONS_NOTIFICATIONS=0
-AI_INPUT_SUBSCRIPTIONS_DIRECT=0
-AI_INPUT_SUBSCRIPTIONS_BROWSER_APP=Google Chrome
 AI_INPUT_SUBSCRIPTIONS_PAGE_URL=https://ai.input.im/subscriptions
 AI_INPUT_SUBSCRIPTIONS_STATE_FILE=/custom/cache/ai-input-subscriptions.json
 AI_INPUT_REFRESH_LOCK_FILE=/custom/cache/ai-input-refresh.lock
 ```
 
-The browser application and page URL overrides are operational controls, not an
-authorization to broaden inspection. Tab matching remains fixed to the exact HTTPS
-`ai.input.im/subscriptions` path; the page URL override changes only the menu's Open
-action. Keychain service/account names can be overridden for isolated testing with
+The page URL override changes only the menu's Open action. Keychain service/account
+names can be overridden for isolated testing with
 `AI_INPUT_KEYCHAIN_SERVICE` and `AI_INPUT_KEYCHAIN_ACCOUNT`.
 
 ## Spotify Web Behavior
@@ -195,7 +180,7 @@ Installation is transactional: verify source, back up a changed target, atomical
 python3 "$SKILL_DIR/scripts/manage_personal_xbar.py" verify --installed
 ```
 
-Then allow one 15-second xbar refresh and inspect the live menu. Session rows must remain evidence-only; the Worker row owns MCP and Support submenus. The title must include the API healthy/total count, and the AI.INPUT.IM health and subscription submenus must preserve process inventory when either service is unavailable. With Keychain credentials configured, quota should appear while Chrome is closed; without them, the browser fallback requires a logged-in `ai.input.im` tab and Apple Events JavaScript.
+Then allow one 15-second xbar refresh and inspect the live menu. Session rows must remain evidence-only; the Worker row owns MCP and Support submenus. The title must include the API healthy/total count, and the AI.INPUT.IM health and subscription submenus must preserve process inventory when either service is unavailable. Quota must come only from the direct API; without Keychain credentials it must show `secure token not configured`, regardless of Chrome state.
 
 To manage the local credential record, use the lifecycle manager on the same Mac:
 
@@ -207,20 +192,19 @@ To manage the local credential record, use the lifecycle manager on the same Mac
 ```
 
 `auth set` prompts for both tokens without echoing them and refuses a terminal that
-cannot guarantee hidden input. It captures `navigator.userAgent` from the open
-account tab; `auth set --user-agent '<value>'` supplies it explicitly when browser
-automation is unavailable. It derives a JWT expiry when possible;
+cannot guarantee hidden input. It never inspects Chrome. Supply the token's
+non-secret request User-Agent with `auth set --user-agent '<value>'`, or enter it at
+the plain-text prompt. It derives a JWT expiry when possible;
 `auth set --expires-in <seconds>` can supply an opaque token's access expiry. The
 refresh service's own `expires_in` replaces that estimate after the first rotation.
 Use `/usr/bin/python3` for these auth commands so the Keychain item is created by
 the same interpreter xbar normally launches on macOS.
 
-Use a dedicated Chrome profile/session to obtain the xbar token pair, then close
-that token-source tab without logging out. Reusing the same rotating refresh token
-in an open web session creates a race in which either Chrome or xbar can consume it
-first. The stored User-Agent must match the issuing session, and the machine must
-use the same outward network path when the service enables IP/User-Agent session
-binding.
+Do not let another client actively use the same rotating refresh token. If the token
+pair was obtained from a browser session, stop that session after extraction without
+logging it out; otherwise either client may consume the next refresh token first.
+When the service enables IP/User-Agent session binding, provide the issuing
+User-Agent explicitly and keep the same outward network path.
 
 ### 5. List And Restore Backups
 
@@ -257,11 +241,9 @@ Lifecycle-manager-only changes update the skill catalog hash but do not require 
 - Model-status, subscription-quota, refresh-lock, and Spotify mute-ownership state contain no credentials and are written atomically with mode `0600`; rotating tokens exist only in the Keychain item.
 - Model failure and recovery notifications are transition-only; verifier runs disable notifications and use isolated state.
 - Subscription quota alerts are transition-only at 80%, 90%, and exhausted; reset recovery occurs only below 80%.
-- Authenticated subscription collection uses the exact official API when Keychain
-  tokens exist. It reads the rendered official subscriptions view only when direct
-  credentials are absent or direct mode is disabled, so it cannot switch accounts
-  or duplicate quota alerts during a transient API failure. It never persists
-  browser cookies or storage.
+- Authenticated subscription collection uses only the exact official API with
+  Keychain tokens. It never reads a rendered browser view, switches browser profiles,
+  or persists browser cookies or storage.
 - Spotify auto-mute never restores a page that was already muted before the advertisement.
 
 ## Safety
@@ -271,10 +253,9 @@ Lifecycle-manager-only changes update the skill catalog hash but do not require 
 - Do not remove `.15s` from the live entrypoint; xbar uses it to schedule refreshes. The manager migrates and backs up the legacy `mcp-monitor.15s.py` target to prevent duplicates.
 - Do not use this skill to kill, pool, or clean MCP processes.
 - Do not add an AI.INPUT.IM API key or replace the official public status feed with paid completion probes.
-- Do not copy AI.INPUT.IM cookies, browser storage, or API keys into plugin state. User-supplied access/refresh tokens may be entered only through the manager's hidden `auth set` prompt and are kept in the macOS login Keychain, never in state JSON. Keep browser scripting scoped to the HTTPS `ai.input.im/subscriptions` page.
+- Do not copy AI.INPUT.IM cookies, browser storage, or API keys into plugin state. User-supplied access/refresh tokens may be entered only through the manager's hidden `auth set` prompt and are kept in the macOS login Keychain, never in state JSON.
 - Do not treat a fixed three-day timer as token validity. Use the server's `expires_in`, rotate the refresh token atomically, and require a new hidden `auth set` after a rejected refresh or session-binding failure.
-- Do not let Chrome and xbar actively share one rotating refresh token. Capture an
-  xbar-dedicated session's User-Agent during `auth set`, close its source tab, and
-  never log that dedicated session out unless the xbar credentials should be revoked.
+- Do not let xbar and another client actively share one rotating refresh token.
+  Supply `--user-agent` manually when the service binds a token to its issuing client.
 - Keep Spotify JavaScript scoped to `open.spotify.com`; do not inspect unrelated Chrome tabs or browser history.
 - Preserve unrelated managed skills; use `skillctl` as the distribution control plane.

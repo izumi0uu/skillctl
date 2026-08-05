@@ -571,25 +571,15 @@ def hidden_credential(prompt: str) -> str:
         ) from None
 
 
-def resolve_browser_user_agent(
-    runtime_module: object,
-    supplied_user_agent: str | None,
-) -> str:
+def resolve_request_user_agent(supplied_user_agent: str | None) -> str:
     if supplied_user_agent is not None and supplied_user_agent.strip():
         return supplied_user_agent.strip()
-    _tab_id, detected, error = runtime_module.run_ai_input_subscriptions_javascript(
-        "navigator.userAgent"
-    )
-    if error is None and isinstance(detected, str) and detected.strip():
-        return detected.strip()
     try:
-        user_agent = input(
-            "Token-source browser User-Agent (navigator.userAgent): "
-        ).strip()
+        user_agent = input("Token request User-Agent (non-secret): ").strip()
     except (EOFError, KeyboardInterrupt):
-        raise MonitorManagerError("browser User-Agent input was cancelled") from None
+        raise MonitorManagerError("request User-Agent input was cancelled") from None
     if not user_agent:
-        raise MonitorManagerError("token-source browser User-Agent is required")
+        raise MonitorManagerError("token request User-Agent is required")
     return user_agent
 
 
@@ -599,7 +589,7 @@ def auth_set(
 ) -> dict[str, object]:
     auth_module, runtime_module = load_auth_modules()
     try:
-        resolved_user_agent = resolve_browser_user_agent(runtime_module, user_agent)
+        resolved_user_agent = resolve_request_user_agent(user_agent)
         access_token = hidden_credential("AI.INPUT.IM access token (hidden): ")
         refresh_token = hidden_credential("AI.INPUT.IM refresh token (hidden): ")
         expiry = None if expires_in is None else int(time.time()) + expires_in
@@ -626,8 +616,7 @@ def auth_set(
         "keychain_account": auth_module.KEYCHAIN_ACCOUNT,
         "credentials": auth_module.credentials_summary(credentials, int(time.time())),
         "next_step": (
-            "close the dedicated token-source browser tab without logging out, "
-            "then run auth test"
+            "stop any client sharing this rotating refresh token, then run auth test"
         ),
     }
 
@@ -726,8 +715,8 @@ def build_parser() -> argparse.ArgumentParser:
     _ = auth_set_parser.add_argument(
         "--user-agent",
         help=(
-            "Non-secret browser User-Agent that issued the token; omit to detect it "
-            "from an open AI.INPUT.IM Chrome tab or enter it interactively."
+            "Non-secret User-Agent associated with the token; omit to enter it "
+            "interactively. Chrome is never inspected."
         ),
     )
     _ = auth_commands.add_parser("status")
