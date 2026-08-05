@@ -19,6 +19,7 @@ MANAGER_PATH = (
     / "scripts"
     / "manage_personal_xbar.py"
 )
+CANONICAL_SOURCE = MANAGER_PATH.parents[1] / "plugin" / "personal-xbar.15s.py"
 
 
 class ManagerModule(Protocol):
@@ -50,6 +51,8 @@ class ManagerModule(Protocol):
     ) -> dict[str, object]: ...
 
     def sha256_file(self, path: Path) -> str: ...
+
+    def run_bundled_verifier(self, plugin: Path) -> str: ...
 
 
 def load_manager() -> ManagerModule:
@@ -142,6 +145,35 @@ class TestPersonalXbarManager(unittest.TestCase):
         self.assertEqual(metadata["version"], "1.0.0")
         self.assertEqual(metadata["sha256"], MANAGER.sha256_file(self.target))
         self.assertEqual(MANAGER.list_backups(self.state_root), [])
+
+    def test_bundled_verifier_accepts_installed_xbar_bundle(self) -> None:
+        live_target = (
+            self.root
+            / "Library"
+            / "Application Support"
+            / "xbar"
+            / "plugins"
+            / "personal-xbar.15s.py"
+        )
+
+        def verify_source_then_installed(path: Path) -> str:
+            if path == CANONICAL_SOURCE:
+                return "canonical source verified"
+            return MANAGER.run_bundled_verifier(path)
+
+        result = MANAGER.install(
+            CANONICAL_SOURCE,
+            live_target,
+            self.state_root,
+            verify_plugin=verify_source_then_installed,
+            require_macos=False,
+        )
+
+        self.assertEqual(result["action"], "installed")
+        self.assertIn("Personal xbar contract passed", result["verification"])
+        self.assertTrue(
+            (live_target.parent / ".personal-xbar" / "personal_xbar").is_dir()
+        )
 
     def test_current_install_is_noop_without_backup(self) -> None:
         _ = self.install()

@@ -292,7 +292,7 @@ assert monitor.build_registry().plugin_ids == (
     "processes",
 )
 
-manager_path = PLUGIN.parents[1] / "scripts" / "manage_personal_xbar.py"
+manager_path = Path(__file__).resolve().with_name("manage_personal_xbar.py")
 manager_spec = importlib.util.spec_from_file_location("personal_xbar_manager", manager_path)
 assert manager_spec is not None and manager_spec.loader is not None
 manager_module = importlib.util.module_from_spec(manager_spec)
