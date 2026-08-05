@@ -3,13 +3,15 @@
 Every process is assigned to at most one top-level agent runtime by ancestry.
 Session titles are shown only when a reliable PID/TTY mapping exists. The script
 never sends signals, reads process environments, or writes agent runtime state.
-It stores only its own model-status, notification, and Spotify mute state.
+It stores only its own model-status, subscription-quota, notification, and
+Spotify mute state.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import sqlite3
 import subprocess
@@ -20,6 +22,7 @@ import urllib.request
 from collections import defaultdict, deque
 from collections.abc import Iterable
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import cast
 
@@ -44,6 +47,30 @@ AI_INPUT_STATE_FILE = Path(
         / "skillctl"
         / "personal-xbar"
         / "ai-input-status.json",
+    )
+)
+AI_INPUT_SUBSCRIPTIONS_ENABLED = (
+    os.environ.get("AI_INPUT_SUBSCRIPTIONS_ENABLED", "1") != "0"
+)
+AI_INPUT_SUBSCRIPTIONS_ORIGIN = "https://ai.input.im/"
+AI_INPUT_SUBSCRIPTIONS_TAB_PREFIX = "https://ai.input.im/subscriptions"
+AI_INPUT_SUBSCRIPTIONS_PAGE_URL = os.environ.get(
+    "AI_INPUT_SUBSCRIPTIONS_PAGE_URL", "https://ai.input.im/subscriptions"
+)
+AI_INPUT_SUBSCRIPTIONS_BROWSER_APP = os.environ.get(
+    "AI_INPUT_SUBSCRIPTIONS_BROWSER_APP", "Google Chrome"
+)
+AI_INPUT_SUBSCRIPTIONS_CACHE_SECONDS = 55
+AI_INPUT_SUBSCRIPTIONS_SCRIPT_TIMEOUT_SECONDS = 5.0
+AI_INPUT_SUBSCRIPTIONS_STATE_FILE = Path(
+    os.environ.get(
+        "AI_INPUT_SUBSCRIPTIONS_STATE_FILE",
+        HOME
+        / "Library"
+        / "Caches"
+        / "skillctl"
+        / "personal-xbar"
+        / "ai-input-subscriptions.json",
     )
 )
 SPOTIFY_WEB_ENABLED = os.environ.get("SPOTIFY_WEB_ENABLED", "1") != "0"
@@ -133,6 +160,31 @@ class AiInputStatus:
     health: str
     generated_at: int | None
     services: tuple[AiInputService, ...]
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class SubscriptionQuota:
+    period: str
+    used_cents: int
+    limit_cents: int
+    reset_at: int | None = None
+
+
+@dataclass(frozen=True)
+class SubscriptionPlan:
+    plan_id: str
+    name: str
+    status: str
+    expires_at: int | None
+    quotas: tuple[SubscriptionQuota, ...]
+    quota_state: str = "available"
+
+
+@dataclass(frozen=True)
+class SubscriptionQuotaStatus:
+    health: str
+    plans: tuple[SubscriptionPlan, ...] = ()
     error: str | None = None
 
 
@@ -701,6 +753,694 @@ def collect_ai_input_status(
     return status
 
 
+AI_INPUT_SUBSCRIPTIONS_JAVASCRIPT = r"""
+(() => {
+  /* The app renders data from its authenticated /api/v1/subscriptions request. */
+  const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
+  const parseExpiry = (text) => {
+    const match = clean(text).match(
+      /\(?(\d{4})[/-](\d{1,2})[/-](\d{1,2})\s+(\d{1,2}):(\d{2})\)?/
+    );
+    if (!match) return null;
+    const milliseconds = new Date(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      Number(match[4]),
+      Number(match[5])
+    ).getTime();
+    return Number.isFinite(milliseconds) ? Math.floor(milliseconds / 1000) : null;
+  };
+  const parseReset = (text, expiresAt) => {
+    const value = clean(text);
+    const days = Number((value.match(/(\d+)\s*d/i) || [0, 0])[1]);
+    const hours = Number((value.match(/(\d+)\s*h/i) || [0, 0])[1]);
+    const minutes = Number((value.match(/(\d+)\s*m/i) || [0, 0])[1]);
+    if (!days && !hours && !minutes) return null;
+    const resetAt = Math.floor(Date.now() / 1000) + days * 86400 + hours * 3600 + minutes * 60;
+    return expiresAt && expiresAt < resetAt ? expiresAt : resetAt;
+  };
+  const periodFromLabel = (label) => {
+    const value = clean(label).toLowerCase();
+    if (/daily|\u6bcf\u65e5|\u65e5\u989d\u5ea6/.test(value)) return "daily";
+    if (/weekly|\u6bcf\u5468|\u6bcf\u9031|\u5468\u989d\u5ea6|\u9031\u984d\u5ea6/.test(value)) return "weekly";
+    if (/monthly|\u6bcf\u6708|\u6708\u989d\u5ea6/.test(value)) return "monthly";
+    return null;
+  };
+  const parseDocument = (doc) => {
+    if (!doc) return {ok: false, error: "loading"};
+    const path = String(doc.location && doc.location.pathname || "");
+    if (/\/login(?:\/|$)/i.test(path) || doc.querySelector('input[type="password"]')) {
+      return {ok: false, error: "session-expired"};
+    }
+    const main = doc.querySelector("main");
+    if (!main) return {ok: false, error: "loading"};
+    const subscriptions = [];
+    const headings = Array.from(main.querySelectorAll("h3"));
+    for (let cardIndex = 0; cardIndex < headings.length; cardIndex++) {
+      const heading = headings[cardIndex];
+      const card = heading.closest("div.border");
+      if (!card) continue;
+      const name = clean(heading.textContent);
+      if (!name) continue;
+      const cardText = clean(card.innerText);
+      const statusText = clean(card.querySelector("span.rounded-full")?.textContent);
+      const expiresAt = parseExpiry(cardText);
+      const quotas = [];
+      const seenPeriods = new Set();
+      for (const span of card.querySelectorAll("span")) {
+        const amount = clean(span.textContent).match(
+          /^\$\s*([\d,]+(?:\.\d+)?)\s*\/\s*\$\s*([\d,]+(?:\.\d+)?)$/
+        );
+        if (!amount) continue;
+        const row = span.parentElement;
+        const label = clean(row?.querySelector("span:first-child")?.textContent);
+        const period = periodFromLabel(label);
+        if (!period || seenPeriods.has(period)) continue;
+        const resetText = clean(row?.parentElement?.querySelector("p")?.textContent);
+        quotas.push({
+          period,
+          used_usd: amount[1].replace(/,/g, ""),
+          limit_usd: amount[2].replace(/,/g, ""),
+          reset_at: parseReset(resetText, expiresAt)
+        });
+        seenPeriods.add(period);
+      }
+      const quotaState = quotas.length
+        ? "available"
+        : (/\bunlimited\b|\u65e0\u9650|\u7121\u9650/i.test(cardText)
+          ? "unlimited"
+          : "unavailable");
+      subscriptions.push({
+        id: `dom:${cardIndex}:${name}:${expiresAt || "none"}`,
+        name,
+        status_text: statusText,
+        expires_at: expiresAt,
+        quota_state: quotaState,
+        quotas
+      });
+    }
+    if (subscriptions.length) return {ok: true, subscriptions, source: "rendered-page"};
+    const text = clean(main.innerText);
+    if (/no active subscriptions|\u6682\u65e0\u6709\u6548\u8ba2\u9605|\u66ab\u7121\u6709\u6548\u8a02\u95b1/i.test(text)) {
+      return {ok: true, subscriptions: [], source: "rendered-page"};
+    }
+    return {ok: false, error: "loading"};
+  };
+  try {
+    const selector = 'iframe[data-personal-xbar-quota-frame="1"]';
+    const startedAtAttribute = "data-personal-xbar-quota-started-at";
+    const nowMilliseconds = Date.now();
+    let frame = document.querySelector(selector);
+    let frameSnapshot = {ok: false, error: "loading"};
+    if (frame) {
+      try {
+        if (frame.contentDocument) frameSnapshot = parseDocument(frame.contentDocument);
+      } catch (_error) {
+        frameSnapshot = {ok: false, error: "frame-unavailable"};
+      }
+    }
+    const pageSnapshot = parseDocument(document);
+    const snapshot = frameSnapshot.ok ? frameSnapshot : (
+      pageSnapshot.ok ? pageSnapshot : (
+        frameSnapshot.error === "session-expired" ? frameSnapshot : pageSnapshot
+      )
+    );
+    const frameStartedAt = frame
+      ? Number(frame.getAttribute(startedAtAttribute) || 0)
+      : 0;
+    const frameStale = !frameStartedAt || nowMilliseconds - frameStartedAt >= 30000;
+    const shouldRefreshFrame = !frame || frameSnapshot.ok || frameStale ||
+      frameSnapshot.error !== "loading";
+    let appendFrame = false;
+    if (!frame) {
+      frame = document.createElement("iframe");
+      frame.setAttribute("data-personal-xbar-quota-frame", "1");
+      frame.setAttribute("aria-hidden", "true");
+      frame.tabIndex = -1;
+      frame.style.cssText = "position:absolute;width:1px;height:1px;left:-10000px;border:0;";
+      appendFrame = true;
+    }
+    if (shouldRefreshFrame) {
+      frame.setAttribute(startedAtAttribute, String(nowMilliseconds));
+      frame.src = `/subscriptions?personal_xbar_quota=${nowMilliseconds}`;
+    }
+    if (appendFrame) {
+      (document.body || document.documentElement).appendChild(frame);
+    }
+    return JSON.stringify(snapshot);
+  } catch (error) {
+    return JSON.stringify({ok: false, error: "render", detail: clean(error?.message || error)});
+  }
+})()
+"""
+
+
+def usd_to_cents(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return None
+    try:
+        amount = Decimal(str(value))
+        if not amount.is_finite() or amount < 0:
+            return None
+        rounded = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        return None
+    return int(rounded * 100)
+
+
+def normalize_subscription_plan_status(value: object) -> str:
+    if not isinstance(value, str):
+        return "unknown"
+    status = " ".join(value.split()).lower()
+    if not status:
+        return "unknown"
+    if (
+        re.search(r"\b(?:inactive|expired|cancelled|canceled|not\s+active)\b", status)
+        or any(marker in status for marker in ("\u65e0\u6548", "\u7121\u6548", "\u8fc7\u671f", "\u904e\u671f", "\u5df2\u53d6\u6d88"))
+    ):
+        return "inactive"
+    if re.search(r"\bactive\b", status) or any(
+        marker in status for marker in ("\u6709\u6548", "\u751f\u6548", "\u4f7f\u7528\u4e2d")
+    ):
+        return "active"
+    return "unknown"
+
+
+def normalize_subscription_quota_state(value: object, has_quotas: bool) -> str:
+    if has_quotas:
+        return "available"
+    if isinstance(value, str) and value.lower() == "unlimited":
+        return "unlimited"
+    return "unavailable"
+
+
+def parse_subscription_quota_payload(payload: str) -> SubscriptionQuotaStatus:
+    try:
+        raw = json.loads(payload)
+    except json.JSONDecodeError as error:
+        raise ValueError("AI INPUT returned invalid subscription data") from error
+    if not isinstance(raw, dict):
+        raise ValueError("AI INPUT subscription data is not an object")
+    if raw.get("ok") is not True:
+        error_code = raw.get("error")
+        if error_code == "session-expired":
+            return SubscriptionQuotaStatus(health="session-expired")
+        if error_code == "loading":
+            return SubscriptionQuotaStatus(health="loading")
+        detail = raw.get("detail")
+        message = (
+            sanitize_text(detail, 140)
+            if isinstance(detail, str) and detail.strip()
+            else "AI INPUT subscription page returned an error"
+        )
+        return SubscriptionQuotaStatus(health="error", error=message)
+
+    raw_plans = raw.get("subscriptions")
+    if not isinstance(raw_plans, list):
+        raise ValueError("AI INPUT subscription data has no subscriptions")
+    plans: list[SubscriptionPlan] = []
+    seen_plan_ids: set[str] = set()
+    for raw_plan in raw_plans:
+        if not isinstance(raw_plan, dict):
+            raise ValueError("AI INPUT subscription data contains an invalid plan")
+        plan_id = raw_plan.get("id")
+        name = raw_plan.get("name")
+        status_value = raw_plan.get("status_text", raw_plan.get("status"))
+        if not isinstance(plan_id, str) or not plan_id.strip():
+            raise ValueError("AI INPUT subscription plan has no id")
+        normalized_plan_id = sanitize_text(plan_id, 100)
+        if normalized_plan_id in seen_plan_ids:
+            raise ValueError("AI INPUT subscription data has duplicate plan ids")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("AI INPUT subscription plan has no name")
+        if not isinstance(status_value, str) or not status_value.strip():
+            raise ValueError("AI INPUT subscription plan has no status")
+        raw_quotas = raw_plan.get("quotas")
+        if not isinstance(raw_quotas, list):
+            raise ValueError("AI INPUT subscription plan has invalid quotas")
+        quotas: list[SubscriptionQuota] = []
+        seen_periods: set[str] = set()
+        for raw_quota in raw_quotas:
+            if not isinstance(raw_quota, dict):
+                raise ValueError("AI INPUT subscription quota is invalid")
+            period = raw_quota.get("period")
+            if period not in {"daily", "weekly", "monthly"} or period in seen_periods:
+                raise ValueError("AI INPUT subscription quota has an invalid period")
+            used_cents = usd_to_cents(raw_quota.get("used_usd"))
+            limit_cents = usd_to_cents(raw_quota.get("limit_usd"))
+            if used_cents is None or limit_cents is None or limit_cents <= 0:
+                raise ValueError("AI INPUT subscription quota has invalid amounts")
+            reset_at = numeric_int(raw_quota.get("reset_at"))
+            quotas.append(
+                SubscriptionQuota(
+                    period=period,
+                    used_cents=used_cents,
+                    limit_cents=limit_cents,
+                    reset_at=reset_at,
+                )
+            )
+            seen_periods.add(period)
+        plans.append(
+            SubscriptionPlan(
+                plan_id=normalized_plan_id,
+                name=sanitize_text(name, 80),
+                status=normalize_subscription_plan_status(status_value),
+                expires_at=numeric_int(raw_plan.get("expires_at")),
+                quotas=tuple(quotas),
+                quota_state=normalize_subscription_quota_state(
+                    raw_plan.get("quota_state"),
+                    bool(quotas),
+                ),
+            )
+        )
+        seen_plan_ids.add(normalized_plan_id)
+    return SubscriptionQuotaStatus(health="ready", plans=tuple(plans))
+
+
+def subscription_quota_status_payload(
+    status: SubscriptionQuotaStatus,
+) -> dict[str, object]:
+    return {
+        "health": status.health,
+        "error": status.error,
+        "plans": [
+            {
+                "id": plan.plan_id,
+                "name": plan.name,
+                "status": plan.status,
+                "expires_at": plan.expires_at,
+                "quota_state": plan.quota_state,
+                "quotas": [
+                    {
+                        "period": quota.period,
+                        "used_cents": quota.used_cents,
+                        "limit_cents": quota.limit_cents,
+                        "reset_at": quota.reset_at,
+                    }
+                    for quota in plan.quotas
+                ],
+            }
+            for plan in status.plans
+        ],
+    }
+
+
+def subscription_quota_status_from_state(
+    state: dict[str, object],
+) -> SubscriptionQuotaStatus | None:
+    raw_status = state.get("status")
+    if not isinstance(raw_status, dict):
+        return None
+    health = raw_status.get("health")
+    if health not in {
+        "ready",
+        "not-running",
+        "not-found",
+        "automation-permission",
+        "javascript-permission",
+        "session-expired",
+        "loading",
+        "error",
+    }:
+        return None
+    raw_plans = raw_status.get("plans")
+    if not isinstance(raw_plans, list):
+        return None
+    plans: list[SubscriptionPlan] = []
+    seen_plan_ids: set[str] = set()
+    for raw_plan in raw_plans:
+        if not isinstance(raw_plan, dict):
+            return None
+        plan_id = raw_plan.get("id")
+        name = raw_plan.get("name")
+        status_value = raw_plan.get("status")
+        raw_quotas = raw_plan.get("quotas")
+        if not all(isinstance(value, str) for value in (plan_id, name, status_value)):
+            return None
+        if cast(str, plan_id) in seen_plan_ids:
+            return None
+        if not isinstance(raw_quotas, list):
+            return None
+        quotas: list[SubscriptionQuota] = []
+        seen_periods: set[str] = set()
+        for raw_quota in raw_quotas:
+            if not isinstance(raw_quota, dict):
+                return None
+            period = raw_quota.get("period")
+            used_cents = numeric_int(raw_quota.get("used_cents"))
+            limit_cents = numeric_int(raw_quota.get("limit_cents"))
+            if (
+                period not in {"daily", "weekly", "monthly"}
+                or period in seen_periods
+                or used_cents is None
+                or used_cents < 0
+                or limit_cents is None
+                or limit_cents <= 0
+            ):
+                return None
+            quotas.append(
+                SubscriptionQuota(
+                    period=period,
+                    used_cents=used_cents,
+                    limit_cents=limit_cents,
+                    reset_at=numeric_int(raw_quota.get("reset_at")),
+                )
+            )
+            seen_periods.add(cast(str, period))
+        plans.append(
+            SubscriptionPlan(
+                plan_id=cast(str, plan_id),
+                name=cast(str, name),
+                status=normalize_subscription_plan_status(status_value),
+                expires_at=numeric_int(raw_plan.get("expires_at")),
+                quotas=tuple(quotas),
+                quota_state=normalize_subscription_quota_state(
+                    raw_plan.get("quota_state"),
+                    bool(quotas),
+                ),
+            )
+        )
+        seen_plan_ids.add(cast(str, plan_id))
+    error_value = raw_status.get("error")
+    return SubscriptionQuotaStatus(
+        health=cast(str, health),
+        plans=tuple(plans),
+        error=error_value if isinstance(error_value, str) else None,
+    )
+
+
+def chrome_tab_apple_script(
+    browser: str,
+    url_prefix: str,
+    javascript: str,
+    tab_id: int | None = None,
+) -> str:
+    browser_literal = json.dumps(browser)
+    prefix_literal = json.dumps(url_prefix)
+    source_literal = json.dumps(compact_javascript(javascript))
+    tab_id_literal = "null" if tab_id is None else json.dumps(str(tab_id))
+    return "\n".join(
+        (
+            "(() => {",
+            'ObjC.import("AppKit");',
+            'ObjC.import("ScriptingBridge");',
+            f"const browserName = {browser_literal};",
+            f"const targetURL = {prefix_literal};",
+            f"const source = {source_literal};",
+            f"const requestedTabId = {tab_id_literal};",
+            "const runningApps = $.NSWorkspace.sharedWorkspace.runningApplications;",
+            "let browserFound = false;",
+            "let matchingTabFound = false;",
+            "let fallbackResult = null;",
+            "for (let appIndex = 0; appIndex < runningApps.count; appIndex++) {",
+            "const runningApp = runningApps.objectAtIndex(appIndex);",
+            "const name = ObjC.unwrap(runningApp.localizedName);",
+            "if (name !== browserName || Number(runningApp.activationPolicy) !== 0) continue;",
+            "browserFound = true;",
+            "const chrome = $.SBApplication.applicationWithProcessIdentifier(",
+            "runningApp.processIdentifier",
+            ");",
+            'const windows = chrome.valueForKey("windows");',
+            "for (let windowIndex = 0; windowIndex < windows.count; windowIndex++) {",
+            'const tabs = windows.objectAtIndex(windowIndex).valueForKey("tabs");',
+            "for (let tabIndex = 0; tabIndex < tabs.count; tabIndex++) {",
+            "const targetTab = tabs.objectAtIndex(tabIndex);",
+            'const url = ObjC.unwrap(targetTab.valueForKey("URL"));',
+            'const uniqueId = String(ObjC.unwrap(targetTab.valueForKey("id")));',
+            'const urlMatches = typeof url === "string" && (',
+            "url === targetURL || url.startsWith(`${targetURL}?`) ||",
+            "url.startsWith(`${targetURL}#`)",
+            ");",
+            "if (",
+            "urlMatches &&",
+            "(requestedTabId === null || uniqueId === requestedTabId)",
+            ") {",
+            "matchingTabFound = true;",
+            "const rawResult = targetTab.performSelectorWithObject(",
+            '"executeJavascript:",',
+            "$(source)",
+            ");",
+            'const pageResult = rawResult ? String(ObjC.unwrap(rawResult)) : "";',
+            'const combinedResult = `${uniqueId}\t${pageResult}`;',
+            "if (requestedTabId !== null) return combinedResult;",
+            "try {",
+            "const parsedResult = JSON.parse(pageResult);",
+            "if (parsedResult && parsedResult.ok === true) return combinedResult;",
+            "} catch (_error) {}",
+            "if (fallbackResult === null) fallbackResult = combinedResult;",
+            "}",
+            "}",
+            "}",
+            "}",
+            "if (fallbackResult !== null) return fallbackResult;",
+            'return browserFound && !matchingTabFound ? "__NO_TAB__" : "__NOT_RUNNING__";',
+            "})()",
+        )
+    )
+
+
+def classify_chrome_automation_error(detail: str) -> str:
+    lowered = detail.lower()
+    if (
+        "not authorized to send apple events" in lowered
+        or "not authorised to send apple events" in lowered
+        or "-1743" in lowered
+    ):
+        return "automation-permission"
+    if (
+        "allow javascript from apple events" in lowered
+        or "javascript 的功能已关闭" in detail
+        or "允许 apple 事件中的 javascript" in lowered
+    ):
+        return "javascript-permission"
+    return sanitize_text(detail, 140)
+
+
+def run_chrome_tab_javascript(
+    browser: str,
+    url_prefix: str,
+    javascript: str,
+    timeout_seconds: float,
+    tab_id: int | None = None,
+) -> tuple[int | None, str | None, str | None]:
+    script = chrome_tab_apple_script(
+        browser,
+        url_prefix,
+        javascript,
+        tab_id=tab_id,
+    )
+    try:
+        completed = subprocess.run(
+            ["/usr/bin/osascript", "-l", "JavaScript", "-e", script],
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return None, None, sanitize_text(str(error), 140)
+    output = completed.stdout.strip()
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or "Chrome JavaScript automation failed"
+        return None, None, classify_chrome_automation_error(detail)
+    if output == "__NOT_RUNNING__":
+        return None, None, "not-running"
+    if output == "__NO_TAB__":
+        return None, None, "not-found"
+    tab_id_text, separator, payload = output.partition("\t")
+    try:
+        result_tab_id = int(tab_id_text)
+    except ValueError:
+        return None, None, "Chrome returned an invalid tab identifier"
+    if not separator:
+        return None, None, "Chrome returned no page result"
+    return result_tab_id, payload, None
+
+
+def run_ai_input_subscriptions_javascript(
+    javascript: str = AI_INPUT_SUBSCRIPTIONS_JAVASCRIPT,
+) -> tuple[int | None, str | None, str | None]:
+    return run_chrome_tab_javascript(
+        AI_INPUT_SUBSCRIPTIONS_BROWSER_APP,
+        AI_INPUT_SUBSCRIPTIONS_TAB_PREFIX,
+        javascript,
+        AI_INPUT_SUBSCRIPTIONS_SCRIPT_TIMEOUT_SECONDS,
+    )
+
+
+def subscription_quota_level(quota: SubscriptionQuota) -> int:
+    if quota.used_cents >= quota.limit_cents:
+        return 3
+    if quota.used_cents * 100 >= quota.limit_cents * 90:
+        return 2
+    if quota.used_cents * 100 >= quota.limit_cents * 80:
+        return 1
+    return 0
+
+
+def subscription_quota_key(plan: SubscriptionPlan, quota: SubscriptionQuota) -> str:
+    return f"{plan.plan_id}:{quota.period}"
+
+
+def subscription_quota_percent_label(quota: SubscriptionQuota) -> str:
+    return f"{quota.used_cents * 100 // quota.limit_cents}%"
+
+
+def format_subscription_quota_notice(
+    plan: SubscriptionPlan,
+    quota: SubscriptionQuota,
+) -> str:
+    return f"{plan.name} {quota.period} {subscription_quota_percent_label(quota)}"
+
+
+def subscription_quota_notification_transition(
+    previous: dict[str, object],
+    status: SubscriptionQuotaStatus,
+    checked_at: int,
+) -> tuple[dict[str, object], tuple[str, ...]]:
+    raw_previous_levels = previous.get("quota_levels")
+    previous_levels = (
+        {
+            str(key): level
+            for key, level in raw_previous_levels.items()
+            if isinstance(key, str)
+            and isinstance(level, int)
+            and not isinstance(level, bool)
+            and 0 <= level <= 3
+        }
+        if isinstance(raw_previous_levels, dict)
+        else {}
+    )
+    next_levels = dict(previous_levels)
+    notifications: list[str] = []
+    if status.health == "ready":
+        current_levels: dict[str, int] = {}
+        alerts: list[tuple[int, SubscriptionPlan, SubscriptionQuota]] = []
+        recoveries: list[tuple[SubscriptionPlan, SubscriptionQuota]] = []
+        for plan in status.plans:
+            if plan.status != "active":
+                continue
+            for quota in plan.quotas:
+                key = subscription_quota_key(plan, quota)
+                level = subscription_quota_level(quota)
+                previous_level = previous_levels.get(key, 0)
+                current_levels[key] = level
+                if level > previous_level:
+                    alerts.append((level, plan, quota))
+                elif level == 0 and previous_level > 0:
+                    recoveries.append((plan, quota))
+        next_levels = current_levels
+        if alerts:
+            highest_level = max(item[0] for item in alerts)
+            threshold = {1: "80%", 2: "90%", 3: "exhausted"}[highest_level]
+            details = ", ".join(
+                format_subscription_quota_notice(plan, quota)
+                for _level, plan, quota in alerts
+            )
+            notifications.append(f"Quota {threshold}: {details}")
+        if recoveries:
+            details = ", ".join(
+                format_subscription_quota_notice(plan, quota)
+                for plan, quota in recoveries
+            )
+            notifications.append(f"Quota reset: {details}")
+
+    return (
+        {
+            "schema_version": 1,
+            "checked_at": checked_at,
+            "health": status.health,
+            "quota_levels": next_levels,
+            "status": subscription_quota_status_payload(status),
+        },
+        tuple(notifications),
+    )
+
+
+def send_subscription_quota_notification(message: str) -> None:
+    notifications_enabled = os.environ.get(
+        "AI_INPUT_SUBSCRIPTIONS_NOTIFICATIONS",
+        os.environ.get("AI_INPUT_NOTIFICATIONS", "1"),
+    )
+    if notifications_enabled == "0":
+        return
+    script = (
+        f'display notification "{apple_script_string(message)}" '
+        'with title "Personal xbar" subtitle "AI INPUT quota"'
+    )
+    try:
+        _ = subprocess.run(
+            ["/usr/bin/osascript", "-e", script],
+            capture_output=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def collect_subscription_quota_status(
+    state_file: Path = AI_INPUT_SUBSCRIPTIONS_STATE_FILE,
+    now_epoch: int | None = None,
+) -> SubscriptionQuotaStatus | None:
+    if not AI_INPUT_SUBSCRIPTIONS_ENABLED:
+        return None
+    now_value = int(time.time()) if now_epoch is None else now_epoch
+    previous = read_ai_input_state(state_file)
+    cached = subscription_quota_status_from_state(previous)
+    checked_at = numeric_int(previous.get("checked_at"))
+    if (
+        cached is not None
+        and checked_at is not None
+        and 0 <= now_value - checked_at
+        < (10 if cached.health == "loading" else AI_INPUT_SUBSCRIPTIONS_CACHE_SECONDS)
+    ):
+        return cached
+
+    _, payload, runner_error = run_ai_input_subscriptions_javascript()
+    if runner_error:
+        health = (
+            runner_error
+            if runner_error
+            in {
+                "not-running",
+                "not-found",
+                "automation-permission",
+                "javascript-permission",
+            }
+            else "error"
+        )
+        status = SubscriptionQuotaStatus(
+            health=health,
+            error=None if health != "error" else sanitize_text(runner_error, 140),
+        )
+    elif payload is None:
+        status = SubscriptionQuotaStatus(
+            health="error",
+            error="AI INPUT page returned no subscription data",
+        )
+    else:
+        try:
+            status = parse_subscription_quota_payload(payload)
+        except ValueError as error:
+            status = SubscriptionQuotaStatus(
+                health="error",
+                error=sanitize_text(str(error), 140),
+            )
+
+    next_state, notifications = subscription_quota_notification_transition(
+        previous,
+        status,
+        checked_at=now_value,
+    )
+    try:
+        write_ai_input_state(state_file, next_state)
+    except OSError:
+        notifications = ()
+    for notification in notifications:
+        send_subscription_quota_notification(notification)
+    return status
+
+
 SPOTIFY_STATUS_JAVASCRIPT = r"""
 (() => {
   const clean = (value) => (value || "").replace(/\s+/g, " ").trim();
@@ -1131,6 +1871,143 @@ def append_ai_input_lines(lines: list[str], status: AiInputStatus) -> None:
     lines.append(
         "--Open official model monitor"
         f" | bash=/usr/bin/open param1={AI_INPUT_STATUS_PAGE_URL} terminal=false"
+    )
+    lines.append("---")
+
+
+def fmt_money(cents: int) -> str:
+    return f"${cents // 100}.{cents % 100:02d}"
+
+
+def fmt_epoch_remaining(epoch: int, now_epoch: int | None = None) -> str:
+    now_value = int(time.time()) if now_epoch is None else now_epoch
+    remaining = epoch - now_value
+    if remaining <= 0:
+        return "now"
+    days, remaining = divmod(remaining, 86400)
+    hours, remaining = divmod(remaining, 3600)
+    minutes = remaining // 60
+    if days:
+        return f"{days}d {hours}h"
+    if hours:
+        return f"{hours}h {minutes}m" if minutes else f"{hours}h"
+    return f"{max(1, minutes)}m"
+
+
+def active_subscription_plans(
+    status: SubscriptionQuotaStatus,
+) -> tuple[SubscriptionPlan, ...]:
+    return tuple(plan for plan in status.plans if plan.status == "active")
+
+
+def subscription_quota_max(
+    status: SubscriptionQuotaStatus,
+) -> SubscriptionQuota | None:
+    quotas = [
+        quota
+        for plan in active_subscription_plans(status)
+        for quota in plan.quotas
+    ]
+    highest: SubscriptionQuota | None = None
+    for quota in quotas:
+        if (
+            highest is None
+            or quota.used_cents * highest.limit_cents
+            > highest.used_cents * quota.limit_cents
+        ):
+            highest = quota
+    return highest
+
+
+def subscription_quota_has_unavailable_plan(
+    status: SubscriptionQuotaStatus,
+) -> bool:
+    return any(
+        plan.quota_state == "unavailable"
+        for plan in active_subscription_plans(status)
+    )
+
+
+def append_subscription_quota_lines(
+    lines: list[str],
+    status: SubscriptionQuotaStatus,
+) -> None:
+    if status.health == "not-running":
+        lines.append("AI INPUT quota: Chrome not running | color=gray")
+    elif status.health == "not-found":
+        lines.append("AI INPUT quota: no open account tab | color=gray")
+        lines.append("--Open ai.input.im and sign in | color=gray")
+    elif status.health == "automation-permission":
+        lines.append("AI INPUT quota: macOS Automation required | color=orange")
+        lines.append("--System Settings > Privacy & Security > Automation | color=gray")
+        lines.append("--Allow xbar to control Google Chrome | color=orange")
+    elif status.health == "javascript-permission":
+        lines.append("AI INPUT quota: Chrome JavaScript required | color=orange")
+        lines.append("--Chrome > View > Developer | color=gray")
+        lines.append("--Enable Allow JavaScript from Apple Events | color=orange")
+    elif status.health == "loading":
+        lines.append("AI INPUT quota: refreshing account view | color=gray")
+    elif status.health == "session-expired":
+        lines.append("AI INPUT quota: sign-in required | color=orange")
+        lines.append("--Sign in to ai.input.im in Chrome | color=gray")
+    elif status.health == "error":
+        lines.append("AI INPUT quota: unavailable | color=orange")
+        if status.error:
+            lines.append(f"--{sanitize_text(status.error, 110)} | color=gray")
+    else:
+        active_plans = active_subscription_plans(status)
+        max_quota = subscription_quota_max(status)
+        has_unavailable = subscription_quota_has_unavailable_plan(status)
+        if max_quota is None:
+            if not active_plans:
+                lines.append("AI INPUT quota: no active subscription | color=gray")
+            elif has_unavailable:
+                lines.append("AI INPUT quota: usage unavailable | color=orange")
+            else:
+                lines.append("AI INPUT quota: unlimited | color=green")
+        else:
+            level = subscription_quota_level(max_quota)
+            color = "red" if level >= 2 else (
+                "orange" if level == 1 or has_unavailable else "green"
+            )
+            suffix = " · some plans unavailable" if has_unavailable else ""
+            lines.append(
+                "AI INPUT quota: "
+                f"{subscription_quota_percent_label(max_quota)} max{suffix}"
+                f" | color={color}"
+            )
+        for plan in active_plans:
+            lines.append(f"--{sanitize_text(plan.name, 75)}")
+            if plan.quota_state == "unlimited":
+                lines.append("----Unlimited | color=green")
+            elif plan.quota_state == "unavailable":
+                lines.append("----Usage unavailable | color=orange")
+            for quota in plan.quotas:
+                level = subscription_quota_level(quota)
+                color = "red" if level >= 2 else "orange" if level == 1 else "green"
+                period = quota.period.capitalize()
+                lines.append(
+                    f"----{period} · {fmt_money(quota.used_cents)} / "
+                    f"{fmt_money(quota.limit_cents)} · "
+                    f"{subscription_quota_percent_label(quota)} | color={color}"
+                )
+                if quota.reset_at is not None:
+                    lines.append(
+                        f"------Resets in {fmt_epoch_remaining(quota.reset_at)}"
+                        " | color=gray"
+                    )
+            if plan.expires_at is not None:
+                expires_text = time.strftime(
+                    "%Y-%m-%d %H:%M",
+                    time.localtime(plan.expires_at),
+                )
+                lines.append(
+                    f"----Expires {expires_text} · in "
+                    f"{fmt_epoch_remaining(plan.expires_at)} | color=gray"
+                )
+    lines.append(
+        "--Open subscriptions"
+        f" | bash=/usr/bin/open param1={AI_INPUT_SUBSCRIPTIONS_PAGE_URL} terminal=false"
     )
     lines.append("---")
 
@@ -1920,6 +2797,7 @@ def render(
     home: Path = HOME,
     now: str | None = None,
     ai_input_status: AiInputStatus | None = None,
+    subscription_quota_status: SubscriptionQuotaStatus | None = None,
     spotify_status: SpotifyStatus | None = None,
     plugin_path: Path | None = None,
 ) -> str:
@@ -1936,6 +2814,35 @@ def render(
             color = "red"
         elif ai_input_status.health == "unreachable" and color == "green":
             color = "orange"
+    subscription_quota_title = ""
+    if subscription_quota_status is not None:
+        if subscription_quota_status.health == "ready":
+            max_quota = subscription_quota_max(subscription_quota_status)
+            active_plans = active_subscription_plans(subscription_quota_status)
+            has_unavailable = subscription_quota_has_unavailable_plan(
+                subscription_quota_status
+            )
+            if max_quota is None:
+                if not active_plans:
+                    count_text = "none"
+                elif has_unavailable:
+                    count_text = "?"
+                    if color == "green":
+                        color = "orange"
+                else:
+                    count_text = "unlimited"
+            else:
+                count_text = subscription_quota_percent_label(max_quota)
+                level = subscription_quota_level(max_quota)
+                if level >= 2:
+                    color = "red"
+                elif (level == 1 or has_unavailable) and color == "green":
+                    color = "orange"
+            subscription_quota_title = f" · Q {count_text}"
+        else:
+            subscription_quota_title = " · Q ?"
+            if subscription_quota_status.health != "loading" and color == "green":
+                color = "orange"
     spotify_title = ""
     if spotify_status is not None and spotify_status.health == "ready":
         if spotify_status.is_ad:
@@ -1948,7 +2855,8 @@ def render(
             spotify_title = " · SP pause"
     lines = [
         f"AI {len(runtimes)} · CPU {fmt_cpu(overall.cpu_percent)}"
-        f" · {fmt_bytes(overall.rss_bytes)}{ai_input_title}{spotify_title} | color={color}",
+        f" · {fmt_bytes(overall.rss_bytes)}{ai_input_title}"
+        f"{subscription_quota_title}{spotify_title} | color={color}",
         "---",
         "Read-only agent process inventory | color=gray",
         f"Updated: {now or time.strftime('%H:%M:%S')} · refresh {REFRESH_SECONDS}s | color=gray",
@@ -1959,6 +2867,9 @@ def render(
 
     if spotify_status is not None:
         append_spotify_lines(lines, spotify_status, plugin_path=plugin_path)
+
+    if subscription_quota_status is not None:
+        append_subscription_quota_lines(lines, subscription_quota_status)
 
     if ai_input_status is not None:
         append_ai_input_lines(lines, ai_input_status)

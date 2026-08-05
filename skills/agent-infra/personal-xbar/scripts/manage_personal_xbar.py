@@ -13,7 +13,7 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -138,7 +138,7 @@ def ensure_production_environment(target: Path) -> None:
 
 
 def utc_timestamp() -> str:
-    return datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
 
 
 def backup_directory(state_root: Path) -> Path:
@@ -281,7 +281,7 @@ def write_install_metadata(source: Path, target: Path, state_root: Path) -> None
         metadata_path(state_root),
         {
             "schema_version": METADATA_SCHEMA_VERSION,
-            "installed_at": datetime.now(UTC).isoformat(),
+            "installed_at": datetime.now(timezone.utc).isoformat(),
             "source": str(source),
             "target": str(target),
             "version": details["version"],

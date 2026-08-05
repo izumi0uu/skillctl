@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import os
 import shlex
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
@@ -86,6 +88,28 @@ class AiInputStatusLike(Protocol):
     services: tuple[object, ...]
 
 
+class SubscriptionQuotaLike(Protocol):
+    period: str
+    used_cents: int
+    limit_cents: int
+    reset_at: int | None
+
+
+class SubscriptionPlanLike(Protocol):
+    plan_id: str
+    name: str
+    status: str
+    expires_at: int | None
+    quotas: tuple[SubscriptionQuotaLike, ...]
+    quota_state: str
+
+
+class SubscriptionQuotaStatusLike(Protocol):
+    health: str
+    plans: tuple[SubscriptionPlanLike, ...]
+    error: str | None
+
+
 class SpotifyStatusLike(Protocol):
     health: str
     playback: str
@@ -122,6 +146,9 @@ class PatchableSqlite(Protocol):
 
 class MonitorModule(Protocol):
     AGENT_ADAPTERS: tuple[AdapterLike, ...]
+    AI_INPUT_SUBSCRIPTIONS_JAVASCRIPT: str
+    AI_INPUT_SUBSCRIPTIONS_ORIGIN: str
+    AI_INPUT_SUBSCRIPTIONS_TAB_PREFIX: str
     SPOTIFY_ACTION_JAVASCRIPT: dict[str, str]
     subprocess: PatchableSubprocess
     sqlite3: PatchableSqlite
@@ -142,6 +169,7 @@ class MonitorModule(Protocol):
         home: Path,
         now: str | None = None,
         ai_input_status: AiInputStatusLike | None = None,
+        subscription_quota_status: SubscriptionQuotaStatusLike | None = None,
         spotify_status: SpotifyStatusLike | None = None,
     ) -> str: ...
 
@@ -157,6 +185,41 @@ class MonitorModule(Protocol):
         status: AiInputStatusLike,
         checked_at: int,
     ) -> tuple[dict[str, object], str | None]: ...
+
+    def parse_subscription_quota_payload(
+        self,
+        payload: str,
+    ) -> SubscriptionQuotaStatusLike: ...
+
+    def collect_subscription_quota_status(
+        self,
+        state_file: Path,
+        now_epoch: int | None = None,
+    ) -> SubscriptionQuotaStatusLike | None: ...
+
+    def chrome_tab_apple_script(
+        self,
+        browser: str,
+        url_prefix: str,
+        javascript: str,
+        tab_id: int | None = None,
+    ) -> str: ...
+
+    def subscription_quota_level(self, quota: SubscriptionQuotaLike) -> int: ...
+
+    def subscription_quota_percent_label(
+        self,
+        quota: SubscriptionQuotaLike,
+    ) -> str: ...
+
+    def classify_chrome_automation_error(self, detail: str) -> str: ...
+
+    def subscription_quota_notification_transition(
+        self,
+        previous: dict[str, object],
+        status: SubscriptionQuotaStatusLike,
+        checked_at: int,
+    ) -> tuple[dict[str, object], tuple[str, ...]]: ...
 
     def parse_spotify_payload(self, payload: str) -> SpotifyStatusLike: ...
 
@@ -205,7 +268,12 @@ def load_plugin() -> MonitorModule:
 
 
 monitor = load_plugin()
-assert monitor.build_registry().plugin_ids == ("ai-input", "spotify", "processes")
+assert monitor.build_registry().plugin_ids == (
+    "ai-input",
+    "subscription-quota",
+    "spotify",
+    "processes",
+)
 
 with tempfile.TemporaryDirectory() as temporary_directory:
     home = Path(temporary_directory)
@@ -684,6 +752,436 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     )
     assert second_unreachable_notification == "Official model monitor is unreachable"
 
+    subscription_status = monitor.parse_subscription_quota_payload(
+        """{
+          "ok": true,
+          "subscriptions": [
+            {
+              "id": "fixture-plan",
+              "name": "Fixture CodeX Plan",
+              "status": "ACTIVE",
+              "expires_at": 4102444800,
+              "quotas": [
+                {
+                  "period": "daily",
+                  "used_usd": "79.995",
+                  "limit_usd": "100.00",
+                  "reset_at": 4102358400
+                },
+                {
+                  "period": "weekly",
+                  "used_usd": "231.275",
+                  "limit_usd": "300.00",
+                  "reset_at": 4102444800
+                }
+              ]
+            }
+          ]
+        }"""
+    )
+    assert subscription_status.health == "ready"
+    assert len(subscription_status.plans) == 1
+    fixture_plan = subscription_status.plans[0]
+    assert fixture_plan.plan_id == "fixture-plan"
+    assert fixture_plan.name == "Fixture CodeX Plan"
+    assert fixture_plan.status == "active"
+    assert fixture_plan.quota_state == "available"
+    assert fixture_plan.expires_at == 4_102_444_800
+    assert [quota.period for quota in fixture_plan.quotas] == ["daily", "weekly"]
+    assert [quota.used_cents for quota in fixture_plan.quotas] == [8_000, 23_128]
+    assert [quota.limit_cents for quota in fixture_plan.quotas] == [10_000, 30_000]
+
+    subscription_javascript = monitor.AI_INPUT_SUBSCRIPTIONS_JAVASCRIPT
+    assert "/api/v1/subscriptions" in subscription_javascript
+    lowered_subscription_javascript = subscription_javascript.lower()
+    assert "document.cookie" not in lowered_subscription_javascript
+    assert "localstorage" not in lowered_subscription_javascript
+    assert "sessionstorage" not in lowered_subscription_javascript
+    assert "new xmlhttprequest" not in lowered_subscription_javascript
+    assert "fetch(" not in lowered_subscription_javascript
+    assert 'data-personal-xbar-quota-frame="1"' in subscription_javascript
+    assert "data-personal-xbar-quota-started-at" in subscription_javascript
+    assert "frameStale" in subscription_javascript
+    assert 'frameSnapshot.error !== "loading"' in subscription_javascript
+    assert "frame-unavailable" in subscription_javascript
+    assert "status_text: statusText" in subscription_javascript
+    assert 'id: `dom:${cardIndex}:${name}:${expiresAt || "none"}`' in (
+        subscription_javascript
+    )
+    assert 'quota_state: quotaState' in subscription_javascript
+    assert "/active|" not in subscription_javascript
+    assert monitor.AI_INPUT_SUBSCRIPTIONS_ORIGIN == "https://ai.input.im/"
+    assert (
+        monitor.AI_INPUT_SUBSCRIPTIONS_TAB_PREFIX
+        == "https://ai.input.im/subscriptions"
+    )
+    scoped_subscription_script = monitor.chrome_tab_apple_script(
+        "Google Chrome",
+        monitor.AI_INPUT_SUBSCRIPTIONS_TAB_PREFIX,
+        "return 1",
+    )
+    assert (
+        'const targetURL = "https://ai.input.im/subscriptions"'
+        in scoped_subscription_script
+    )
+    assert "url === targetURL" in scoped_subscription_script
+    assert "url.startsWith(`${targetURL}?`)" in scoped_subscription_script
+    assert "url.startsWith(`${targetURL}#`)" in scoped_subscription_script
+    assert "url.startsWith(urlPrefix)" not in scoped_subscription_script
+    assert "fallbackResult" in scoped_subscription_script
+    assert "JSON.parse(pageResult)" in scoped_subscription_script
+    assert "parsedResult.ok === true" in scoped_subscription_script
+    assert "runningApp.processIdentifier" in scoped_subscription_script
+    assert "Number(runningApp.activationPolicy) !== 0" in scoped_subscription_script
+    assert 'const targetURL = "http://ai.input.im/' not in scoped_subscription_script
+    assert (
+        monitor.classify_chrome_automation_error(
+            "Not authorized to send Apple events. (-1743)"
+        )
+        == "automation-permission"
+    )
+    assert (
+        monitor.classify_chrome_automation_error(
+            "Allow JavaScript from Apple Events is disabled"
+        )
+        == "javascript-permission"
+    )
+
+    def threshold_status(used_usd: str) -> SubscriptionQuotaStatusLike:
+        return monitor.parse_subscription_quota_payload(
+            """{
+              "ok": true,
+              "subscriptions": [{
+                "id": "threshold-plan",
+                "name": "Threshold Plan",
+                "status": "active",
+                "expires_at": null,
+                "quotas": [{
+                  "period": "daily",
+                  "used_usd": %s,
+                  "limit_usd": 100,
+                  "reset_at": null
+                }]
+              }]
+            }"""
+            % used_usd
+        )
+
+    status_79_99 = threshold_status("79.99")
+    status_80 = threshold_status("80")
+    status_90 = threshold_status("90")
+    status_99_99 = threshold_status("99.99")
+    status_100 = threshold_status("100")
+    assert monitor.subscription_quota_level(status_79_99.plans[0].quotas[0]) == 0
+    assert monitor.subscription_quota_level(status_80.plans[0].quotas[0]) == 1
+    assert monitor.subscription_quota_level(status_90.plans[0].quotas[0]) == 2
+    assert monitor.subscription_quota_level(status_99_99.plans[0].quotas[0]) == 2
+    assert monitor.subscription_quota_level(status_100.plans[0].quotas[0]) == 3
+    assert (
+        monitor.subscription_quota_percent_label(status_99_99.plans[0].quotas[0])
+        == "99%"
+    )
+
+    for status_text in ("Inactive", "Not active", "\u65e0\u6548"):
+        inactive_status = monitor.parse_subscription_quota_payload(
+            json.dumps(
+                {
+                    "ok": True,
+                    "subscriptions": [
+                        {
+                            "id": f"inactive-{status_text}",
+                            "name": "Inactive Fixture",
+                            "status_text": status_text,
+                            "expires_at": None,
+                            "quotas": [],
+                        }
+                    ],
+                }
+            )
+        )
+        assert inactive_status.plans[0].status == "inactive"
+
+    duplicate_plan_status = monitor.parse_subscription_quota_payload(
+        """{
+          "ok": true,
+          "subscriptions": [
+            {
+              "id": "duplicate-plan-0",
+              "name": "Duplicate Plan",
+              "status": "active",
+              "expires_at": 4102444800,
+              "quotas": [{
+                "period": "daily",
+                "used_usd": 90,
+                "limit_usd": 100,
+                "reset_at": null
+              }]
+            },
+            {
+              "id": "duplicate-plan-1",
+              "name": "Duplicate Plan",
+              "status": "active",
+              "expires_at": 4102444800,
+              "quotas": [{
+                "period": "daily",
+                "used_usd": 70,
+                "limit_usd": 100,
+                "reset_at": null
+              }]
+            }
+          ]
+        }"""
+    )
+    duplicate_state, duplicate_notice = (
+        monitor.subscription_quota_notification_transition(
+            {}, duplicate_plan_status, checked_at=2_000_290
+        )
+    )
+    assert duplicate_notice == ("Quota 90%: Duplicate Plan daily 90%",)
+    duplicate_levels = duplicate_state.get("quota_levels")
+    assert isinstance(duplicate_levels, dict) and len(duplicate_levels) == 2
+    _, repeated_duplicate_notice = monitor.subscription_quota_notification_transition(
+        duplicate_state,
+        duplicate_plan_status,
+        checked_at=2_000_295,
+    )
+    assert repeated_duplicate_notice == ()
+
+    warning_state, initial_warning = (
+        monitor.subscription_quota_notification_transition(
+            {}, status_80, checked_at=2_000_300
+        )
+    )
+    assert initial_warning == ("Quota 80%: Threshold Plan daily 80%",)
+    repeated_warning_state, repeated_warning = (
+        monitor.subscription_quota_notification_transition(
+            warning_state, status_80, checked_at=2_000_360
+        )
+    )
+    assert repeated_warning == ()
+    escalation_state, escalation = monitor.subscription_quota_notification_transition(
+        repeated_warning_state,
+        status_90,
+        checked_at=2_000_420,
+    )
+    assert escalation == ("Quota 90%: Threshold Plan daily 90%",)
+    _, near_exhausted_notice = monitor.subscription_quota_notification_transition(
+        {},
+        status_99_99,
+        checked_at=2_000_450,
+    )
+    assert near_exhausted_notice == ("Quota 90%: Threshold Plan daily 99%",)
+    _, reset_notice = monitor.subscription_quota_notification_transition(
+        escalation_state,
+        threshold_status("0"),
+        checked_at=2_000_480,
+    )
+    assert reset_notice == ("Quota reset: Threshold Plan daily 0%",)
+
+    subscription_lines = monitor.render(
+        fixture_rows,
+        home,
+        now="12:34:56",
+        subscription_quota_status=subscription_status,
+    ).splitlines()
+    assert_supported_xbar_parameters(subscription_lines)
+    assert "· Q 80% | color=" in subscription_lines[0]
+    assert "AI INPUT quota: 80% max | color=orange" in subscription_lines
+    assert "--Fixture CodeX Plan" in subscription_lines
+    assert (
+        "----Daily · $80.00 / $100.00 · 80% | color=orange"
+        in subscription_lines
+    )
+    assert (
+        "----Weekly · $231.28 / $300.00 · 77% | color=green"
+        in subscription_lines
+    )
+    assert any(
+        line.startswith("--Open subscriptions | bash=/usr/bin/open ")
+        and "param1=https://ai.input.im/subscriptions" in line
+        for line in subscription_lines
+    )
+
+    near_exhausted_lines = monitor.render(
+        fixture_rows,
+        home,
+        now="12:34:56",
+        subscription_quota_status=status_99_99,
+    ).splitlines()
+    assert "\u00b7 Q 99% | color=red" in near_exhausted_lines[0]
+    assert any("$99.99 / $100.00 \u00b7 99%" in line for line in near_exhausted_lines)
+    assert not any("$99.99 / $100.00 \u00b7 100%" in line for line in near_exhausted_lines)
+
+    unavailable_quota_status = monitor.parse_subscription_quota_payload(
+        """{
+          "ok": true,
+          "subscriptions": [{
+            "id": "unparsed-plan",
+            "name": "Changed DOM Plan",
+            "status_text": "Active",
+            "quota_state": "unavailable",
+            "expires_at": null,
+            "quotas": []
+          }]
+        }"""
+    )
+    unavailable_quota_lines = monitor.render(
+        fixture_rows,
+        home,
+        now="12:34:56",
+        subscription_quota_status=unavailable_quota_status,
+    ).splitlines()
+    assert unavailable_quota_lines[0].endswith("\u00b7 Q ? | color=orange")
+    assert "AI INPUT quota: usage unavailable | color=orange" in (
+        unavailable_quota_lines
+    )
+    assert "----Usage unavailable | color=orange" in unavailable_quota_lines
+    assert "----Unlimited | color=green" not in unavailable_quota_lines
+
+    unlimited_quota_status = monitor.parse_subscription_quota_payload(
+        """{
+          "ok": true,
+          "subscriptions": [{
+            "id": "unlimited-plan",
+            "name": "Explicit Unlimited Plan",
+            "status": "active",
+            "quota_state": "unlimited",
+            "expires_at": null,
+            "quotas": []
+          }]
+        }"""
+    )
+    unlimited_quota_lines = monitor.render(
+        fixture_rows,
+        home,
+        now="12:34:56",
+        subscription_quota_status=unlimited_quota_status,
+    ).splitlines()
+    assert "\u00b7 Q unlimited | color=" in unlimited_quota_lines[0]
+    assert "----Unlimited | color=green" in unlimited_quota_lines
+
+    subscription_status_type = type(subscription_status)
+    subscription_failure_expectations = (
+        ("not-running", None, "AI INPUT quota: Chrome not running | color=gray"),
+        ("not-found", None, "AI INPUT quota: no open account tab | color=gray"),
+        (
+            "automation-permission",
+            None,
+            "AI INPUT quota: macOS Automation required | color=orange",
+        ),
+        (
+            "javascript-permission",
+            None,
+            "AI INPUT quota: Chrome JavaScript required | color=orange",
+        ),
+        (
+            "session-expired",
+            None,
+            "AI INPUT quota: sign-in required | color=orange",
+        ),
+        ("error", "fixture quota failure", "AI INPUT quota: unavailable | color=orange"),
+    )
+    for health, error, expected_line in subscription_failure_expectations:
+        failure_lines = monitor.render(
+            fixture_rows,
+            home,
+            now="12:34:56",
+            subscription_quota_status=subscription_status_type(
+                health=health,
+                error=error,
+            ),
+        ).splitlines()
+        assert_supported_xbar_parameters(failure_lines)
+        assert failure_lines[0].endswith("· Q ? | color=orange")
+        assert expected_line in failure_lines
+        if health == "automation-permission":
+            assert any("Privacy & Security > Automation" in line for line in failure_lines)
+        if health == "javascript-permission":
+            assert any("Allow JavaScript from Apple Events" in line for line in failure_lines)
+        if error is not None:
+            assert f"--{error} | color=gray" in failure_lines
+
+    collector_globals = monitor.collect_subscription_quota_status.__globals__
+    original_subscription_runner = collector_globals[
+        "run_ai_input_subscriptions_javascript"
+    ]
+    original_subscription_enabled = collector_globals[
+        "AI_INPUT_SUBSCRIPTIONS_ENABLED"
+    ]
+    original_subscription_notifier = collector_globals[
+        "send_subscription_quota_notification"
+    ]
+    collector_calls: list[str] = []
+    collector_payload = """{
+      "ok": true,
+      "subscriptions": [{
+        "id": "collector-plan",
+        "name": "Collector Plan",
+        "status_text": "Active",
+        "quota_state": "available",
+        "expires_at": null,
+        "quotas": [{
+          "period": "daily",
+          "used_usd": 50,
+          "limit_usd": 100,
+          "reset_at": null
+        }]
+      }]
+    }"""
+
+    def fake_subscription_runner(
+        javascript: str = subscription_javascript,
+    ) -> tuple[int | None, str | None, str | None]:
+        collector_calls.append(javascript)
+        return 77, collector_payload, None
+
+    quota_state_file = home / "subscription-quota-state.json"
+    try:
+        collector_globals["AI_INPUT_SUBSCRIPTIONS_ENABLED"] = True
+        collector_globals["run_ai_input_subscriptions_javascript"] = (
+            fake_subscription_runner
+        )
+        collector_globals["send_subscription_quota_notification"] = (
+            lambda _message: None
+        )
+        collected_status = monitor.collect_subscription_quota_status(
+            quota_state_file,
+            now_epoch=2_001_000,
+        )
+        assert collected_status is not None and collected_status.health == "ready"
+        assert len(collector_calls) == 1
+        cached_status = monitor.collect_subscription_quota_status(
+            quota_state_file,
+            now_epoch=2_001_030,
+        )
+        assert cached_status is not None and cached_status.health == "ready"
+        assert len(collector_calls) == 1
+        assert quota_state_file.stat().st_mode & 0o777 == 0o600
+        quota_state_text = quota_state_file.read_text(encoding="utf-8")
+        quota_state_payload = cast(object, json.loads(quota_state_text))
+        assert isinstance(quota_state_payload, dict)
+        assert cast(dict[str, object], quota_state_payload)["checked_at"] == 2_001_000
+        assert not any(
+            secret in quota_state_text.lower()
+            for secret in ("authorization", "bearer", "cookie", "localstorage")
+        )
+        refreshed_status = monitor.collect_subscription_quota_status(
+            quota_state_file,
+            now_epoch=2_001_056,
+        )
+        assert refreshed_status is not None and refreshed_status.health == "ready"
+        assert len(collector_calls) == 2
+    finally:
+        collector_globals["run_ai_input_subscriptions_javascript"] = (
+            original_subscription_runner
+        )
+        collector_globals["AI_INPUT_SUBSCRIPTIONS_ENABLED"] = (
+            original_subscription_enabled
+        )
+        collector_globals["send_subscription_quota_notification"] = (
+            original_subscription_notifier
+        )
+
     spotify_playing = monitor.parse_spotify_payload(
         '{"playback":"playing","title":"Fixture Song",'
         '"artist":"Fixture Artist","is_ad":false,"media_muted":false}'
@@ -913,8 +1411,47 @@ system_python_render = subprocess.check_output(
 assert system_python_render.startswith("AI "), system_python_render.splitlines()[:1]
 
 with tempfile.TemporaryDirectory() as status_state_directory:
+    quota_cache_path = Path(status_state_directory) / "subscription-quota.json"
+    _ = quota_cache_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "checked_at": int(time.time()),
+                "health": "ready",
+                "quota_levels": {"entry-plan:daily": 0},
+                "status": {
+                    "health": "ready",
+                    "error": None,
+                    "plans": [
+                        {
+                            "id": "entry-plan",
+                            "name": "Entrypoint Plan",
+                            "status": "active",
+                            "expires_at": None,
+                            "quota_state": "available",
+                            "quotas": [
+                                {
+                                    "period": "daily",
+                                    "used_cents": 5_000,
+                                    "limit_cents": 10_000,
+                                    "reset_at": None,
+                                }
+                            ],
+                        }
+                    ],
+                },
+            },
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    quota_cache_path.chmod(0o600)
     live_environment = os.environ.copy()
     live_environment["AI_INPUT_NOTIFICATIONS"] = "0"
+    live_environment["AI_INPUT_SUBSCRIPTIONS_ENABLED"] = "1"
+    live_environment["AI_INPUT_SUBSCRIPTIONS_NOTIFICATIONS"] = "0"
+    live_environment["AI_INPUT_SUBSCRIPTIONS_STATE_FILE"] = str(quota_cache_path)
     live_environment["SPOTIFY_WEB_ENABLED"] = "0"
     live_environment["AI_INPUT_MONITOR_STATE_FILE"] = str(
         Path(status_state_directory) / "ai-input-status.json"
@@ -928,8 +1465,11 @@ live_lines = live_output.splitlines()
 assert_supported_xbar_parameters(live_lines)
 assert live_lines and live_lines[0].startswith("AI "), live_lines[:1]
 assert "· API " in live_lines[0], live_lines[:1]
+assert "· Q 50%" in live_lines[0], live_lines[:1]
 assert "---" in live_lines
 assert any(line.startswith("AI.INPUT.IM:") for line in live_lines)
+assert "AI INPUT quota: 50% max | color=green" in live_lines
+assert any("$50.00 / $100.00 · 50%" in line for line in live_lines)
 assert any(line.startswith("Open Activity Monitor") for line in live_lines)
 version_line = next(
     line

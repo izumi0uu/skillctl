@@ -25,6 +25,10 @@ class ProcessInventoryPlugin:
                 Optional[runtime.AiInputStatus],
                 context.values.get("ai_input_status"),
             ),
+            subscription_quota_status=cast(
+                Optional[runtime.SubscriptionQuotaStatus],
+                context.values.get("subscription_quota_status"),
+            ),
             spotify_status=cast(
                 Optional[runtime.SpotifyStatus],
                 context.values.get("spotify_status"),

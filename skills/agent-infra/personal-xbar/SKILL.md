@@ -1,11 +1,11 @@
 ---
 name: personal-xbar
-description: Install, update, verify, diagnose, or roll back the Personal xbar menu that combines local agent process inventory, AI.INPUT.IM model health, and Spotify Web playback controls with advertisement auto-mute. Use when maintaining this personal macOS menu-bar bundle, adding feature plugins, investigating notifications or Spotify behavior, or shipping a version through skillctl.
+description: Install, update, verify, diagnose, or roll back the Personal xbar menu that combines local agent process inventory, AI.INPUT.IM model health and authenticated subscription quota, and Spotify Web playback controls with advertisement auto-mute. Use when maintaining this personal macOS menu-bar bundle, adding feature plugins, investigating notifications or browser integration, or shipping a version through skillctl.
 ---
 
 # Personal xbar
 
-Own the local Personal xbar bundle as a canonical `skillctl`-managed product. Its registered plugins inventory local agent processes, read the public AI.INPUT.IM status API with transition-only failure and recovery notifications, and control Spotify Web playback while automatically muting advertisements.
+Own the local Personal xbar bundle as a canonical `skillctl`-managed product. Its registered plugins inventory local agent processes, read the public AI.INPUT.IM status API, monitor authenticated AI.INPUT.IM subscription quota with transition-only notifications, and control Spotify Web playback while automatically muting advertisements.
 
 ## Ownership Boundary
 
@@ -13,6 +13,7 @@ Own the local Personal xbar bundle as a canonical `skillctl`-managed product. It
 
 - `plugins/processes.py` collects and renders the agent process inventory;
 - `plugins/ai_input.py` collects model probe status and owns health transitions;
+- `plugins/subscription_quota.py` collects authenticated subscription quota and owns its threshold transitions;
 - `plugins/spotify.py` collects playback state and registers playback actions;
 - `runtime.py` contains shared domain behavior retained by those plugins.
 
@@ -22,7 +23,7 @@ Derived copies are not source:
 - the live entrypoint at `~/Library/Application Support/xbar/plugins/personal-xbar.15s.py`;
 - the hidden live package at `~/Library/Application Support/xbar/plugins/.personal-xbar/personal_xbar/`;
 - install metadata and transactional backups under `~/.local/state/skillctl/personal-xbar/`;
-- model-status, notification, and Spotify mute ownership state under `~/Library/Caches/skillctl/personal-xbar/`.
+- model-status, subscription-quota notification, and Spotify mute ownership state under `~/Library/Caches/skillctl/personal-xbar/`.
 
 Never hand-edit a derived copy. Change the canonical plugin, update its deterministic verifier, sync the skill, then install it through the lifecycle manager.
 
@@ -33,11 +34,12 @@ Never hand-edit a derived copy. Change the canonical plugin, update its determin
 - `/usr/bin/ps` and `/usr/sbin/lsof`.
 - Network access to `https://status.input.im/api/status` for model health.
 - `/usr/bin/osascript` for failure and recovery notifications.
-- Google Chrome for Spotify Web controls.
-- Chrome menu `View > Developer > Allow JavaScript from Apple Events` enabled for Spotify playback inspection and page-local media control.
+- Google Chrome with an already authenticated `https://ai.input.im/subscriptions` tab for subscription quota and an `open.spotify.com` tab for Spotify Web controls.
+- macOS `System Settings > Privacy & Security > Automation` permission for xbar to control Google Chrome.
+- Chrome menu `View > Developer > Allow JavaScript from Apple Events` enabled for same-origin subscription requests, Spotify playback inspection, and page-local media control.
 - Read access to local agent session metadata when evidence-backed titles are desired.
 
-The plugin never sends signals, reads process environments, or writes agent runtime state. Its only filesystem writes are its own mode-`0600` model-status and Spotify mute-ownership state files. A status outage or missing Chrome permission degrades visibly without hiding the local process inventory.
+The plugin never sends signals, reads process environments, copies browser cookies, stores session tokens, or writes agent runtime state. Its only filesystem writes are its own mode-`0600` model-status, subscription-quota, and Spotify mute-ownership state files. A status outage, expired login, or missing browser permission degrades visibly without hiding the local process inventory.
 
 ## Model Health Behavior
 
@@ -56,6 +58,34 @@ AI_INPUT_STATUS_URL=https://status.input.im/api/status
 AI_INPUT_STATUS_PAGE_URL=https://status.input.im
 AI_INPUT_MONITOR_STATE_FILE=/custom/cache/path.json
 ```
+
+## Subscription Quota Behavior
+
+- Subscription quota is a separate registered plugin from public model health. Disabling it does not disable the public status probe or local process inventory.
+- The monitor uses Apple Events to execute JavaScript only in an already open `https://ai.input.im/subscriptions` Chrome tab, with an optional query or fragment but no other path. It prefers a successful authenticated snapshot when multiple matching tabs or regular Chrome instances exist.
+- It reads the plan and quota values rendered by the official page after that page makes its normal authenticated `/api/v1/subscriptions` request.
+- An invisible same-origin subscriptions frame refreshes the official view in the background for the next poll. Failed or stale frames are retried; the visible tab is not reloaded or activated.
+- Chrome is selected by its normal visible macOS process ID, so unrelated headless Chrome instances cannot capture the Apple Events request.
+- The account must already be logged in locally. The monitor does not perform login, read Chrome's cookie database or browser storage, copy cookies, capture session tokens, or store credentials.
+- Successful quota results are cached for 55 seconds. The xbar 15-second refresh therefore does not repeatedly call the account endpoint.
+- The menu shows each active plan's status, expiration, and quota usage, including its reset time when supplied by the service.
+- A plan is shown as unlimited only when the official page says so explicitly. An active card whose quota rows cannot be parsed is marked unavailable instead of silently disabling alerts.
+- Whole-number percentages are rounded down, so `99.99%` never appears exhausted before usage actually reaches the limit.
+- Usage crossing 80%, 90%, or 100% (exhausted) sends one transition notification at each threshold. Continued refreshes in the same band stay quiet.
+- A reset or recovery sends one notification after usage falls below 80%. Initial startup below 80% stays quiet.
+- Closing Chrome, having no open subscriptions tab, denying macOS Automation, disabling JavaScript from Apple Events, losing network access, or letting the account session expire is reported as a distinct unavailable quota state without suppressing other menu sections.
+
+Optional environment overrides:
+
+```text
+AI_INPUT_SUBSCRIPTIONS_ENABLED=0
+AI_INPUT_SUBSCRIPTIONS_NOTIFICATIONS=0
+AI_INPUT_SUBSCRIPTIONS_BROWSER_APP=Google Chrome
+AI_INPUT_SUBSCRIPTIONS_PAGE_URL=https://ai.input.im/subscriptions
+AI_INPUT_SUBSCRIPTIONS_STATE_FILE=/custom/cache/ai-input-subscriptions.json
+```
+
+The browser application and page URL overrides are operational controls, not an authorization to broaden inspection. Tab matching remains fixed to the exact HTTPS subscriptions path on `ai.input.im`; the page URL override changes only the menu's Open action.
 
 ## Spotify Web Behavior
 
@@ -121,7 +151,7 @@ Installation is transactional: verify source, back up a changed target, atomical
 python3 "$SKILL_DIR/scripts/manage_personal_xbar.py" verify --installed
 ```
 
-Then allow one 15-second xbar refresh and inspect the live menu. Session rows must remain evidence-only; the Worker row owns MCP and Support submenus. The title must include the API healthy/total count, and the AI.INPUT.IM submenu must preserve process inventory when the status service is unavailable.
+Then allow one 15-second xbar refresh and inspect the live menu. Session rows must remain evidence-only; the Worker row owns MCP and Support submenus. The title must include the API healthy/total count, and the AI.INPUT.IM health and subscription submenus must preserve process inventory when either service is unavailable. Authenticated quota should show only when Chrome has a logged-in `ai.input.im` tab and Apple Events JavaScript is enabled.
 
 ### 5. List And Restore Backups
 
@@ -155,8 +185,10 @@ Lifecycle-manager-only changes update the skill catalog hash but do not require 
 - Session evidence is accepted only from requested PID records and canonical paths under `~/.codex/sessions`.
 - Unknown xbar parameters are forbidden.
 - Collection failures fail visibly without killing or cleaning processes.
-- Model-status and Spotify mute-ownership state contain no credentials and are written atomically with mode `0600`.
+- Model-status, subscription-quota, and Spotify mute-ownership state contain no credentials and are written atomically with mode `0600`.
 - Model failure and recovery notifications are transition-only; verifier runs disable notifications and use isolated state.
+- Subscription quota alerts are transition-only at 80%, 90%, and exhausted; reset recovery occurs only below 80%.
+- Authenticated subscription collection reads only the rendered official subscriptions view, lets that view use the existing Chrome session, and never persists browser credentials.
 - Spotify auto-mute never restores a page that was already muted before the advertisement.
 
 ## Safety
@@ -166,5 +198,6 @@ Lifecycle-manager-only changes update the skill catalog hash but do not require 
 - Do not remove `.15s` from the live entrypoint; xbar uses it to schedule refreshes. The manager migrates and backs up the legacy `mcp-monitor.15s.py` target to prevent duplicates.
 - Do not use this skill to kill, pool, or clean MCP processes.
 - Do not add an AI.INPUT.IM API key or replace the official public status feed with paid completion probes.
+- Do not copy AI.INPUT.IM cookies, session tokens, API keys, or browser storage into plugin state. Require the user to log in through Chrome and keep subscription scripting scoped to the HTTPS `ai.input.im/subscriptions` page.
 - Keep Spotify JavaScript scoped to `open.spotify.com`; do not inspect unrelated Chrome tabs or browser history.
 - Preserve unrelated managed skills; use `skillctl` as the distribution control plane.
