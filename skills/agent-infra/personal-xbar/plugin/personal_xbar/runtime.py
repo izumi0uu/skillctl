@@ -71,6 +71,7 @@ AI_INPUT_API_ORIGIN = "https://ai.input.im"
 AI_INPUT_API_BASE = f"{AI_INPUT_API_ORIGIN}/api/v1"
 AI_INPUT_API_TIMEOUT_SECONDS = 4.0
 AI_INPUT_API_BODY_LIMIT = 1024 * 1024
+AI_INPUT_API_DEFAULT_USER_AGENT = "Personal-xbar/3"
 AI_INPUT_REFRESH_LEAD_SECONDS = 120
 AI_INPUT_REFRESH_LOCK_FILE = Path(
     os.environ.get(
@@ -847,13 +848,14 @@ def api_request_json(
     *,
     method: str = "GET",
     body: dict[str, object] | None = None,
+    user_agent: str | None = None,
 ) -> object:
     if not path.startswith("/") or path.startswith("//"):
         raise AiInputApiError("request", "AI INPUT API path is invalid")
     url = f"{AI_INPUT_API_BASE}{path}"
     headers = {
         "Accept": "application/json",
-        "User-Agent": "Personal-xbar/3",
+        "User-Agent": user_agent or AI_INPUT_API_DEFAULT_USER_AGENT,
     }
     encoded_body: bytes | None = None
     if body is not None:
@@ -965,16 +967,22 @@ _AI_INPUT_REFRESH_THREAD_LOCK = threading.Lock()
 @contextmanager
 def ai_input_refresh_lock(state_file: Path) -> Iterable[None]:
     lock_path = _refresh_lock_path(state_file)
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
     with _AI_INPUT_REFRESH_THREAD_LOCK:
+        lock_file = None
         try:
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
             lock_file = lock_path.open("a+")
-        except OSError as error:
-            raise AiInputApiError("lock", "AI INPUT refresh lock is unavailable") from error
-        try:
             lock_path.chmod(0o600)
             if fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        except OSError as error:
+            if lock_file is not None:
+                try:
+                    lock_file.close()
+                except OSError:
+                    pass
+            raise AiInputApiError("lock", "AI INPUT refresh lock is unavailable") from error
+        try:
             yield
         finally:
             if fcntl is not None:
@@ -982,7 +990,10 @@ def ai_input_refresh_lock(state_file: Path) -> Iterable[None]:
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
                 except OSError:
                     pass
-            lock_file.close()
+            try:
+                lock_file.close()
+            except OSError:
+                pass
 
 
 def refresh_ai_input_credentials(
@@ -1008,6 +1019,7 @@ def refresh_ai_input_credentials(
                 "/auth/refresh",
                 method="POST",
                 body={"refresh_token": latest.refresh_token},
+                user_agent=latest.user_agent,
             )
         )
         if not isinstance(payload, dict):
@@ -1020,6 +1032,7 @@ def refresh_ai_input_credentials(
                 payload.get("access_token"),
                 payload.get("refresh_token"),
                 now_epoch + expires_in,
+                latest.user_agent,
             )
             write_ai_input_credentials(refreshed)
         except ai_input_auth.AuthError as error:
@@ -1090,11 +1103,12 @@ def parse_subscription_api_payload(
                     reset_at=reset_at,
                 )
             )
+        has_explicit_limit_fields = any(
+            key in group_dict or key in raw_subscription
+            for key in ("daily_limit_usd", "weekly_limit_usd", "monthly_limit_usd")
+        )
         quota_state = "available" if quotas else (
-            "unlimited" if group or any(
-                key in raw_subscription
-                for key in ("daily_limit_usd", "weekly_limit_usd", "monthly_limit_usd")
-            ) else "unavailable"
+            "unlimited" if has_explicit_limit_fields else "unavailable"
         )
         plans.append(
             SubscriptionPlan(
@@ -1112,6 +1126,20 @@ def parse_subscription_api_payload(
         plans=tuple(plans),
         source="api",
     )
+
+
+def _request_subscription_api_payload(
+    credentials: ai_input_auth.AiInputCredentials,
+) -> object:
+    """Validate the API envelope before parsing, including HTTP-200 auth errors."""
+
+    payload = api_request_json(
+        _api_subscription_request_path(),
+        credentials.access_token,
+        user_agent=credentials.user_agent,
+    )
+    _ = _unwrap_ai_input_api_payload(payload)
+    return payload
 
 
 def _direct_subscription_status(
@@ -1146,18 +1174,14 @@ def _direct_subscription_status(
                         source="api",
                     )
         try:
-            payload = api_request_json(
-                _api_subscription_request_path(), active_credentials.access_token
-            )
+            payload = _request_subscription_api_payload(active_credentials)
         except AiInputApiError as error:
             if error.kind != "unauthorized":
                 raise
             active_credentials = refresh_ai_input_credentials(
                 active_credentials, state_file, now_epoch, force=True
             )
-            payload = api_request_json(
-                _api_subscription_request_path(), active_credentials.access_token
-            )
+            payload = _request_subscription_api_payload(active_credentials)
         return parse_subscription_api_payload(payload, now_epoch=now_epoch)
     except ai_input_auth.AuthError:
         return SubscriptionQuotaStatus(
@@ -1197,15 +1221,17 @@ AI_INPUT_SUBSCRIPTIONS_JAVASCRIPT = r"""
   const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
   const parseExpiry = (text) => {
     const match = clean(text).match(
-      /\(?(\d{4})[/-](\d{1,2})[/-](\d{1,2})\s+(\d{1,2}):(\d{2})\)?/
+      /\(?(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?\)?/
     );
     if (!match) return null;
+    const hasTime = match[4] !== undefined;
     const milliseconds = new Date(
       Number(match[1]),
       Number(match[2]) - 1,
       Number(match[3]),
-      Number(match[4]),
-      Number(match[5])
+      hasTime ? Number(match[4]) : 23,
+      hasTime ? Number(match[5]) : 59,
+      hasTime ? 0 : 59
     ).getTime();
     return Number.isFinite(milliseconds) ? Math.floor(milliseconds / 1000) : null;
   };
@@ -1843,7 +1869,9 @@ def collect_subscription_quota_status(
         if AI_INPUT_SUBSCRIPTIONS_DIRECT_ENABLED
         else SubscriptionQuotaStatus(health="not-configured", source="keychain")
     )
-    if direct_status.health == "ready":
+    if direct_status.health != "not-configured":
+        # Once configured, the Keychain account is authoritative. Switching to a
+        # browser profile can monitor another account and duplicate threshold alerts.
         status = direct_status
     else:
         _, payload, runner_error = run_ai_input_subscriptions_javascript()
@@ -1885,16 +1913,7 @@ def collect_subscription_quota_status(
                     error=sanitize_text(str(error), 140),
                     source="browser",
                 )
-        if browser_status.health == "ready":
-            status = browser_status
-        elif direct_status.health != "not-configured" and browser_status.health in {
-            "not-running",
-            "not-found",
-        }:
-            # A configured token is more actionable than a missing browser tab.
-            status = direct_status
-        else:
-            status = browser_status
+        status = browser_status
 
     next_state, notifications = subscription_quota_notification_transition(
         previous,

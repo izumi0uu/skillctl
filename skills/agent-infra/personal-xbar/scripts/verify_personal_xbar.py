@@ -15,6 +15,7 @@ import threading
 import time
 import urllib.request
 from collections.abc import Callable
+from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
 from typing import Protocol, cast
@@ -298,32 +299,126 @@ manager_module = importlib.util.module_from_spec(manager_spec)
 sys.modules[manager_spec.name] = manager_module
 manager_spec.loader.exec_module(manager_module)
 parsed_auth_set = manager_module.build_parser().parse_args(
-    ["auth", "set", "--expires-in", "900"]
+    [
+        "auth",
+        "set",
+        "--expires-in",
+        "900",
+        "--user-agent",
+        "Fixture Browser/123",
+    ]
 )
 assert parsed_auth_set.command == "auth"
 assert parsed_auth_set.auth_command == "set"
 assert parsed_auth_set.expires_in == 900
+assert parsed_auth_set.user_agent == "Fixture Browser/123"
+
+original_manager_browser_runner = monitor.run_ai_input_subscriptions_javascript
+manager_browser_scripts: list[str] = []
+
+
+def fake_manager_browser_runner(
+    javascript: str,
+) -> tuple[int | None, str | None, str | None]:
+    manager_browser_scripts.append(javascript)
+    return 41, "Detected Browser/456", None
+
+
+try:
+    monitor.run_ai_input_subscriptions_javascript = fake_manager_browser_runner
+    assert (
+        manager_module.resolve_browser_user_agent(monitor, None)
+        == "Detected Browser/456"
+    )
+finally:
+    monitor.run_ai_input_subscriptions_javascript = original_manager_browser_runner
+assert manager_browser_scripts == ["navigator.userAgent"]
 
 auth_module_for_manager = monitor.ai_input_auth
 original_manager_loader = manager_module.load_auth_modules
 original_getpass = manager_module.getpass.getpass
 original_manager_writer = auth_module_for_manager.write_credentials
+original_manager_deleter = auth_module_for_manager.delete_credentials
+original_manager_lock = monitor.ai_input_refresh_lock
 manager_inputs = iter(("manager-access-secret", "manager-refresh-secret"))
 manager_written: list[object] = []
+manager_events: list[str] = []
+
+
+def fake_manager_getpass(_prompt: str) -> str:
+    manager_events.append("prompt")
+    return next(manager_inputs)
+
+
+def fake_manager_writer(credentials: object) -> None:
+    manager_events.append("write")
+    manager_written.append(credentials)
+
+
+def fake_manager_deleter() -> None:
+    manager_events.append("delete")
+
+
+@contextmanager
+def fake_manager_lock(_state_file: Path) -> object:
+    manager_events.append("lock-enter")
+    try:
+        yield
+    finally:
+        manager_events.append("lock-exit")
+
+
 try:
     manager_module.load_auth_modules = lambda: (auth_module_for_manager, monitor)
-    manager_module.getpass.getpass = lambda _prompt: next(manager_inputs)
-    auth_module_for_manager.write_credentials = manager_written.append
-    manager_auth_output = manager_module.auth_set(900)
+    manager_module.getpass.getpass = fake_manager_getpass
+    auth_module_for_manager.write_credentials = fake_manager_writer
+    auth_module_for_manager.delete_credentials = fake_manager_deleter
+    monitor.ai_input_refresh_lock = fake_manager_lock
+    manager_auth_output = manager_module.auth_set(900, "Fixture Browser/123")
+    manager_delete_output = manager_module.auth_delete()
 finally:
     manager_module.load_auth_modules = original_manager_loader
     manager_module.getpass.getpass = original_getpass
     auth_module_for_manager.write_credentials = original_manager_writer
+    auth_module_for_manager.delete_credentials = original_manager_deleter
+    monitor.ai_input_refresh_lock = original_manager_lock
 assert len(manager_written) == 1
+assert manager_events == [
+    "prompt",
+    "prompt",
+    "lock-enter",
+    "write",
+    "lock-exit",
+    "lock-enter",
+    "delete",
+    "lock-exit",
+]
 manager_auth_text = json.dumps(manager_auth_output)
 assert "manager-access-secret" not in manager_auth_text
 assert "manager-refresh-secret" not in manager_auth_text
 assert manager_auth_output["status"] == "configured"
+assert manager_auth_output["credentials"]["has_browser_user_agent"] is True
+assert manager_delete_output["status"] == "deleted"
+
+
+def warning_getpass(_prompt: str) -> str:
+    manager_module.warnings.warn(
+        "Password input may be echoed",
+        manager_module.getpass.GetPassWarning,
+    )
+    return "must-not-be-read"
+
+
+try:
+    manager_module.getpass.getpass = warning_getpass
+    try:
+        _ = manager_module.hidden_credential("fixture: ")
+    except manager_module.MonitorManagerError:
+        pass
+    else:
+        raise AssertionError("getpass echo fallback was accepted")
+finally:
+    manager_module.getpass.getpass = original_getpass
 
 with tempfile.TemporaryDirectory() as temporary_directory:
     home = Path(temporary_directory)
@@ -855,6 +950,8 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     assert 'frameSnapshot.error !== "loading"' in subscription_javascript
     assert "frame-unavailable" in subscription_javascript
     assert "status_text: statusText" in subscription_javascript
+    assert "const hasTime = match[4] !== undefined" in subscription_javascript
+    assert "hasTime ? Number(match[4]) : 23" in subscription_javascript
     assert 'id: `dom:${cardIndex}:${name}:${expiresAt || "none"}`' in (
         subscription_javascript
     )
@@ -960,6 +1057,21 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         now_epoch=1_700_000_000,
     )
     assert unlimited_direct_status.plans[0].quota_state == "unlimited"
+    partial_group_status = monitor.parse_subscription_api_payload(
+        {
+            "code": 0,
+            "data": [
+                {
+                    "id": "partial-api",
+                    "status": "active",
+                    "expires_at": None,
+                    "group": {"name": "Partial API Plan"},
+                }
+            ],
+        },
+        now_epoch=1_700_000_000,
+    )
+    assert partial_group_status.plans[0].quota_state == "unavailable"
 
     auth_module = monitor.ai_input_auth
 
@@ -981,6 +1093,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     keychain_credentials = auth_module.make_credentials(
         jwt_access,
         "refresh-fixture-secret",
+        user_agent="Fixture Browser/123",
     )
     try:
         _ = auth_module.make_credentials(
@@ -991,17 +1104,35 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         pass
     else:
         raise AssertionError("credential header injection was accepted")
+    try:
+        _ = auth_module.make_credentials(
+            "access-fixture",
+            "refresh-fixture-secret",
+            user_agent="Fixture Browser\ninjected-header",
+        )
+    except auth_module.AuthError:
+        pass
+    else:
+        raise AssertionError("user-agent header injection was accepted")
+    non_finite_jwt = "e30.eyJleHAiOk5hTn0.fixture"
+    assert auth_module.make_credentials(
+        non_finite_jwt,
+        "refresh-fixture-secret",
+    ).expires_at is None
     assert keychain_credentials.expires_at == 2_000_000_000
+    assert keychain_credentials.user_agent == "Fixture Browser/123"
     auth_module.write_credentials(keychain_credentials, memory_keychain)
     assert auth_module.read_credentials(memory_keychain) == keychain_credentials
     redacted_representation = repr(keychain_credentials)
     assert jwt_access not in redacted_representation
     assert "refresh-fixture-secret" not in redacted_representation
+    assert "Fixture Browser/123" not in redacted_representation
     redacted_summary = auth_module.credentials_summary(
         keychain_credentials, 1_999_999_900
     )
     assert "access_token" not in redacted_summary
     assert "refresh_token" not in redacted_summary
+    assert redacted_summary["has_browser_user_agent"] is True
     auth_module.delete_credentials(memory_keychain)
     assert auth_module.read_credentials(memory_keychain) is None
 
@@ -1033,6 +1164,49 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     assert same_origin_redirect is not None
     assert same_origin_redirect.full_url.startswith("https://ai.input.im/api/v1/")
 
+    captured_api_requests: list[urllib.request.Request] = []
+
+    class FixtureApiResponse:
+        status = 200
+        headers = {"Content-Length": "20"}
+
+        def __enter__(self) -> FixtureApiResponse:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self, _limit: int) -> bytes:
+            return b'{"code":0,"data":[]}'
+
+    class FixtureApiOpener:
+        def open(
+            self,
+            request: urllib.request.Request,
+            timeout: float,
+        ) -> FixtureApiResponse:
+            assert timeout == monitor.AI_INPUT_API_TIMEOUT_SECONDS
+            captured_api_requests.append(request)
+            return FixtureApiResponse()
+
+    original_build_opener = urllib.request.build_opener
+    try:
+        urllib.request.build_opener = lambda *_handlers: FixtureApiOpener()
+        _ = monitor.api_request_json(
+            "/subscriptions",
+            "fixture-access-secret",
+            user_agent="Fixture Browser/123",
+        )
+    finally:
+        urllib.request.build_opener = original_build_opener
+    assert len(captured_api_requests) == 1
+    captured_request = captured_api_requests[0]
+    assert captured_request.full_url == "https://ai.input.im/api/v1/subscriptions"
+    assert captured_request.get_header("User-agent") == "Fixture Browser/123"
+    assert captured_request.get_header("Authorization") == (
+        "Bearer fixture-access-secret"
+    )
+
     direct_globals = monitor.collect_subscription_quota_api_status.__globals__
     original_credential_reader = direct_globals["read_ai_input_credentials"]
     original_credential_writer = direct_globals["write_ai_input_credentials"]
@@ -1043,6 +1217,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
             "access-before-refresh",
             "refresh-before-rotation",
             2_001_900,
+            "Fixture Browser/123",
         )
     }
     written_credentials: list[object] = []
@@ -1061,7 +1236,9 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         *,
         method: str = "GET",
         body: dict[str, object] | None = None,
+        user_agent: str | None = None,
     ) -> object:
+        assert user_agent == "Fixture Browser/123"
         if path == "/auth/refresh":
             direct_api_calls.append("refresh")
             assert method == "POST"
@@ -1078,9 +1255,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         assert path.startswith("/subscriptions")
         direct_api_calls.append(f"subscriptions:{access_token}")
         if access_token == "access-before-refresh":
-            raise monitor.AiInputApiError(
-                "unauthorized", "AI INPUT API authorization expired"
-            )
+            return {"code": 401, "message": "authorization expired", "data": None}
         assert access_token == "access-after-refresh"
         return direct_subscription_payload
 
@@ -1104,6 +1279,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         assert rotated.access_token == "access-after-refresh"
         assert rotated.refresh_token == "refresh-after-rotation"
         assert rotated.expires_at == 2_001_600
+        assert rotated.user_agent == "Fixture Browser/123"
         persisted_status, _ = monitor.subscription_quota_notification_transition(
             {}, retried_direct_status, checked_at=2_001_000
         )
@@ -1122,6 +1298,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
             "proactive-old-access",
             "proactive-old-refresh",
             2_002_060,
+            "Fixture Browser/123",
         )
         written_credentials.clear()
         proactive_calls: list[str] = []
@@ -1132,7 +1309,9 @@ with tempfile.TemporaryDirectory() as temporary_directory:
             *,
             method: str = "GET",
             body: dict[str, object] | None = None,
+            user_agent: str | None = None,
         ) -> object:
+            assert user_agent == "Fixture Browser/123"
             if path == "/auth/refresh":
                 proactive_calls.append("refresh")
                 assert body == {"refresh_token": "proactive-old-refresh"}
@@ -1160,6 +1339,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
             "concurrent-old-access",
             "concurrent-old-refresh",
             2_003_000,
+            "Fixture Browser/123",
         )
         credential_box["value"] = expired_credentials
         written_credentials.clear()
@@ -1171,7 +1351,9 @@ with tempfile.TemporaryDirectory() as temporary_directory:
             *,
             method: str = "GET",
             body: dict[str, object] | None = None,
+            user_agent: str | None = None,
         ) -> object:
+            assert user_agent == "Fixture Browser/123"
             assert path == "/auth/refresh"
             assert body == {"refresh_token": "concurrent-old-refresh"}
             concurrent_refresh_calls.append("refresh")
@@ -1212,6 +1394,16 @@ with tempfile.TemporaryDirectory() as temporary_directory:
             result.access_token == "concurrent-new-access"
             for result in concurrent_results
         )
+        invalid_lock_parent = home / "refresh-lock-parent-file"
+        _ = invalid_lock_parent.write_text("not a directory", encoding="utf-8")
+        direct_globals["AI_INPUT_REFRESH_LOCK_FILE"] = invalid_lock_parent / "lock"
+        try:
+            with monitor.ai_input_refresh_lock(home / "unused-state.json"):
+                pass
+        except monitor.AiInputApiError as error:
+            assert error.kind == "lock"
+        else:
+            raise AssertionError("refresh lock setup failure escaped redaction")
     finally:
         direct_globals["read_ai_input_credentials"] = original_credential_reader
         direct_globals["write_ai_input_credentials"] = original_credential_writer
@@ -1487,6 +1679,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     original_direct_enabled = collector_globals[
         "AI_INPUT_SUBSCRIPTIONS_DIRECT_ENABLED"
     ]
+    original_direct_collector = collector_globals["_direct_subscription_status"]
     original_subscription_notifier = collector_globals[
         "send_subscription_quota_notification"
     ]
@@ -1551,6 +1744,23 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         )
         assert refreshed_status is not None and refreshed_status.health == "ready"
         assert len(collector_calls) == 2
+
+        collector_calls.clear()
+        collector_globals["AI_INPUT_SUBSCRIPTIONS_DIRECT_ENABLED"] = True
+        collector_globals["_direct_subscription_status"] = (
+            lambda _state_file, _now_epoch: subscription_status_type(
+                health="session-expired",
+                error="AI INPUT sign-in required; refresh token was rejected",
+                source="api",
+            )
+        )
+        direct_failure_status = monitor.collect_subscription_quota_status(
+            home / "direct-failure-state.json",
+            now_epoch=2_001_100,
+        )
+        assert direct_failure_status is not None
+        assert direct_failure_status.health == "session-expired"
+        assert collector_calls == []
     finally:
         collector_globals["run_ai_input_subscriptions_javascript"] = (
             original_subscription_runner
@@ -1561,6 +1771,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         collector_globals["AI_INPUT_SUBSCRIPTIONS_DIRECT_ENABLED"] = (
             original_direct_enabled
         )
+        collector_globals["_direct_subscription_status"] = original_direct_collector
         collector_globals["send_subscription_quota_notification"] = (
             original_subscription_notifier
         )

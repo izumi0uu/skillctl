@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import warnings
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -59,6 +60,7 @@ class ParsedArgs(Protocol):
     backup_name: str
     auth_command: str | None
     expires_in: int | None
+    user_agent: str | None
 
 
 def sha256_file(path: Path) -> str:
@@ -556,23 +558,77 @@ def load_auth_modules() -> tuple[object, object]:
     return auth_module, runtime_module
 
 
-def auth_set(expires_in: int | None) -> dict[str, object]:
-    auth_module, _runtime_module = load_auth_modules()
+def hidden_credential(prompt: str) -> str:
+    """Read a secret only when getpass can keep terminal echo disabled."""
+
     try:
-        access_token = getpass.getpass("AI.INPUT.IM access token (hidden): ").strip()
-        refresh_token = getpass.getpass("AI.INPUT.IM refresh token (hidden): ").strip()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", getpass.GetPassWarning)
+            return getpass.getpass(prompt).strip()
+    except getpass.GetPassWarning:
+        raise MonitorManagerError(
+            "hidden credential input requires an interactive terminal"
+        ) from None
+
+
+def resolve_browser_user_agent(
+    runtime_module: object,
+    supplied_user_agent: str | None,
+) -> str:
+    if supplied_user_agent is not None and supplied_user_agent.strip():
+        return supplied_user_agent.strip()
+    _tab_id, detected, error = runtime_module.run_ai_input_subscriptions_javascript(
+        "navigator.userAgent"
+    )
+    if error is None and isinstance(detected, str) and detected.strip():
+        return detected.strip()
+    try:
+        user_agent = input(
+            "Token-source browser User-Agent (navigator.userAgent): "
+        ).strip()
+    except (EOFError, KeyboardInterrupt):
+        raise MonitorManagerError("browser User-Agent input was cancelled") from None
+    if not user_agent:
+        raise MonitorManagerError("token-source browser User-Agent is required")
+    return user_agent
+
+
+def auth_set(
+    expires_in: int | None,
+    user_agent: str | None = None,
+) -> dict[str, object]:
+    auth_module, runtime_module = load_auth_modules()
+    try:
+        resolved_user_agent = resolve_browser_user_agent(runtime_module, user_agent)
+        access_token = hidden_credential("AI.INPUT.IM access token (hidden): ")
+        refresh_token = hidden_credential("AI.INPUT.IM refresh token (hidden): ")
         expiry = None if expires_in is None else int(time.time()) + expires_in
-        credentials = auth_module.make_credentials(access_token, refresh_token, expiry)
-        auth_module.write_credentials(credentials)
+        credentials = auth_module.make_credentials(
+            access_token,
+            refresh_token,
+            expiry,
+            resolved_user_agent,
+        )
     except (EOFError, KeyboardInterrupt):
         raise MonitorManagerError("credential input was cancelled") from None
     except auth_module.AuthError as error:
+        raise MonitorManagerError(str(error)) from error
+    try:
+        with runtime_module.ai_input_refresh_lock(
+            runtime_module.AI_INPUT_SUBSCRIPTIONS_STATE_FILE
+        ):
+            auth_module.write_credentials(credentials)
+    except (auth_module.AuthError, runtime_module.AiInputApiError) as error:
         raise MonitorManagerError(str(error)) from error
     return {
         "status": "configured",
         "keychain_service": auth_module.KEYCHAIN_SERVICE,
         "keychain_account": auth_module.KEYCHAIN_ACCOUNT,
         "credentials": auth_module.credentials_summary(credentials, int(time.time())),
+        "next_step": (
+            "close the dedicated token-source browser tab without logging out, "
+            "then run auth test"
+        ),
     }
 
 
@@ -629,10 +685,13 @@ def auth_test() -> dict[str, object]:
 
 
 def auth_delete() -> dict[str, object]:
-    auth_module, _runtime_module = load_auth_modules()
+    auth_module, runtime_module = load_auth_modules()
     try:
-        auth_module.delete_credentials()
-    except auth_module.AuthError as error:
+        with runtime_module.ai_input_refresh_lock(
+            runtime_module.AI_INPUT_SUBSCRIPTIONS_STATE_FILE
+        ):
+            auth_module.delete_credentials()
+    except (auth_module.AuthError, runtime_module.AiInputApiError) as error:
         return {"status": "error", "error": str(error)}
     return {
         "status": "deleted",
@@ -663,6 +722,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--expires-in",
         type=int,
         help="Access-token lifetime in seconds; omit to use a JWT exp claim or refresh on 401.",
+    )
+    _ = auth_set_parser.add_argument(
+        "--user-agent",
+        help=(
+            "Non-secret browser User-Agent that issued the token; omit to detect it "
+            "from an open AI.INPUT.IM Chrome tab or enter it interactively."
+        ),
     )
     _ = auth_commands.add_parser("status")
     _ = auth_commands.add_parser("test")
@@ -700,7 +766,7 @@ def main() -> int:
             if args.auth_command == "set":
                 if args.expires_in is not None and args.expires_in <= 0:
                     raise MonitorManagerError("--expires-in must be positive")
-                output = auth_set(args.expires_in)
+                output = auth_set(args.expires_in, args.user_agent)
             elif args.auth_command == "status":
                 output = auth_status()
             elif args.auth_command == "test":
