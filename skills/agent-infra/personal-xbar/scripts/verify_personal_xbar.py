@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import importlib.util
 import json
 import os
@@ -15,10 +16,11 @@ import threading
 import time
 import urllib.request
 from collections.abc import Callable
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import ModuleType
 from typing import Protocol, cast
+from unittest.mock import patch
 
 DEFAULT_PLUGIN = Path(__file__).resolve().parents[1] / "plugin" / "personal-xbar.15s.py"
 
@@ -353,6 +355,18 @@ assert manager_spec is not None and manager_spec.loader is not None
 manager_module = importlib.util.module_from_spec(manager_spec)
 sys.modules[manager_spec.name] = manager_module
 manager_spec.loader.exec_module(manager_module)
+manager_user_agent_stdout = io.StringIO()
+manager_user_agent_stderr = io.StringIO()
+with patch("builtins.input", return_value="Fixture Client/456"):
+    with redirect_stdout(manager_user_agent_stdout), redirect_stderr(
+        manager_user_agent_stderr
+    ):
+        resolved_manager_user_agent = manager_module.resolve_request_user_agent(None)
+assert resolved_manager_user_agent == "Fixture Client/456"
+assert manager_user_agent_stdout.getvalue() == ""
+assert manager_user_agent_stderr.getvalue() == (
+    "Token request User-Agent (non-secret): "
+)
 parsed_auth_set = manager_module.build_parser().parse_args(
     [
         "auth",
@@ -410,7 +424,9 @@ try:
     auth_module_for_manager.write_credentials = fake_manager_writer
     auth_module_for_manager.delete_credentials = fake_manager_deleter
     monitor.ai_input_refresh_lock = fake_manager_lock
-    manager_auth_output = manager_module.auth_set(900, "Fixture Client/123")
+    manager_auth_stderr = io.StringIO()
+    with redirect_stderr(manager_auth_stderr):
+        manager_auth_output = manager_module.auth_set(900, "Fixture Client/123")
     manager_delete_output = manager_module.auth_delete()
 finally:
     manager_module.load_auth_modules = original_manager_loader
@@ -430,11 +446,23 @@ assert manager_events == [
     "lock-exit",
 ]
 manager_auth_text = json.dumps(manager_auth_output)
+manager_auth_reminder = manager_auth_stderr.getvalue()
 assert "manager-access-secret" not in manager_auth_text
 assert "manager-refresh-secret" not in manager_auth_text
+assert "manager-access-secret" not in manager_auth_reminder
+assert "manager-refresh-secret" not in manager_auth_reminder
 assert manager_auth_output["status"] == "configured"
 assert manager_auth_output["credentials"]["has_user_agent"] is True
 assert manager_delete_output["status"] == "deleted"
+assert manager_auth_reminder == manager_module.AUTH_SET_SESSION_REMINDER + "\n"
+assert "Chrome Guest window or dedicated profile" in manager_auth_reminder
+assert "Do not copy tokens from a Chrome session you will keep using" in (
+    manager_auth_reminder
+)
+assert "close the source window without signing out" in manager_auth_reminder
+assert "does not force refresh-token rotation" in manager_auth_reminder
+assert "without signing out or reusing it" in manager_auth_output["next_step"]
+assert "does not force refresh-token rotation" in manager_auth_output["next_step"]
 assert manager_prompts == [
     "AI.INPUT.IM access token (paste value only; omit 'Bearer ' prefix, hidden): ",
     "AI.INPUT.IM refresh token (paste value only, hidden): ",
@@ -442,14 +470,18 @@ assert manager_prompts == [
 
 try:
     manager_module.getpass.getpass = lambda _prompt: "Bearer manager-access-secret"
-    try:
-        manager_module.auth_set(900, "Fixture Client/123")
-    except manager_module.MonitorManagerError as error:
-        assert str(error) == (
-            "paste the access token value only; omit the 'Bearer ' prefix"
-        )
-    else:
-        raise AssertionError("Bearer access-token prefix was accepted")
+    bearer_stderr = io.StringIO()
+    with redirect_stderr(bearer_stderr):
+        try:
+            manager_module.auth_set(900, "Fixture Client/123")
+        except manager_module.MonitorManagerError as error:
+            assert str(error) == (
+                "paste the access token value only; omit the 'Bearer ' prefix"
+            )
+        else:
+            raise AssertionError("Bearer access-token prefix was accepted")
+    assert bearer_stderr.getvalue() == manager_module.AUTH_SET_SESSION_REMINDER + "\n"
+    assert "manager-access-secret" not in bearer_stderr.getvalue()
 finally:
     manager_module.getpass.getpass = original_getpass
 

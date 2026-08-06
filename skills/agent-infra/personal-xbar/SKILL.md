@@ -42,7 +42,9 @@ Never hand-edit a derived copy. Change the canonical plugin, update its determin
 - macOS Keychain access for the generic-password item used by the direct quota probe.
 - Configure quota credentials locally with
   `/usr/bin/python3 scripts/manage_personal_xbar.py auth set`; do not put tokens in shell
-  arguments or chat. The quota monitor never reads a Chrome login session.
+  arguments or chat. Obtain an xbar-only token pair from a fresh AI.INPUT.IM login in
+  a Chrome Guest window or dedicated browser profile, never from the everyday Chrome
+  session that will remain active. The quota monitor never reads a Chrome login session.
 - Google Chrome with an `open.spotify.com` tab is required only for Spotify Web controls.
 - Multiple same-name Chrome processes are supported: Apple Events are sent directly to
   foreground browser process IDs, so a background headless Chrome cannot capture the probe.
@@ -234,9 +236,20 @@ refresh service's own `expires_in` replaces that estimate after the first rotati
 Use `/usr/bin/python3` for these auth commands so the Keychain item is created by
 the same interpreter xbar normally launches on macOS.
 
-Do not let another client actively use the same rotating refresh token. If the token
-pair was obtained from a browser session, stop that session after extraction without
-logging it out; otherwise either client may consume the next refresh token first.
+Create and transfer quota credentials in this order:
+
+1. Open a fresh Chrome Guest window (preferred) or a dedicated browser profile that
+   will be reserved for xbar, then sign in to AI.INPUT.IM once.
+2. Capture that session's access token, refresh token, and request User-Agent, then run
+   `auth set` immediately. Never use the still-active everyday Chrome session's pair.
+3. After `auth set` succeeds, close the entire source window without signing out and
+   do not reopen or reuse that session. Keep everyday Chrome on its separate session.
+4. Run `auth test`. A successful result proves quota API access, but when the access
+   token is still valid it does not force a refresh or prove the refresh-token chain.
+
+Do not let another client actively use the same rotating refresh token. Xbar refreshes
+about 120 seconds before access-token expiry, and either client sharing the pair may
+consume the next refresh token first and invalidate the other's copy.
 When the service enables IP/User-Agent session binding, provide the issuing
 User-Agent explicitly and keep the same outward network path.
 
@@ -291,7 +304,9 @@ Lifecycle-manager-only changes update the skill catalog hash but do not require 
 - Do not add an AI.INPUT.IM API key or replace the official public status feed with paid completion probes.
 - Do not copy AI.INPUT.IM cookies, browser storage, or API keys into plugin state. User-supplied access/refresh tokens may be entered only through the manager's hidden `auth set` prompt and are kept in the macOS login Keychain, never in state JSON.
 - Do not treat a fixed three-day timer as token validity. Use the server's `expires_in`, rotate the refresh token atomically, and require a new hidden `auth set` after a rejected refresh or session-binding failure.
-- Do not let xbar and another client actively share one rotating refresh token.
-  Supply `--user-agent` manually when the service binds a token to its issuing client.
+- Give xbar a token pair from a fresh Guest/dedicated-profile login and retire that
+  source browser session without signing out after `auth set`. Never let xbar and an
+  active browser share one rotating refresh token. Supply `--user-agent` manually when
+  the service binds a token to its issuing client.
 - Keep Spotify JavaScript scoped to `open.spotify.com`; do not inspect unrelated Chrome tabs or browser history.
 - Preserve unrelated managed skills; use `skillctl` as the distribution control plane.

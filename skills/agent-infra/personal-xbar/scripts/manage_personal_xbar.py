@@ -43,6 +43,19 @@ DEFAULT_STATE_ROOT = (
 METADATA_FILE = "install.json"
 BACKUP_DIRECTORY = "backups"
 METADATA_SCHEMA_VERSION = 1
+AUTH_SET_SESSION_REMINDER = "\n".join(
+    (
+        "Credential isolation reminder:",
+        "  1. Use a fresh AI.INPUT.IM login in a Chrome Guest window or dedicated "
+        "profile reserved for xbar.",
+        "  2. Do not copy tokens from a Chrome session you will keep using; refresh "
+        "tokens rotate and either client can invalidate the other.",
+        "  3. After this command succeeds, close the source window without signing "
+        "out and do not reuse that session.",
+        "  4. 'auth test' checks quota access but does not force refresh-token "
+        "rotation.",
+    )
+)
 
 VerifyPlugin = Callable[[Path], str]
 
@@ -587,7 +600,13 @@ def resolve_request_user_agent(supplied_user_agent: str | None) -> str:
     if supplied_user_agent is not None and supplied_user_agent.strip():
         return supplied_user_agent.strip()
     try:
-        user_agent = input("Token request User-Agent (non-secret): ").strip()
+        print(
+            "Token request User-Agent (non-secret): ",
+            end="",
+            file=sys.stderr,
+            flush=True,
+        )
+        user_agent = input().strip()
     except (EOFError, KeyboardInterrupt):
         raise MonitorManagerError("request User-Agent input was cancelled") from None
     if not user_agent:
@@ -599,6 +618,7 @@ def auth_set(
     expires_in: int | None,
     user_agent: str | None = None,
 ) -> dict[str, object]:
+    print(AUTH_SET_SESSION_REMINDER, file=sys.stderr)
     auth_module, runtime_module = load_auth_modules()
     try:
         resolved_user_agent = resolve_request_user_agent(user_agent)
@@ -635,7 +655,8 @@ def auth_set(
         "keychain_account": auth_module.KEYCHAIN_ACCOUNT,
         "credentials": auth_module.credentials_summary(credentials, int(time.time())),
         "next_step": (
-            "stop any client sharing this rotating refresh token, then run auth test"
+            "close the dedicated source browser session without signing out or "
+            "reusing it, then run auth test (it does not force refresh-token rotation)"
         ),
     }
 
