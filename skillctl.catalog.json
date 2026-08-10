@@ -1439,6 +1439,34 @@
       "canonical_rel_path": "skills/productivity-and-artifacts/trellis-design-doc-generator"
     },
     {
+      "skill_id": "trellis-lite",
+      "category": "agent-infra",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "49b50efd34925a79b9a9510af28f930130eca004",
+      "managed": true,
+      "targets": [
+        "codex",
+        "pi"
+      ],
+      "canonical_rel_path": "skills/agent-infra/trellis-lite"
+    },
+    {
+      "skill_id": "trellis-task-reuse",
+      "category": "agent-infra",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "530a67e981ff0551aafeaa85953e163d84ed9d4a",
+      "managed": true,
+      "targets": [
+        "codex",
+        "pi"
+      ],
+      "canonical_rel_path": "skills/agent-infra/trellis-task-reuse"
+    },
+    {
       "skill_id": "ui-animation",
       "category": "frontend-and-design",
       "visibility": "public",

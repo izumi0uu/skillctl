@@ -1,0 +1,651 @@
+--- a/.agents/skills/trellis-brainstorm/SKILL.md
++++ b/.agents/skills/trellis-brainstorm/SKILL.md
+@@ -1,6 +1,6 @@
+ ---
+ name: trellis-brainstorm
+-description: "Guides collaborative requirements discovery before implementation. Creates task directory, seeds PRD, asks high-value questions one at a time, researches technical choices, and converges on MVP scope. Use when requirements are unclear, there are multiple valid approaches, or the user describes a new feature or complex task."
++description: "Guides collaborative requirements discovery before implementation. Reuses or creates the correct task, updates its PRD, asks high-value questions one at a time, researches technical choices, and converges on MVP scope. Use when requirements are unclear, there are multiple valid approaches, or an existing feature needs refinement."
+ ---
+ 
+ # Trellis Brainstorm
+@@ -29,9 +29,20 @@ Use this skill during Phase 1 planning to turn the user's request into clear req
+ 
+ ## Preconditions
+ 
+-Use this skill only after task-creation consent has been given and the user is ready to enter Trellis planning.
++Use this skill after a matching existing task has been selected, or after the user has consented to create a task when no existing task owns the outcome.
+ 
+-If no task exists yet, create one:
++Before creating anything, check the current task and all unarchived tasks:
++
++```bash
++python3 ./.trellis/scripts/task.py current --source
++python3 ./.trellis/scripts/task.py list
++```
++
++Reuse a task whenever its core user outcome and acceptance boundary remain the same. If exactly one unselected task matches, run `python3 ./.trellis/scripts/task.py use <task>` before updating it. If multiple tasks plausibly match, ask the user which one to use. Clarifications, revised requirements, design changes, extra tests, and implementation fixes update the selected task's artifacts in place.
++
++If no unique owner can be established and the user must choose a route, present these top-level options: `修改/补充现有任务`, `创建新任务`, `暂不使用 Trellis`. Keep creation and activation as separate actions. If the user chooses an existing task, list plausible tasks and use the selected one without changing its status.
++
++If no matching task exists, create one only after creation consent:
+ 
+ ```bash
+ TASK_DIR=$(python3 ./.trellis/scripts/task.py create "<short task title>" --slug <slug>)
+@@ -39,7 +50,7 @@ TASK_DIR=$(python3 ./.trellis/scripts/task.py create "<short task title>" --slug
+ 
+ Use a concise title from the user's request. Use a slug without a date prefix. `task.py create` adds the `MM-DD-` directory prefix automatically.
+ 
+-`task.py create` creates the default `prd.md`. Update that file with the current understanding before asking follow-up questions.
++`task.py create` creates the default `prd.md`. For a reused task, preserve confirmed requirements and revise the existing `prd.md`, `design.md`, and `implement.md` instead of replacing them with a versioned task. Update `prd.md` with the current understanding before asking follow-up questions.
+ 
+ ## Planning Flow
+ 
+--- a/.agents/skills/trellis-continue/SKILL.md
++++ b/.agents/skills/trellis-continue/SKILL.md
+@@ -17,6 +17,17 @@ python3 ./.trellis/scripts/get_context.py
+ 
+ Confirms: current task, git state, recent commits.
+ 
++If it reports no current task, do not create one. Recover an existing task first:
++
++```bash
++python3 ./.trellis/scripts/task.py list
++```
++
++- Inspect plausible tasks' `task.json` and `prd.md`, using branch, scope, related files, and dirty paths as supporting evidence.
++- If exactly one task clearly matches the user's core outcome, run `python3 ./.trellis/scripts/task.py use <task>` and rerun `get_context.py`.
++- If multiple tasks plausibly match, ask the user which one to resume.
++- If none match, report that there is no resumable task. `trellis-continue` does not create a new task implicitly.
++
+ ## Step 2: Load the Phase Index
+ 
+ ```bash
+--- a/.agents/skills/trellis-meta/references/customize-local/change-task-lifecycle.md
++++ b/.agents/skills/trellis-meta/references/customize-local/change-task-lifecycle.md
+@@ -69,7 +69,7 @@ Active task is session-level state stored in `.trellis/.runtime/sessions/`. Do n
+ `cmd_create` in `.trellis/scripts/common/task_store.py` calls `set_active_task` best-effort right after writing the new task directory. The behavior:
+ 
+ - When the calling shell carries session identity (`TRELLIS_CONTEXT_ID` env var, or any platform-specific session env that `resolve_context_key` recognizes — see `active_task.py:_ENV_SESSION_KEYS`), the per-session pointer at `.trellis/.runtime/sessions/<context_key>.json` is rewritten to point at the new task. The task's `status=planning` and `[workflow-state:planning]` fires on the very next `UserPromptSubmit`.
+-- When session identity is unavailable (raw CLI invocation outside an AI session, or a platform that doesn't propagate identity to shell), the task directory is still created and `status=planning` is still written, but the active pointer is left untouched. The user can attach the task later with `task.py start <dir>` once they're back in an AI session.
++- When session identity is unavailable (raw CLI invocation outside an AI session, or a platform that doesn't propagate identity to shell), the task directory is still created and `status=planning` is still written, but the active pointer is left untouched. The user can attach the task later with `task.py use <dir>` once they're back in an AI session. Reserve `task.py start` for implementation approval.
+ 
+ This makes `[workflow-state:planning]` the live breadcrumb during the brainstorm and JSONL curation work that follows `task.py create`. The pre-R7 behavior left the breadcrumb stuck on `no_task` until `task.py start`, so the planning block was effectively dead text.
+ 
+--- a/.agents/skills/trellis-meta/references/local-architecture/task-system.md
++++ b/.agents/skills/trellis-meta/references/local-architecture/task-system.md
+@@ -81,9 +81,9 @@ The user sees a "current task," but Trellis stores active task state per session
+ .trellis/.runtime/sessions/<context-key>.json
+ ```
+ 
+-`task.py start` writes the task path into the runtime session file for the current session. `task.py current --source` shows the current task and where it came from. Different AI windows can point to different tasks without overwriting each other.
++`task.py use` writes the task path into the runtime session file without changing task status or firing lifecycle hooks. `task.py start` also selects the task, but is reserved for the reviewed transition from `planning` to `in_progress`. `task.py current --source` shows the current task and where it came from. Different AI windows can point to different tasks without overwriting each other.
+ 
+-If the platform or shell environment has no stable session identity, `task.py start` may be unable to set the active task. The AI should read the error, inspect the platform hook/session environment, and not fall back to a shared global pointer.
++If the platform or shell environment has no stable session identity, `task.py use` cannot persist the selection. The AI should read the error, inspect the platform hook/session environment, and not use `start` as a selection fallback because `start` changes lifecycle state.
+ 
+ ## JSONL Context
+ 
+@@ -107,7 +107,8 @@ Rules:
+ 
+ ```bash
+ python3 ./.trellis/scripts/task.py create "<title>" --slug <slug>
+-python3 ./.trellis/scripts/task.py start <task>
++python3 ./.trellis/scripts/task.py use <task>       # select existing; preserve status
++python3 ./.trellis/scripts/task.py start <task>     # approve implementation
+ python3 ./.trellis/scripts/task.py current --source
+ python3 ./.trellis/scripts/task.py add-context <task> implement <file> <reason>
+ python3 ./.trellis/scripts/task.py validate <task>
+--- a/.agents/skills/trellis-session-insight/SKILL.md
++++ b/.agents/skills/trellis-session-insight/SKILL.md
+@@ -70,6 +70,8 @@ trellis mem projects   # → list active project cwds, then narrow
+ 
+ Phase slicing (`--phase brainstorm|implement|all`) cuts the session at `task.py create` and `task.py start` boundaries. For a finish-work review of the current task, `--phase brainstorm` recovers the planning discussion and `--phase implement` recovers the execution loop. Default is `all`.
+ 
++`task.py use` is not a phase boundary in the current `trellis mem` parser. For a session that resumed an existing task and contains `use` but no `create`, use `--phase all` with `--grep` or `context`; do not treat the `brainstorm` / `implement` phase split as authoritative for that session.
++
+ ## Triggering patterns
+ 
+ `references/triggering-patterns.md` lists more verbatim user phrasings (English + Chinese) that should make you think "reach for `mem`" — keep that handy when training instinct.
+--- a/.agents/skills/trellis-session-insight/references/cli-quick-reference.md
++++ b/.agents/skills/trellis-session-insight/references/cli-quick-reference.md
+@@ -57,6 +57,7 @@ trellis mem projects
+ 
+ - **OpenCode adapter is a stub on `0.6.0-beta.*`.** When `--platform` resolves to OpenCode (or `all` and OpenCode would be included), `mem` prints a one-line "reader unavailable" notice and continues with the other platforms. Don't promise OpenCode coverage in your reply until the adapter ships.
+ - **`--phase` slicing depends on `task.py create` / `task.py start` invocations appearing in the recorded bash calls of the session.** Sessions where the user ran `task.py` from a different terminal — outside the recorded AI loop — will not have phase boundaries. `--phase all` is the safe fallback.
++- **`task.py use` is not a phase boundary.** A session that only selects an existing task with `use` cannot be reliably divided into brainstorm and implement windows. Use `--phase all` plus `--grep`, or use `context` around a keyword.
+ - **`mem` indexes platform JSONL files directly.** If the user has cleared their Claude / Codex / Pi session storage, `mem` cannot recover what is no longer on disk.
+ - **`mem` is read-only.** No remote sync, no edits to platform JSONL. Any write you do based on `mem` findings is your own follow-up call into the editing tools available to you.
+ 
+--- a/.agents/skills/trellis-start/SKILL.md
++++ b/.agents/skills/trellis-start/SKILL.md
+@@ -47,7 +47,11 @@ From Step 1 you know the current task and status. Check the task directory:
+   ```bash
+   python3 ./.trellis/scripts/get_context.py --mode phase --step 2.1 --platform codex
+   ```
+-- **No active task** → classify first. For simple conversation / small task, ask only whether this turn should create a Trellis task. For complex work, ask whether you may create a Trellis task and enter planning. If the user says no, skip Trellis for this session.
++- **No active task** → this means only that the current session has no selection. Run `python3 ./.trellis/scripts/task.py list`, then inspect plausible tasks' `task.json` and `prd.md` before discussing creation.
++  - One clear match → run `python3 ./.trellis/scripts/task.py use <task>` and route from the preserved status.
++  - Several plausible matches → ask which existing task owns the work; do not create a duplicate to avoid ambiguity.
++  - No unique owner and durable task tracking may be useful → present `修改/补充现有任务`, `创建新任务`, and `暂不使用 Trellis`. Choosing creation authorizes planning-task creation only, not implementation.
++  - Simple conversation or small unrelated work needing no durable planning → skip Trellis without a process question.
+ 
+ ---
+ 
+--- a/.codex/hooks/session-start.py
++++ b/.codex/hooks/session-start.py
+@@ -231,8 +231,8 @@ def _get_task_status(trellis_dir: Path, hook_input: dict) -> str:
+     if not active.task_path:
+         return (
+             "Status: NO ACTIVE TASK\n"
+-            "Next: Classify the current turn and ask for task-creation consent "
+-            "before creating any Trellis task."
++            "Next: Search unarchived tasks before proposing creation; reuse the one "
++            "clear match and preserve its status."
+         )
+ 
+     task_ref = active.task_path
+--- a/.omp/commands/trellis-continue.md
++++ b/.omp/commands/trellis-continue.md
+@@ -14,6 +14,17 @@ python3 ./.trellis/scripts/get_context.py
+ 
+ Confirms: current task, git state, recent commits.
+ 
++If it reports no current task, do not create one. Recover an existing task first:
++
++```bash
++python3 ./.trellis/scripts/task.py list
++```
++
++- Inspect plausible tasks' `task.json` and `prd.md`, using branch, scope, related files, and dirty paths as supporting evidence.
++- If exactly one task clearly matches the user's core outcome, run `python3 ./.trellis/scripts/task.py use <task>` and rerun `get_context.py`.
++- If multiple tasks plausibly match, ask the user which one to resume.
++- If none match, report that there is no resumable task. `/trellis:continue` does not create a new task implicitly.
++
+ ## Step 2: Load the Phase Index
+ 
+ ```bash
+--- a/.omp/skills/trellis-brainstorm/SKILL.md
++++ b/.omp/skills/trellis-brainstorm/SKILL.md
+@@ -1,6 +1,6 @@
+ ---
+ name: trellis-brainstorm
+-description: "Guides collaborative requirements discovery before implementation. Creates task directory, seeds PRD, asks high-value questions one at a time, researches technical choices, and converges on MVP scope. Use when requirements are unclear, there are multiple valid approaches, or the user describes a new feature or complex task."
++description: "Guides collaborative requirements discovery before implementation. Reuses or creates the correct task, updates its PRD, asks high-value questions one at a time, researches technical choices, and converges on MVP scope. Use when requirements are unclear, there are multiple valid approaches, or an existing feature needs refinement."
+ ---
+ 
+ # Trellis Brainstorm
+@@ -29,9 +29,20 @@ Use this skill during Phase 1 planning to turn the user's request into clear req
+ 
+ ## Preconditions
+ 
+-Use this skill only after task-creation consent has been given and the user is ready to enter Trellis planning.
++Use this skill after a matching existing task has been selected, or after the user has consented to create a task when no existing task owns the outcome.
+ 
+-If no task exists yet, create one:
++Before creating anything, check the current task and all unarchived tasks:
++
++```bash
++python3 ./.trellis/scripts/task.py current --source
++python3 ./.trellis/scripts/task.py list
++```
++
++Reuse a task whenever its core user outcome and acceptance boundary remain the same. If exactly one unselected task matches, run `python3 ./.trellis/scripts/task.py use <task>` before updating it. If multiple tasks plausibly match, ask the user which one to use. Clarifications, revised requirements, design changes, extra tests, and implementation fixes update the selected task's artifacts in place.
++
++If no unique owner can be established and the user must choose a route, call OMP's `ask` tool with these top-level options: `修改/补充现有任务`, `创建新任务`, `暂不使用 Trellis`. Keep creation and activation as separate actions. If the user chooses an existing task, list plausible tasks and use the selected one without changing its status.
++
++If no matching task exists, create one only after creation consent:
+ 
+ ```bash
+ TASK_DIR=$(python3 ./.trellis/scripts/task.py create "<short task title>" --slug <slug>)
+@@ -39,7 +50,7 @@ TASK_DIR=$(python3 ./.trellis/scripts/task.py create "<short task title>" --slug
+ 
+ Use a concise title from the user's request. Use a slug without a date prefix. `task.py create` adds the `MM-DD-` directory prefix automatically.
+ 
+-`task.py create` creates the default `prd.md`. Update that file with the current understanding before asking follow-up questions.
++`task.py create` creates the default `prd.md`. For a reused task, preserve confirmed requirements and revise the existing `prd.md`, `design.md`, and `implement.md` instead of replacing them with a versioned task. Update `prd.md` with the current understanding before asking follow-up questions.
+ 
+ ## Planning Flow
+ 
+--- a/.omp/skills/trellis-meta/references/customize-local/change-task-lifecycle.md
++++ b/.omp/skills/trellis-meta/references/customize-local/change-task-lifecycle.md
+@@ -69,7 +69,7 @@ Active task is session-level state stored in `.trellis/.runtime/sessions/`. Do n
+ `cmd_create` in `.trellis/scripts/common/task_store.py` calls `set_active_task` best-effort right after writing the new task directory. The behavior:
+ 
+ - When the calling shell carries session identity (`TRELLIS_CONTEXT_ID` env var, or any platform-specific session env that `resolve_context_key` recognizes — see `active_task.py:_ENV_SESSION_KEYS`), the per-session pointer at `.trellis/.runtime/sessions/<context_key>.json` is rewritten to point at the new task. The task's `status=planning` and `[workflow-state:planning]` fires on the very next `UserPromptSubmit`.
+-- When session identity is unavailable (raw CLI invocation outside an AI session, or a platform that doesn't propagate identity to shell), the task directory is still created and `status=planning` is still written, but the active pointer is left untouched. The user can attach the task later with `task.py start <dir>` once they're back in an AI session.
++- When session identity is unavailable (raw CLI invocation outside an AI session, or a platform that doesn't propagate identity to shell), the task directory is still created and `status=planning` is still written, but the active pointer is left untouched. The user can attach the task later with `task.py use <dir>` once they're back in an AI session. Reserve `task.py start` for implementation approval.
+ 
+ This makes `[workflow-state:planning]` the live breadcrumb during the brainstorm and JSONL curation work that follows `task.py create`. The pre-R7 behavior left the breadcrumb stuck on `no_task` until `task.py start`, so the planning block was effectively dead text.
+ 
+--- a/.omp/skills/trellis-meta/references/local-architecture/task-system.md
++++ b/.omp/skills/trellis-meta/references/local-architecture/task-system.md
+@@ -81,9 +81,9 @@ The user sees a "current task," but Trellis stores active task state per session
+ .trellis/.runtime/sessions/<context-key>.json
+ ```
+ 
+-`task.py start` writes the task path into the runtime session file for the current session. `task.py current --source` shows the current task and where it came from. Different AI windows can point to different tasks without overwriting each other.
++`task.py use` writes the task path into the runtime session file without changing task status or firing lifecycle hooks. `task.py start` also selects the task, but is reserved for the reviewed transition from `planning` to `in_progress`. `task.py current --source` shows the current task and where it came from. Different AI windows can point to different tasks without overwriting each other.
+ 
+-If the platform or shell environment has no stable session identity, `task.py start` may be unable to set the active task. The AI should read the error, inspect the platform hook/session environment, and not fall back to a shared global pointer.
++If the platform or shell environment has no stable session identity, `task.py use` cannot persist the selection. The AI should read the error, inspect the platform hook/session environment, and not use `start` as a selection fallback because `start` changes lifecycle state.
+ 
+ ## JSONL Context
+ 
+@@ -107,7 +107,8 @@ Rules:
+ 
+ ```bash
+ python3 ./.trellis/scripts/task.py create "<title>" --slug <slug>
+-python3 ./.trellis/scripts/task.py start <task>
++python3 ./.trellis/scripts/task.py use <task>       # select existing; preserve status
++python3 ./.trellis/scripts/task.py start <task>     # approve implementation
+ python3 ./.trellis/scripts/task.py current --source
+ python3 ./.trellis/scripts/task.py add-context <task> implement <file> <reason>
+ python3 ./.trellis/scripts/task.py validate <task>
+--- a/.omp/skills/trellis-session-insight/SKILL.md
++++ b/.omp/skills/trellis-session-insight/SKILL.md
+@@ -70,6 +70,8 @@ trellis mem projects   # → list active project cwds, then narrow
+ 
+ Phase slicing (`--phase brainstorm|implement|all`) cuts the session at `task.py create` and `task.py start` boundaries. For a finish-work review of the current task, `--phase brainstorm` recovers the planning discussion and `--phase implement` recovers the execution loop. Default is `all`.
+ 
++`task.py use` is not a phase boundary in the current `trellis mem` parser. For a session that resumed an existing task and contains `use` but no `create`, use `--phase all` with `--grep` or `context`; do not treat the `brainstorm` / `implement` phase split as authoritative for that session.
++
+ ## Triggering patterns
+ 
+ `references/triggering-patterns.md` lists more verbatim user phrasings (English + Chinese) that should make you think "reach for `mem`" — keep that handy when training instinct.
+--- a/.omp/skills/trellis-session-insight/references/cli-quick-reference.md
++++ b/.omp/skills/trellis-session-insight/references/cli-quick-reference.md
+@@ -57,6 +57,7 @@ trellis mem projects
+ 
+ - **OpenCode adapter is a stub on `0.6.0-beta.*`.** When `--platform` resolves to OpenCode (or `all` and OpenCode would be included), `mem` prints a one-line "reader unavailable" notice and continues with the other platforms. Don't promise OpenCode coverage in your reply until the adapter ships.
+ - **`--phase` slicing depends on `task.py create` / `task.py start` invocations appearing in the recorded bash calls of the session.** Sessions where the user ran `task.py` from a different terminal — outside the recorded AI loop — will not have phase boundaries. `--phase all` is the safe fallback.
++- **`task.py use` is not a phase boundary.** A session that only selects an existing task with `use` cannot be reliably divided into brainstorm and implement windows. Use `--phase all` plus `--grep`, or use `context` around a keyword.
+ - **`mem` indexes platform JSONL files directly.** If the user has cleared their Claude / Codex / Pi session storage, `mem` cannot recover what is no longer on disk.
+ - **`mem` is read-only.** No remote sync, no edits to platform JSONL. Any write you do based on `mem` findings is your own follow-up call into the editing tools available to you.
+ 
+--- a/.trellis/scripts/common/active_task.py
++++ b/.trellis/scripts/common/active_task.py
+@@ -32,7 +32,7 @@ DIR_SHELL_TICKETS = "shell-tickets"
+ # platform that works today.
+ DIR_LEGACY_CURSOR_SHELL_TICKETS = "cursor-shell"
+ SHELL_TICKET_TTL_SECONDS = 30
+-TASK_SESSION_COMMANDS = {"start", "current", "finish"}
++TASK_SESSION_COMMANDS = {"use", "start", "current", "finish"}
+ 
+ _SESSION_KEYS = ("session_id", "sessionId", "sessionID")
+ _CONVERSATION_KEYS = ("conversation_id", "conversationId", "conversationID")
+@@ -378,7 +378,7 @@ def _pending_ticket_matches_args(ticket: dict[str, Any], repo_root: Path) -> boo
+             continue
+         if _string_value(subcommand.get("name")) != command_name:
+             continue
+-        if command_name != "start":
++        if command_name not in {"use", "start"}:
+             return True
+         task_ref = args[1] if len(args) > 1 else None
+         if _task_refs_match(_string_value(subcommand.get("task_ref")), task_ref, repo_root):
+@@ -569,12 +569,10 @@ def resolve_active_task(
+ ) -> ActiveTask:
+     """Resolve the active task from session runtime state only.
+ 
+-    A stale session task is returned as stale. Missing context identity or a
+-    missing/empty session context falls back to single-session inference: if
+-    exactly one session file exists in the runtime, return its task with
+-    source_type="session-fallback" — covers pull-based platform sub-agents
+-    (copilot, gemini, qoder) that don't inherit the parent's session id. ≥2
+-    files or 0 files yield ActiveTask(None) — refuses to guess across windows.
++    A stale session task is returned as stale. Only missing context identity
++    falls back to single-session inference: if exactly one session file exists,
++    return its task with source_type="session-fallback". A known session with
++    no pointer stays unselected so it cannot inherit another window's task.
+     """
+     context_key = resolve_context_key(
+         platform_input,
+@@ -587,6 +585,7 @@ def resolve_active_task(
+         active = _active_from_ref(task_ref, repo_root, "session", context_key)
+         if active:
+             return active
++        return ActiveTask(None, "none", context_key)
+ 
+     if allow_single_session_fallback:
+         fallback = _resolve_single_session_fallback(repo_root)
+--- a/.trellis/scripts/common/task_store.py
++++ b/.trellis/scripts/common/task_store.py
+@@ -432,12 +432,12 @@ def cmd_create(args: argparse.Namespace) -> int:
+     # Auto-activate the new task so the per-turn breadcrumb fires planning
+     # state. Best-effort: gracefully degrade if no session identity (CLI run
+     # outside an AI session) — the task is still created, the user can run
+-    # task.py start later. Pointer is session-scoped so this never affects
++    # task.py use later. Pointer is session-scoped so this never affects
+     # other AI sessions.
+     if getattr(args, "no_start", False):
+         print(
+             colored(
+-                "Skipped session activation (--no-start); run task.py start when ready.",
++                "Skipped session activation (--no-start); run task.py use to select it later.",
+                 Colors.YELLOW,
+             ),
+             file=sys.stderr,
+--- a/.trellis/scripts/task.py
++++ b/.trellis/scripts/task.py
+@@ -8,7 +8,8 @@ Usage:
+     python3 task.py add-context <dir> <file> <path> [reason] # Add jsonl entry
+     python3 task.py validate <dir>              # Validate jsonl files
+     python3 task.py list-context <dir>          # List jsonl entries
+-    python3 task.py start <dir>                 # Set active task
++    python3 task.py use <dir>                   # Select existing task without changing status
++    python3 task.py start <dir>                 # Select task and enter implementation
+     python3 task.py current [--source] [--json] # Show active task
+     python3 task.py finish                      # Clear active task
+     python3 task.py set-branch <dir> <branch>   # Set git branch
+@@ -27,6 +28,7 @@ from __future__ import annotations
+ import argparse
+ import json
+ import sys
++from pathlib import Path
+ 
+ from common.log import Colors, colored
+ from common.paths import (
+@@ -45,7 +47,7 @@ from common.active_task import (
+     set_active_task,
+ )
+ from common.io import read_json, write_json
+-from common.task_utils import resolve_task_dir, run_task_hooks
++from common.task_utils import is_within_tasks_dir, resolve_task_dir, run_task_hooks
+ from common.tasks import iter_active_tasks, children_progress
+ 
+ # Import command handlers from split modules (also re-exports for plan.py compatibility)
+@@ -67,31 +69,79 @@ from common.task_context import (
+ 
+ 
+ # =============================================================================
+-# Command: start / finish
++# Command: use / start / finish
+ # =============================================================================
+ 
+-def cmd_start(args: argparse.Namespace) -> int:
+-    """Set active task."""
+-    repo_root = get_repo_root()
+-    task_input = args.dir
+-
++def _resolve_session_task(
++    task_input: str, repo_root: Path
++) -> tuple[Path, str, dict[str, object]] | None:
++    """Resolve an existing task and return its path plus canonical session ref."""
+     if not task_input:
+         print(colored("Error: task directory or name required", Colors.RED))
+-        return 1
++        return None
+ 
+-    # Resolve task directory (supports task name, relative path, or absolute path)
+     full_path = resolve_task_dir(task_input, repo_root)
+-
+-    if not full_path.is_dir():
+-        print(colored(f"Error: Task not found: {task_input}", Colors.RED))
++    if not full_path.is_dir() or not is_within_tasks_dir(full_path, repo_root):
++        print(colored(f"Error: Active task not found: {task_input}", Colors.RED))
+         print("Hint: Use task name (e.g., 'my-task') or full path (e.g., '.trellis/tasks/01-31-my-task')")
++        return None
++
++    full_path = full_path.resolve()
++    task_json_path = full_path / FILE_TASK_JSON
++    if not task_json_path.is_file():
++        print(colored(f"Error: Invalid or unreadable task.json: {full_path}", Colors.RED))
++        return None
++
++    raw_task_data = read_json(task_json_path)
++    if not isinstance(raw_task_data, dict):
++        print(colored(f"Error: Invalid or unreadable task.json: {full_path}", Colors.RED))
++        return None
++
++    task_data: dict[str, object] = raw_task_data
++    status = task_data.get("status")
++    if not isinstance(status, str) or not status.strip():
++        print(colored(f"Error: Invalid or unreadable task.json: {full_path}", Colors.RED))
++        return None
++
++    task_ref = full_path.relative_to(repo_root.resolve()).as_posix()
++    return full_path, task_ref, task_data
++
++
++def cmd_use(args: argparse.Namespace) -> int:
++    """Select an existing task for this session without changing lifecycle state."""
++    repo_root = get_repo_root()
++    resolved = _resolve_session_task(args.dir, repo_root)
++    if resolved is None:
++        return 1
++    _full_path, task_ref, task_data = resolved
++
++    if not resolve_context_key():
++        print(colored("Error: Session identity not available; task selection was not persisted.", Colors.RED))
++        print(colored(
++            "Hint: run inside an AI IDE/session that exposes session identity, "
++            "or set TRELLIS_CONTEXT_ID before running task.py use.",
++            Colors.YELLOW,
++        ))
+         return 1
+ 
+-    # Convert to relative path for storage
+-    try:
+-        task_dir = full_path.relative_to(repo_root).as_posix()
+-    except ValueError:
+-        task_dir = str(full_path)
++    active = set_active_task(task_ref, repo_root)
++    if not active:
++        print(colored("Error: Failed to select task", Colors.RED))
++        return 1
++
++    print(colored(f"✓ Current task set to: {task_ref}", Colors.GREEN))
++    print(f"Source: {active.source}")
++    print(f"Status preserved: {task_data['status']}")
++    return 0
++
++
++def cmd_start(args: argparse.Namespace) -> int:
++    """Select a task and transition planning work into implementation."""
++    repo_root = get_repo_root()
++    resolved = _resolve_session_task(args.dir, repo_root)
++    if resolved is None:
++        return 1
++    full_path, task_dir, _task_data = resolved
+ 
+     task_json_path = full_path / FILE_TASK_JSON
+ 
+@@ -385,7 +435,8 @@ Usage:
+   python3 task.py add-context <dir> <jsonl> <path> [reason]  Add entry to jsonl
+   python3 task.py validate <dir>                     Validate jsonl files
+   python3 task.py list-context <dir>                 List jsonl entries
+-  python3 task.py start <dir>                        Set active task
++  python3 task.py use <dir>                          Select existing task; preserve status
++  python3 task.py start <dir>                        Select task; planning -> in_progress
+   python3 task.py current [--source]                 Show active task
+   python3 task.py finish                             Clear active task
+   python3 task.py set-branch <dir> <branch>          Set git branch
+@@ -413,6 +464,7 @@ Examples:
+   python3 task.py create "Child task" --slug child --parent .trellis/tasks/01-21-parent
+   python3 task.py add-context <dir> implement .trellis/spec/cli/backend/auth.md "Auth guidelines"
+   python3 task.py set-branch <dir> task/add-login
++  python3 task.py use .trellis/tasks/01-21-add-login
+   python3 task.py start .trellis/tasks/01-21-add-login
+   python3 task.py current --source
+   python3 task.py finish
+@@ -506,8 +558,12 @@ def main() -> int:
+     p_listctx = subparsers.add_parser("list-context", help="List context entries")
+     p_listctx.add_argument("dir", help="Task directory")
+ 
++    # use
++    p_use = subparsers.add_parser("use", help="Select existing task without changing status")
++    p_use.add_argument("dir", help="Task directory")
++
+     # start
+-    p_start = subparsers.add_parser("start", help="Set active task")
++    p_start = subparsers.add_parser("start", help="Select task and enter implementation")
+     p_start.add_argument("dir", help="Task directory")
+ 
+     # current
+@@ -577,6 +633,7 @@ def main() -> int:
+         "add-context": cmd_add_context,
+         "validate": cmd_validate,
+         "list-context": cmd_list_context,
++        "use": cmd_use,
+         "start": cmd_start,
+         "current": cmd_current,
+         "finish": cmd_finish,
+--- a/.trellis/workflow.md
++++ b/.trellis/workflow.md
+@@ -9,6 +9,7 @@
+ 3. **Persist everything** — research, decisions, and lessons all go to files; conversations get compacted, files don't
+ 4. **Incremental development** — one task at a time
+ 5. **Capture learnings** — after each task, review and write new knowledge back to spec
++6. **Reuse task identity** — refine an existing task while its core outcome remains the same; a new session or revision is not a new task
+ 
+ ---
+ 
+@@ -44,7 +45,8 @@ Every task has its own directory under `.trellis/tasks/{MM-DD-name}/` holding `t
+ ```bash
+ # Task lifecycle
+ python3 ./.trellis/scripts/task.py create "<title>" [--slug <name>] [--parent <dir>]
+-python3 ./.trellis/scripts/task.py start <name>          # set active task (session-scoped when available)
++python3 ./.trellis/scripts/task.py use <name>            # select existing task; preserve lifecycle status
++python3 ./.trellis/scripts/task.py start <name>          # select task and enter implementation
+ python3 ./.trellis/scripts/task.py current --source      # show active task and source
+ python3 ./.trellis/scripts/task.py finish                # clear active task (triggers after_finish hooks)
+ python3 ./.trellis/scripts/task.py archive <name>        # move to archive/{year-month}/
+@@ -73,7 +75,7 @@ python3 ./.trellis/scripts/task.py create-pr [name] [--dry-run]
+ 
+ > Run `python3 ./.trellis/scripts/task.py --help` to see the authoritative, up-to-date list.
+ 
+-**Current-task mechanism**: `task.py create` creates the task directory and (when session identity is available) auto-sets the per-session active-task pointer so the planning breadcrumb fires immediately. `task.py start` writes the same pointer (idempotent if already set) and flips `task.json.status` from `planning` to `in_progress`. State is stored under `.trellis/.runtime/sessions/`. If no context key is available from hook input, `TRELLIS_CONTEXT_ID`, or a platform-native session environment variable, there is no active task and `task.py start` fails with a session identity hint. `task.py finish` deletes the current session file (status unchanged). `task.py archive <task>` writes `status=completed`, moves the directory to `archive/`, and deletes any runtime session files that still point at the archived task.
++**Current-task mechanism**: active-task pointers are session-scoped under `.trellis/.runtime/sessions/`, so a new window can report no active task even when matching unarchived tasks already exist. `task.py create` creates a task and best-effort selects it for planning. `task.py use` selects an existing task for the current session without changing its status or firing lifecycle hooks. `task.py start` selects the task and flips `planning` to `in_progress`; reserve it for approved implementation. If no context key is available from hook input, `TRELLIS_CONTEXT_ID`, or a platform-native session environment variable, selection cannot be persisted. `task.py finish` deletes the current session pointer without changing task status. `task.py archive <task>` writes `status=completed`, moves the directory to `archive/`, and deletes pointers that still target it.
+ 
+ ### Workspace System
+ 
+@@ -144,16 +146,20 @@ python3 ./.trellis/scripts/get_context.py --mode phase --step <X.Y>  # detailed
+ ## Phase Index
+ 
+ ```
+-Phase 1: Plan    → classify, get task-creation consent, then write planning artifacts
++Phase 1: Plan    → reuse or create the right task, then update planning artifacts
+ Phase 2: Execute → implement only after task status is in_progress
+ Phase 3: Finish  → verify, update spec, commit, and wrap up
+ ```
+ 
+ ### Request Triage
+ 
+-- Simple conversation or small task: ask only whether this turn should create a Trellis task. If the user says no, skip Trellis for this session.
+-- Complex task: ask whether you may create a Trellis task and enter planning. If the user says no, do not do broad inline implementation; explain, clarify scope, or suggest a smaller split.
+-- User approval to create a task is not approval to start implementation. Planning still happens first.
++- An active-task pointer is a session selection, not proof that a task exists or does not exist. When no task is selected, run `task.py list` and inspect all plausible unarchived tasks before discussing creation.
++- Reuse an existing task when the core user outcome, problem boundary, and acceptance target remain the same. Requirement clarification, changed edge cases, revised design, additional tests, and fixes discovered while completing that outcome update the existing artifacts in place.
++- If exactly one task clearly matches, run `task.py use <task>` and continue from its current status. Use branch, title/description, `prd.md` scope, related files, and dirty paths as evidence; branch match alone is not conclusive.
++- If multiple tasks plausibly match, do not create another task to avoid resolving ambiguity. Ask which existing task owns the work.
++- Create a task only when no unarchived task matches and the request introduces a materially different outcome or an independently reviewable, deliverable, and archivable unit.
++- Simple conversation or small unrelated work that needs no durable planning skips Trellis without a process question.
++- Approval to create a new task is not approval to start implementation. Planning still happens first.
+ 
+ ### Planning Artifacts
+ 
+@@ -162,25 +168,28 @@ Phase 3: Finish  → verify, update spec, commit, and wrap up
+ - `implement.md` — execution plan for complex tasks: ordered checklist, validation commands, review gates, and rollback points.
+ - `implement.jsonl` / `check.jsonl` — spec and research manifests for sub-agent context. They do not replace `implement.md`.
+ - Lightweight tasks may be PRD-only. Complex tasks must have `prd.md`, `design.md`, and `implement.md` before `task.py start`.
++- Planning artifacts are living documents for the task's core outcome. Revise them in place instead of creating dated or versioned replacement tasks.
+ 
+ ### Parent / Child Task Trees
+ 
+ Use a parent task when one user request contains several independently verifiable deliverables. The parent task owns the source requirement set, the task map, cross-child acceptance criteria, and final integration review; it normally should not be the implementation target unless it also has direct work.
+ 
+-Use child tasks for deliverables that can be planned, implemented, checked, and archived independently. Parent/child structure is not a dependency system: if one child must wait for another, write that ordering in the child `prd.md` / `implement.md` and keep each child's acceptance criteria testable.
++Use child tasks only for deliverables that can be planned, implemented, checked, and archived independently. Do not create a child merely for another iteration, design revision, newly found edge case, or implementation fix within the parent's core outcome. Parent/child structure is not a dependency system: if one child must wait for another, write that ordering in the child `prd.md` / `implement.md` and keep each child's acceptance criteria testable.
+ 
+ Create new children with `task.py create "<title>" --slug <name> --parent <parent-dir>`. Link existing tasks with `task.py add-subtask <parent> <child>`, and unlink mistakes with `task.py remove-subtask <parent> <child>`.
+ 
+ <!-- Per-turn breadcrumb: shown when there is no active task (before Phase 1) -->
+ 
+ [workflow-state:no_task]
+-No active task. First classify the current turn and ask for task-creation consent before creating any Trellis task.
+-Simple conversation / small task: ask only whether this turn should create a Trellis task. If the user says no, skip Trellis for this session.
+-Complex task: ask the user if you can create a Trellis task and enter the planning phase. If the user says no, explain, clarify scope, or suggest a smaller split.
++No task is selected for this session; this does not mean no matching task exists.
++Before proposing creation, run `task.py list` and inspect all plausible unarchived tasks. Prefer reuse whenever the core outcome and acceptance boundary are unchanged.
++If exactly one task clearly matches, run `task.py use <task>` automatically, preserve its status, and continue from its artifacts. If several match, ask which existing task to use.
++If no unique owner can be established and a user choice is needed, present these three top-level options: `修改/补充现有任务`, `创建新任务`, `暂不使用 Trellis`. On OMP, call the `ask` tool so they render as choices. Never combine creation and activation in one label. Choosing the first may require a follow-up task-specific choice, then `task.py use`; choosing the second authorizes creation only; choosing the third skips Trellis for this work.
++Simple conversation or small unrelated work needing no durable planning skips Trellis without asking.
+ [/workflow-state:no_task]
+ 
+ ### Phase 1: Plan
+-- 1.0 Create task `[required · once]` (only after task-creation consent)
++- 1.0 Resolve task `[required · once]` (reuse first; create only after consent when necessary)
+ - 1.1 Requirement exploration `[required · repeatable]` (`prd.md`; complex tasks also need `design.md` + `implement.md`)
+ - 1.2 Research `[optional · repeatable]`
+ - 1.3 Configure context `[required · once]` — Claude Code, Cursor, OpenCode, Codex, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi, Oh My Pi, ZCode, Snow, Reasonix, Grok, Kimi Code (sub-agent-dispatch platforms only; inline platforms skip)
+@@ -290,7 +299,8 @@ When a user request matches one of these intents inside an active task, route fi
+ 
+ ### Guardrails
+ 
+-- Task creation approval is not implementation approval; implementation waits for `task.py start` after artifact review.
++- Selecting an existing task with `task.py use` must not change task status or count as implementation approval.
++- New-task creation approval is not implementation approval; implementation waits for `task.py start` after artifact review.
+ - PRD-only is valid for lightweight tasks; complex tasks need `design.md` + `implement.md`.
+ - Planning must be persisted to task artifacts; checks must run before reporting completion.
+ 
+@@ -307,11 +317,26 @@ python3 ./.trellis/scripts/get_context.py --mode phase --step <step>
+ 
+ ## Phase 1: Plan
+ 
+-Goal: classify the request, get task-creation consent when a task is needed, and produce the planning artifacts required before implementation.
++Goal: resolve the correct reusable task identity, create only when necessary, and maintain the planning artifacts required before implementation.
+ 
+-#### 1.0 Create task `[required · once]`
++#### 1.0 Resolve task `[required · once]`
+ 
+-Create the task directory only after task-creation consent. The command sets status to `planning`, writes `task.json`, creates a default `prd.md`, and auto-targets the new task when session identity is available:
++First inspect the current selection and all unarchived tasks:
++
++```bash
++python3 ./.trellis/scripts/task.py current --source
++python3 ./.trellis/scripts/task.py list
++```
++
++If one existing task clearly owns the same core outcome, select it without changing lifecycle status:
++
++```bash
++python3 ./.trellis/scripts/task.py use <task-dir>
++```
++
++Read its `task.json` and `prd.md`, then update existing planning artifacts in place. If its status is already `in_progress`, route back to the appropriate Phase 2/3 step after incorporating any requirement revision; do not run `start` again merely to select it.
++
++Only when no unarchived task matches and the work is an independently deliverable unit, ask for task-creation consent. When OMP must ask whether to reuse, create, or skip Trellis, use the exact three top-level options from `[workflow-state:no_task]`. After creation consent, create the directory; the command sets status to `planning`, writes `task.json`, creates a default `prd.md`, and auto-targets the new task when session identity is available:
+ 
+ ```bash
+ python3 ./.trellis/scripts/task.py create "<task title>" --slug <name>
+@@ -319,13 +344,13 @@ python3 ./.trellis/scripts/task.py create "<task title>" --slug <name>
+ 
+ `--slug` is the human-readable name only. Do **not** include the `MM-DD-` date prefix; `task.py create` adds that prefix automatically.
+ 
+-For task trees, create the parent task first and then create each child with `--parent <parent-dir>`. Do not start the parent just because children exist; start the child that owns the next independently verifiable deliverable.
++For task trees, create a child only when it owns an independently verifiable deliverable. Iterations and requirement/design corrections stay in the existing task. Do not start the parent just because children exist; start the child that owns the next independently verifiable deliverable.
+ 
+ After this command succeeds, the per-turn breadcrumb auto-switches to `[workflow-state:planning]`, telling the AI to stay in planning.
+ 
+-Run only `create` here — do not also run `start`. `start` flips status to `in_progress`, which switches the breadcrumb to the implementation phase before planning artifacts are reviewed. Save `start` for step 1.4.
++After creating, run only `create` here — do not also run `start`. `start` flips status to `in_progress`, which switches the breadcrumb to the implementation phase before planning artifacts are reviewed. Save `start` for step 1.4. For reuse, run only `use`; it preserves the existing status.
+ 
+-Skip when `python3 ./.trellis/scripts/task.py current --source` already points to a task.
++Skip task resolution when `task.py current --source` already points to the correct task. If it points to a different task, do not silently replace it; determine whether the user is switching work and ask only when the intended owner is ambiguous.
+ 
+ #### 1.1 Requirement exploration `[required · repeatable]`
+ 
+@@ -646,12 +671,12 @@ After the above, remind the user they can run `/finish-work` to wrap up (archive
+ 
+ ## Customizing Trellis (for forks)
+ 
+-This section is for developers who want to modify the Trellis workflow itself. All customization is done by editing this file; the scripts are parsers only.
++This section is for developers who want to modify the Trellis workflow itself. Workflow semantics live in this file; lifecycle commands and session persistence live under `.trellis/scripts/` and must stay aligned when their API changes.
+ 
+ ### Changing what a step means
+ 
+ Edit the corresponding step's walkthrough body in the Phase 1 / 2 / 3 sections above. Critical invariants:
+-- No active task must triage first and ask for task-creation consent before creating a Trellis task.
++- No selected task must trigger an existing-task search before creation; reuse a unique match and ask for creation consent only when no task owns the outcome.
+ - Planning must distinguish lightweight PRD-only tasks from complex tasks that require `prd.md`, `design.md`, and `implement.md` before start.
+ - Every required execution path must keep the Phase 3.4 commit reminder reachable before `/trellis:finish-work`.
+ 

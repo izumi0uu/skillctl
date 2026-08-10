@@ -1,0 +1,10 @@
+--- a/.trellis/scripts/common/active_task.py
++++ b/.trellis/scripts/common/active_task.py
+@@ -58,6 +58,7 @@
+     ("codebuddy", ("CODEBUDDY_SESSION_ID",)),
+     ("kiro", ("KIRO_SESSION_ID",)),
+     ("copilot", ("COPILOT_SESSION_ID", "COPILOT_SESSIONID")),
++    ("pi", ("PI_SESSION_ID", "PI_SESSIONID")),
+     # OMP is the configured Pi-family host in this project and exposes the
+     # inherited PI_* environment names while its extension uses omp_* keys.
+     ("omp", ("PI_SESSION_ID", "PI_SESSIONID")),
