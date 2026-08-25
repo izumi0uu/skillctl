@@ -33,9 +33,5 @@ class ProcessInventoryPlugin:
                 Optional[runtime.SpotifyStatus],
                 context.values.get("spotify_status"),
             ),
-            title_settings=cast(
-                Optional[runtime.TitleBarSettings],
-                context.values.get("title_settings"),
-            ),
             plugin_path=context.entrypoint,
         )

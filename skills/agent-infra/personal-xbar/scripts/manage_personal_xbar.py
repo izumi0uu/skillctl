@@ -14,7 +14,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import warnings
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,19 +42,6 @@ DEFAULT_STATE_ROOT = (
 METADATA_FILE = "install.json"
 BACKUP_DIRECTORY = "backups"
 METADATA_SCHEMA_VERSION = 1
-AUTH_SET_SESSION_REMINDER = "\n".join(
-    (
-        "Credential isolation reminder:",
-        "  1. Use a fresh AI.INPUT.IM login in a Chrome Guest window or dedicated "
-        "profile reserved for xbar.",
-        "  2. Do not copy tokens from a Chrome session you will keep using; refresh "
-        "tokens rotate and either client can invalidate the other.",
-        "  3. After this command succeeds, close the source window without signing "
-        "out and do not reuse that session.",
-        "  4. 'auth test' checks quota access but does not force refresh-token "
-        "rotation.",
-    )
-)
 
 VerifyPlugin = Callable[[Path], str]
 
@@ -73,7 +59,6 @@ class ParsedArgs(Protocol):
     backup_name: str
     auth_command: str | None
     expires_in: int | None
-    user_agent: str | None
 
 
 def sha256_file(path: Path) -> str:
@@ -571,93 +556,23 @@ def load_auth_modules() -> tuple[object, object]:
     return auth_module, runtime_module
 
 
-def hidden_credential(prompt: str) -> str:
-    """Read a secret only when getpass can keep terminal echo disabled."""
-
+def auth_set(expires_in: int | None) -> dict[str, object]:
+    auth_module, _runtime_module = load_auth_modules()
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", getpass.GetPassWarning)
-            return getpass.getpass(prompt).strip()
-    except getpass.GetPassWarning:
-        raise MonitorManagerError(
-            "hidden credential input requires an interactive terminal"
-        ) from None
-
-
-def validate_access_token_input(value: str) -> str:
-    """Reject a copied HTTP auth scheme before it can enter the Keychain."""
-
-    token = value.strip()
-    first_word = token.split(None, 1)[0] if token else ""
-    if first_word.casefold() == "bearer":
-        raise MonitorManagerError(
-            "paste the access token value only; omit the 'Bearer ' prefix"
-        )
-    return token
-
-
-def resolve_request_user_agent(supplied_user_agent: str | None) -> str:
-    if supplied_user_agent is not None and supplied_user_agent.strip():
-        return supplied_user_agent.strip()
-    try:
-        print(
-            "Token request User-Agent (non-secret): ",
-            end="",
-            file=sys.stderr,
-            flush=True,
-        )
-        user_agent = input().strip()
-    except (EOFError, KeyboardInterrupt):
-        raise MonitorManagerError("request User-Agent input was cancelled") from None
-    if not user_agent:
-        raise MonitorManagerError("token request User-Agent is required")
-    return user_agent
-
-
-def auth_set(
-    expires_in: int | None,
-    user_agent: str | None = None,
-) -> dict[str, object]:
-    print(AUTH_SET_SESSION_REMINDER, file=sys.stderr)
-    auth_module, runtime_module = load_auth_modules()
-    try:
-        resolved_user_agent = resolve_request_user_agent(user_agent)
-        access_token = validate_access_token_input(
-            hidden_credential(
-                "AI.INPUT.IM access token "
-                "(paste value only; omit 'Bearer ' prefix, hidden): "
-            )
-        )
-        refresh_token = hidden_credential(
-            "AI.INPUT.IM refresh token (paste value only, hidden): "
-        )
+        access_token = getpass.getpass("AI.INPUT.IM access token (hidden): ").strip()
+        refresh_token = getpass.getpass("AI.INPUT.IM refresh token (hidden): ").strip()
         expiry = None if expires_in is None else int(time.time()) + expires_in
-        credentials = auth_module.make_credentials(
-            access_token,
-            refresh_token,
-            expiry,
-            resolved_user_agent,
-        )
+        credentials = auth_module.make_credentials(access_token, refresh_token, expiry)
+        auth_module.write_credentials(credentials)
     except (EOFError, KeyboardInterrupt):
         raise MonitorManagerError("credential input was cancelled") from None
     except auth_module.AuthError as error:
-        raise MonitorManagerError(str(error)) from error
-    try:
-        with runtime_module.ai_input_refresh_lock(
-            runtime_module.AI_INPUT_SUBSCRIPTIONS_STATE_FILE
-        ):
-            auth_module.write_credentials(credentials)
-    except (auth_module.AuthError, runtime_module.AiInputApiError) as error:
         raise MonitorManagerError(str(error)) from error
     return {
         "status": "configured",
         "keychain_service": auth_module.KEYCHAIN_SERVICE,
         "keychain_account": auth_module.KEYCHAIN_ACCOUNT,
         "credentials": auth_module.credentials_summary(credentials, int(time.time())),
-        "next_step": (
-            "close the dedicated source browser session without signing out or "
-            "reusing it, then run auth test (it does not force refresh-token rotation)"
-        ),
     }
 
 
@@ -700,29 +615,24 @@ def auth_test() -> dict[str, object]:
         if plan.status == "active"
         for quota in plan.quotas
     ]
-    total_quota = runtime_module.subscription_quota_total(status)
+    max_percent = max(
+        (quota.used_cents * 100 // quota.limit_cents for quota in quotas),
+        default=None,
+    )
     return {
         "status": "ok",
         "source": status.source or "api",
         "active_plans": sum(plan.status == "active" for plan in status.plans),
         "quota_count": len(quotas),
-        "remaining_percent": (
-            runtime_module.subscription_quota_remaining_percent(total_quota)
-            if total_quota is not None
-            else None
-        ),
-        "total_period": total_quota.period if total_quota is not None else None,
+        "max_percent": max_percent,
     }
 
 
 def auth_delete() -> dict[str, object]:
-    auth_module, runtime_module = load_auth_modules()
+    auth_module, _runtime_module = load_auth_modules()
     try:
-        with runtime_module.ai_input_refresh_lock(
-            runtime_module.AI_INPUT_SUBSCRIPTIONS_STATE_FILE
-        ):
-            auth_module.delete_credentials()
-    except (auth_module.AuthError, runtime_module.AiInputApiError) as error:
+        auth_module.delete_credentials()
+    except auth_module.AuthError as error:
         return {"status": "error", "error": str(error)}
     return {
         "status": "deleted",
@@ -753,13 +663,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--expires-in",
         type=int,
         help="Access-token lifetime in seconds; omit to use a JWT exp claim or refresh on 401.",
-    )
-    _ = auth_set_parser.add_argument(
-        "--user-agent",
-        help=(
-            "Non-secret User-Agent associated with the token; omit to enter it "
-            "interactively. Chrome is never inspected."
-        ),
     )
     _ = auth_commands.add_parser("status")
     _ = auth_commands.add_parser("test")
@@ -797,7 +700,7 @@ def main() -> int:
             if args.auth_command == "set":
                 if args.expires_in is not None and args.expires_in <= 0:
                     raise MonitorManagerError("--expires-in must be positive")
-                output = auth_set(args.expires_in, args.user_agent)
+                output = auth_set(args.expires_in)
             elif args.auth_command == "status":
                 output = auth_status()
             elif args.auth_command == "test":
@@ -812,7 +715,7 @@ def main() -> int:
         print(json.dumps({"status": "error", "error": str(error)}, indent=2))
         return 1
     print(json.dumps(output, indent=2, sort_keys=True))
-    return 1 if output.get("status") == "error" else 0
+    return 0
 
 
 if __name__ == "__main__":

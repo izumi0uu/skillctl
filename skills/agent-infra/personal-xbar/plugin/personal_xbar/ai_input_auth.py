@@ -1,8 +1,9 @@
 """Secure local credentials for the AI.INPUT.IM Personal xbar probe.
 
-Personal xbar stores one deliberately small credential record in the user's
-login keychain. This module never reads a browser session, prints token values,
-or places token values in process arguments.
+The browser stores the site's session in local storage.  Personal xbar uses a
+separate, deliberately small credential record in the user's login keychain so
+the quota probe can run without a browser.  This module never prints or places
+the token values in process arguments.
 """
 
 from __future__ import annotations
@@ -10,7 +11,6 @@ from __future__ import annotations
 import base64
 import ctypes
 import json
-import math
 import os
 import sys
 from dataclasses import dataclass, field
@@ -23,7 +23,6 @@ KEYCHAIN_ACCOUNT = os.environ.get(
     "AI_INPUT_KEYCHAIN_ACCOUNT", "subscriptions"
 )
 TOKEN_MAX_LENGTH = 128 * 1024
-USER_AGENT_MAX_LENGTH = 1024
 DEFAULT_REFRESH_LEAD_SECONDS = 120
 
 
@@ -52,16 +51,10 @@ class AiInputCredentials:
     access_token: str = field(repr=False)
     refresh_token: str = field(repr=False)
     expires_at: int | None = None
-    user_agent: str | None = field(default=None, repr=False)
 
     def __repr__(self) -> str:
         expiry = self.expires_at if self.expires_at is not None else "unknown"
-        user_agent = "<configured>" if self.user_agent is not None else "<default>"
-        return (
-            "AiInputCredentials(access_token=<redacted>, "
-            "refresh_token=<redacted>, "
-            f"expires_at={expiry!r}, user_agent={user_agent})"
-        )
+        return f"AiInputCredentials(access_token=<redacted>, refresh_token=<redacted>, expires_at={expiry!r})"
 
 
 def _token_value(value: object, label: str) -> str:
@@ -72,28 +65,7 @@ def _token_value(value: object, label: str) -> str:
         raise AuthError(f"{label} is empty")
     if len(token) > TOKEN_MAX_LENGTH:
         raise AuthError(f"{label} is too long")
-    if not token.isascii() or any(
-        ord(character) < 33 or ord(character) == 127 for character in token
-    ):
-        raise AuthError(f"{label} contains invalid characters")
     return token
-
-
-def _user_agent_value(value: object) -> str | None:
-    if value is None or value == "":
-        return None
-    if not isinstance(value, str):
-        raise AuthError("request user agent is invalid")
-    user_agent = value.strip()
-    if not user_agent:
-        return None
-    if len(user_agent) > USER_AGENT_MAX_LENGTH:
-        raise AuthError("request user agent is too long")
-    if not user_agent.isascii() or any(
-        ord(character) < 32 or ord(character) == 127 for character in user_agent
-    ):
-        raise AuthError("request user agent contains invalid characters")
-    return user_agent
 
 
 def jwt_expiry(token: str) -> int | None:
@@ -112,12 +84,7 @@ def jwt_expiry(token: str) -> int | None:
     value = raw.get("exp")
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    if not math.isfinite(value):
-        return None
-    try:
-        expiry = int(value)
-    except (ValueError, OverflowError):
-        return None
+    expiry = int(value)
     return expiry if expiry > 0 else None
 
 
@@ -125,7 +92,6 @@ def make_credentials(
     access_token: object,
     refresh_token: object,
     expires_at: object = None,
-    user_agent: object = None,
 ) -> AiInputCredentials:
     access = _token_value(access_token, "access token")
     refresh = _token_value(refresh_token, "refresh token")
@@ -141,7 +107,7 @@ def make_credentials(
             raise AuthError("access token expiry is invalid") from None
         if expiry <= 0:
             expiry = None
-    return AiInputCredentials(access, refresh, expiry, _user_agent_value(user_agent))
+    return AiInputCredentials(access, refresh, expiry)
 
 
 def credentials_payload(credentials: AiInputCredentials) -> dict[str, object]:
@@ -149,7 +115,6 @@ def credentials_payload(credentials: AiInputCredentials) -> dict[str, object]:
         "access_token": credentials.access_token,
         "refresh_token": credentials.refresh_token,
         "expires_at": credentials.expires_at,
-        "user_agent": credentials.user_agent,
     }
 
 
@@ -169,10 +134,7 @@ def credentials_from_json(value: str) -> AiInputCredentials:
     if not isinstance(raw, dict):
         raise AuthError("stored credential record is invalid")
     return make_credentials(
-        raw.get("access_token"),
-        raw.get("refresh_token"),
-        raw.get("expires_at"),
-        raw.get("user_agent"),
+        raw.get("access_token"), raw.get("refresh_token"), raw.get("expires_at")
     )
 
 
@@ -192,18 +154,12 @@ def credentials_summary(
     now_epoch: int,
 ) -> dict[str, object]:
     if credentials is None:
-        return {
-            "configured": False,
-            "has_access_token": False,
-            "has_refresh_token": False,
-            "has_user_agent": False,
-        }
+        return {"configured": False, "has_access_token": False, "has_refresh_token": False}
     expiry = credentials.expires_at
     return {
         "configured": True,
         "has_access_token": True,
         "has_refresh_token": True,
-        "has_user_agent": credentials.user_agent is not None,
         "expires_at": expiry,
         "expires_in": expiry - now_epoch if expiry is not None else None,
         "refresh_due": credentials_need_refresh(credentials, now_epoch),

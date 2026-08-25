@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # <xbar.title>Personal xbar</xbar.title>
-# <xbar.version>3.4.2</xbar.version>
+# <xbar.version>3.2.0</xbar.version>
 # <xbar.author>Local</xbar.author>
-# <xbar.desc>Personal agents, AI.INPUT.IM health and secure subscription quota, and Spotify Web controls.</xbar.desc>
+# <xbar.desc>Personal agents, AI.INPUT.IM health and subscription quota, and Spotify Web controls.</xbar.desc>
 # <xbar.dependencies>python3</xbar.dependencies>
 
 """Thin xbar entrypoint; feature plugins are registered in personal_xbar.app."""

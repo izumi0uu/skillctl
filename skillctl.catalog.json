@@ -78,6 +78,33 @@
       "canonical_rel_path": "skills/agent-infra/anyrouter-config"
     },
     {
+      "skill_id": "asu",
+      "category": "productivity-and-artifacts",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "imported-upstream",
+      "hash": "f41e44c02d4c781062c8ba1a63e97289a47a912d",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/productivity-and-artifacts/asu",
+      "upstream": {
+        "repo": "Hisn00w/ASu-skills",
+        "ref": "d8a803f75fb923be08d5ad18e897203d9e393bb1",
+        "skillPath": "skills/asu",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/Hisn00w/ASu-skills/tree/d8a803f75fb923be08d5ad18e897203d9e393bb1/skills/asu",
+        "imported_at": "2026-08-24T03:01:06.121Z",
+        "last_verified_ref": "d8a803f75fb923be08d5ad18e897203d9e393bb1",
+        "local_modifications": false
+      }
+    },
+    {
       "skill_id": "aws-rds-dump-restore",
       "category": "domain-aws-thrive",
       "tags": [
@@ -497,7 +524,7 @@
       "visibility": "public",
       "source_kind": "local-public",
       "origin_kind": "local-authored",
-      "hash": "423a232f7c5afba23018ce1f3eade4743e93ca8a",
+      "hash": "8215d93bc6d6f22eaea22f6a6406d7d95d91bfc3",
       "managed": true,
       "targets": [
         "claude-code",
@@ -1083,7 +1110,7 @@
       "visibility": "public",
       "source_kind": "local-public",
       "origin_kind": "local-authored",
-      "hash": "2867a2d3b688b50fc48c8b6c8876c098e31d813b",
+      "hash": "41a084eee83077255555f26ea5c9264cca9619d1",
       "managed": true,
       "targets": [
         "claude-code",
@@ -1755,6 +1782,33 @@
         "sourceUrl": "https://github.com/vercel-labs/agent-skills",
         "imported_at": "2026-06-14T01:23:51.800Z",
         "last_verified_ref": "main",
+        "local_modifications": true
+      }
+    },
+    {
+      "skill_id": "writing-for-agents",
+      "category": "productivity-and-artifacts",
+      "visibility": "public",
+      "source_kind": "upstream",
+      "origin_kind": "derived-from-upstream",
+      "hash": "c4f1d7e9ccf5961ca0f0667af87d996aef4651d6",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/productivity-and-artifacts/writing-for-agents",
+      "upstream": {
+        "repo": "mattpocock/skills",
+        "ref": "84fdeffd12f2ee307994d1eb6feb48173b6e0502",
+        "skillPath": "skills/productivity/writing-for-agents",
+        "sourceType": "github",
+        "sourceUrl": "https://github.com/mattpocock/skills/tree/84fdeffd12f2ee307994d1eb6feb48173b6e0502/skills/productivity/writing-for-agents",
+        "imported_at": "2026-08-11T05:18:57.116Z",
+        "last_verified_ref": "84fdeffd12f2ee307994d1eb6feb48173b6e0502",
         "local_modifications": true
       }
     },
