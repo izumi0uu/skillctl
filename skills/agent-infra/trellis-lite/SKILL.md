@@ -19,6 +19,11 @@ changing the workflow policy to:
   extension-provided OMP tools; corrections stay in the main session;
 - make every correction or recheck a separate, explicit user-authorized follow-up;
 - reserve full suites/runtime/release gates for explicit high-risk or release scope;
+- ask once before implementation for a change mode (`P0`-`P3`) and verification
+  level (`V0`-`V3`), then persist the selected profile in `task.json`;
+- keep low-mode work in its named layer, suppress speculative guardrails and
+  test matrices, and stop for explicit scope escalation instead of expanding
+  into backend or release work;
 - keep spec update, commit, archive, and release as explicit actions;
 - bound OMP task context, expose every inline/truncated/omitted file, and reject
   source/test files from JSONL manifests.
@@ -42,6 +47,24 @@ tools. Trellis Lite therefore enforces the checker boundary in the project OMP
 extension's pre-execution `tool_call` gate. Only `read`, `grep`, `glob`,
 `ast_grep`, and the implicit `yield` result tool may execute; advertised tools
 outside that set are blocked before approval or execution.
+
+The task profile is intentionally two-dimensional:
+
+- `change_mode`: `P0` patch, `P1` local feature, `P2` cross-layer, or `P3`
+  hardening/release. `P0`/`P1` preserve existing security and data invariants
+  but do not add speculative backend rules, contracts, dependencies, or test
+  matrices.
+- `verification_level`: `V0` evidence-only, `V1` one focused pass, `V2`
+  affected-package checks, or `V3` explicitly selected broad gates. `V0`/`V1`
+  do not dispatch `trellis-check` by default; `V2`/`V3` allow at most one
+  report-only checker.
+
+Record the selection under `task.json.lite` before `task.py start`. Optional
+`allowed_paths` and `forbidden_paths` are enforced by the OMP extension for
+structured write/edit calls. The extension also enforces the selected
+verification pass budget for recognized test, lint, typecheck, build, and E2E
+commands. Tasks without a `lite` profile retain the pre-profile behavior until
+their next planning turn selects one.
 
 ## Apply To One Project
 

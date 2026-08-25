@@ -31,6 +31,59 @@ workflow ceremony.
    pass. A correction or recheck is a separate main-session follow-up and needs
    explicit user authorization.
 
+## Lite Task Profile
+
+Every task that enters Build must have one user-selected `lite` profile in its
+`task.json`. The profile separates implementation scope from verification cost;
+do not infer one from the other. A missing or invalid profile blocks
+implementation until the user chooses one.
+
+```json
+{
+  "lite": {
+    "change_mode": "P0",
+    "verification_level": "V1",
+    "checker": "off",
+    "allowed_paths": ["frontend/**"],
+    "forbidden_paths": ["backend/**", "db/**", "migrations/**", "auth/**"],
+    "selected_by": "user"
+  }
+}
+```
+
+### Change modes
+
+| Mode | Use for | Default boundary |
+| --- | --- | --- |
+| `P0` patch | Small UI, copy, or local behavior | Change the named layer only; reuse existing interfaces; no new backend, contract, dependency, guardrail, or test matrix |
+| `P1` feature | A local feature within an existing interface | Allow related modules and a small local abstraction; no speculative cross-layer policy |
+| `P2` cross-layer | API, persistence, or frontend/backend contract changes | Cross-layer edits are allowed only when named in the accepted scope |
+| `P3` hardening | Auth, data safety, migration, shared core, or release work | Require explicit design, compatibility, rollback, and broad verification |
+
+Existing security, authorization, and data invariants remain mandatory at every
+mode. Only newly invented defensive rules are suppressed by `P0`/`P1`.
+If the existing interface cannot satisfy a low-mode request, stop and ask to
+upgrade the mode; do not silently edit another layer.
+
+### Verification levels
+
+| Level | Allowed evidence | Default checker policy |
+| --- | --- | --- |
+| `V0` | Diff and acceptance review only; no test command | No checker |
+| `V1` | One focused test or static-check pass | No checker |
+| `V2` | Focused tests plus affected-package static/build checks, once | One read-only checker when the profile enables it |
+| `V3` | Explicit full, integration, E2E, runtime, or release gates, once | Checker only when explicitly selected |
+
+Verification commands are not an invitation to create more scope. Never add a
+test suite merely because a new backend guard was imagined. A passing command is
+reused while its relevant code is unchanged. Do not automatically raise the
+mode, level, checker, or command set after a failure.
+
+The compact pre-start question is: `P0/P1/P2/P3` for change mode and
+`V0/V1/V2/V3` for verification level. The user may accept the recommendation
+with one reply. Record the answer once in `task.json`; resume the task with the
+same profile unless the accepted scope changes.
+
 ## Durable State
 
 ### Tasks
@@ -136,6 +189,11 @@ optional and may contain only spec/research files. When substantial repository
 research can resolve uncertainty independently, dispatch one bounded research
 agent by default after the durable task is selected; the main session owns
 product questions and the final scope.
+Before `task.py start`, ask once for the Lite profile: change mode (`P0`-`P3`),
+verification level (`V0`-`V3`), and whether a read-only checker is wanted.
+Write the selected profile under `task.json.lite` and include allowed and
+forbidden path boundaries when the task is scoped to a layer. Do not start
+implementation while the profile is missing or ambiguous.
 Ask for implementation approval once the minimum scope is testable; do not keep
 brainstorming after remaining questions no longer block the requested outcome.
 [/workflow-state:planning]
@@ -147,6 +205,10 @@ not require JSONL curation. Use one bounded research agent when substantial
 repository evidence can resolve uncertainty and a durable task is active; keep
 product choices in the main session. Ask for implementation approval once the
 minimum scope is testable.
+Before editing, ask once for and record the Lite profile under `task.json.lite`:
+change mode (`P0`-`P3`), verification level (`V0`-`V3`), checker choice, and
+optional allowed/forbidden paths. Do not infer a cross-layer change from a
+frontend-only request.
 [/workflow-state:planning-inline]
 
 ### Phase 2: Build
@@ -156,25 +218,30 @@ minimum scope is testable.
 - 2.3 Handle checker findings `[explicit user follow-up]`
 
 [workflow-state:in_progress]
-Resume the next incomplete requirement; do not restart completed work. The main
-session implements normal tracked work. For complex separable work, dispatch
+Resume the next incomplete requirement; do not restart completed work. Read and
+obey the selected `task.json.lite` profile before every implementation turn.
+The main session implements normal tracked work. For complex separable work, dispatch
 parallel implementers by default only after assigning non-overlapping files or
 modules; the main session integrates their results. After tracked implementation,
-dispatch exactly one report-only checker by default. Reuse passing results while
-relevant code is unchanged. The main session may make a targeted correction only
-after the user explicitly authorizes a follow-up; it never starts another checker
-or fix/re-check wave automatically. Then report. Spec updates, commits, release
+dispatch one report-only checker only when the profile allows it. P0/P1 work
+must not add backend guards, API contracts, dependencies, broad refactors, or
+test matrices outside the accepted scope. Reuse passing results while relevant
+code is unchanged. The main session may make a targeted correction only after
+the user explicitly authorizes a follow-up; it never starts another checker or
+fix/re-check wave automatically. Then report. Spec updates, commits, release
 gates, and archive are not automatic.
 [/workflow-state:in_progress]
 
 [workflow-state:in_progress-inline]
-Resume the next incomplete requirement; do not restart completed work. Implement
-small inline work in the main session. For normal or complex tracked work, use
-the same task-shape routing as `in_progress`: one report-only checker, and
-parallel implementers only with disjoint ownership. Reuse passing results while
-relevant code is unchanged. Checker findings end the pass; correction and
-recheck require an explicit user follow-up. Then report. Spec updates, commits,
-release gates, and archive are optional explicit actions.
+Resume the next incomplete requirement; do not restart completed work. Read and
+obey `task.json.lite` before editing. Implement small inline work in the main
+session. For normal or complex tracked work, use the same task-shape routing as
+`in_progress`, but only dispatch the report-only checker when the selected
+profile allows it. P0/P1 requests stay in their named layer and do not grow
+speculative backend policy. Reuse passing results while relevant code is
+unchanged. Checker findings end the pass; correction and recheck require an
+explicit user follow-up. Then report. Spec updates, commits, release gates,
+and archive are optional explicit actions.
 [/workflow-state:in_progress-inline]
 
 ### Phase 3: Close
@@ -246,23 +313,30 @@ automatic release work, broad review, commits, or publication.
 
 #### 2.1 Implement `[required - once per requested slice]`
 
-Read the active task artifacts and relevant specs, then implement the smallest
-coherent change. The main session owns integration. For normal tracked work the
+Read the active task artifacts, relevant specs, and `task.json.lite`, then
+implement the smallest coherent change allowed by the selected mode. The main
+session owns integration. For normal tracked work the
 main session implements. For complex work with two or more independent slices,
 dispatch implementers in parallel by default only after naming non-overlapping
 file or module ownership. Small work stays in the main session. No Trellis
 sub-agent may dispatch another worker. Each dispatch names the active task,
 acceptance slice, allowed ownership, and expected report.
 
-The implementer may run the narrow test needed to develop its slice and must
-report exact commands and results. The main session does not repeat those
-commands unless relevant code changed.
+P0/P1 implementers must not change paths outside the profile, broaden an API,
+invent backend guardrails, add dependencies, or create a test matrix. If a
+profile boundary blocks the requested outcome, stop and ask for a mode change.
+Any verification command counts against the selected level and must be reported
+exactly; do not repeat it unless relevant code changed and the user authorized a
+follow-up.
 
 #### 2.2 Verify `[required - once after the slice is complete]`
 
-Choose checks from the Verification Budget in the main session or implementer.
-The checker reviews the current requested slice, not every historical dirty path
-or every unchecked criterion in a parent epic.
+Choose checks from the selected verification level and the Verification Budget
+in the main session or implementer. `V0` runs no commands; `V1` runs one
+focused pass; `V2` runs the named affected-package checks once; `V3` runs only
+the explicitly selected broad gates once. The checker reviews the current
+requested slice, not every historical dirty path or every unchecked criterion
+in a parent epic.
 
 Default behavior:
 
@@ -272,12 +346,12 @@ Default behavior:
 3. Record exact commands and results before dispatching the checker.
 4. Dispatch the checker for a read-only evidence review and report its findings.
 
-For normal or complex tracked work, dispatch exactly one `trellis-check` agent
-by default. It is runtime-read-only: the prompt must state the acceptance
-criteria, changed-path boundary, and exact checks already run. It must not be
-given lifecycle commands or edit authority. Small untracked work remains
-main-agent-only. If the runtime has no sub-agent capability, the main session
-performs the same single pass.
+For `V2` or an explicitly selected `V3` profile, dispatch at most one
+`trellis-check` agent. It is runtime-read-only: the prompt must state the
+profile, acceptance criteria, changed-path boundary, and exact checks already
+run. It must not be given lifecycle commands or edit authority. `P0/P1` with
+`V0/V1` remains main-agent-only. If the runtime has no sub-agent capability,
+the main session performs the same single pass.
 
 #### 2.3 Handle checker findings `[explicit user follow-up]`
 

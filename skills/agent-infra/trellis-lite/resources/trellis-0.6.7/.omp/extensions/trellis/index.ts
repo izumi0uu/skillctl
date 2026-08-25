@@ -207,6 +207,20 @@ function buildSessionContext(projectRoot: string, contextKey: string | null): st
 type AgentType = "trellis-implement" | "trellis-check" | "trellis-research" | null;
 type ContextStatus = "inline" | "truncated" | "omitted";
 type ContextKind = "task-artifact" | "jsonl-manifest" | "context-file";
+type LiteChangeMode = "P0" | "P1" | "P2" | "P3";
+type LiteVerificationLevel = "V0" | "V1" | "V2" | "V3";
+
+interface LiteProfile {
+   status: "selected" | "unselected" | "invalid";
+   change_mode: LiteChangeMode | null;
+   verification_level: LiteVerificationLevel | null;
+   checker: "off" | "report";
+   allowed_paths: string[];
+   forbidden_paths: string[];
+   selected_by: string | null;
+   scope_locked: boolean;
+   max_verification_passes: number;
+}
 
 interface ContextEntry {
    path: string;
@@ -225,6 +239,9 @@ interface InlineSection {
    path: string;
    content: string;
 }
+
+const LITE_CHANGE_MODES = new Set<LiteChangeMode>(["P0", "P1", "P2", "P3"]);
+const LITE_VERIFICATION_LEVELS = new Set<LiteVerificationLevel>(["V0", "V1", "V2", "V3"]);
 
 const MAX_TASK_ARTIFACT_BYTES = 48 * 1024;
 const MAX_CONTEXT_FILE_BYTES = 64 * 1024;
@@ -270,6 +287,61 @@ function safeTaskFile(projectRoot: string, taskDir: string, fileName: string): s
    }
 }
 
+function boundedStringArray(value: unknown, limit = 64): string[] {
+   if (!Array.isArray(value)) return [];
+   return value
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim().replaceAll("\\", "/"))
+      .filter(Boolean)
+      .slice(0, limit);
+}
+
+function liteProfileFromTask(taskData: Record<string, unknown>): LiteProfile {
+   const raw = taskData.lite;
+   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return {
+         status: "unselected",
+         change_mode: null,
+         verification_level: null,
+         checker: "off",
+         allowed_paths: [],
+         forbidden_paths: [],
+         selected_by: null,
+         scope_locked: false,
+         max_verification_passes: 0,
+      };
+   }
+
+   const profile = raw as Record<string, unknown>;
+   const changeMode = typeof profile.change_mode === "string"
+      && LITE_CHANGE_MODES.has(profile.change_mode as LiteChangeMode)
+      ? profile.change_mode as LiteChangeMode
+      : null;
+   const verificationLevel = typeof profile.verification_level === "string"
+      && LITE_VERIFICATION_LEVELS.has(profile.verification_level as LiteVerificationLevel)
+      ? profile.verification_level as LiteVerificationLevel
+      : null;
+   const checker = profile.checker === "report" ? "report" : "off";
+   const defaultPasses = verificationLevel === "V0" ? 0 : verificationLevel === "V1" ? 1 : verificationLevel === "V2" ? 3 : 8;
+   const requestedPasses = typeof profile.max_verification_passes === "number"
+      && Number.isInteger(profile.max_verification_passes)
+      ? Math.max(0, Math.min(8, profile.max_verification_passes))
+      : defaultPasses;
+   const valid = changeMode !== null && verificationLevel !== null;
+
+   return {
+      status: valid ? "selected" : "invalid",
+      change_mode: changeMode,
+      verification_level: verificationLevel,
+      checker,
+      allowed_paths: boundedStringArray(profile.allowed_paths),
+      forbidden_paths: boundedStringArray(profile.forbidden_paths),
+      selected_by: typeof profile.selected_by === "string" ? profile.selected_by.slice(0, 80) : null,
+      scope_locked: profile.scope_locked !== false,
+      max_verification_passes: requestedPasses,
+   };
+}
+
 function truncateUtf8(data: Buffer, maxBytes: number, marker: string): string {
    if (data.length <= maxBytes) return data.toString("utf-8");
    const markerBytes = Buffer.byteLength(marker, "utf-8");
@@ -288,8 +360,8 @@ function selectedJsonlNames(agentType?: AgentType): Set<string> {
    return new Set(["implement.jsonl"]);
 }
 
-function taskIdentity(projectRoot: string, taskDir: string): Record<string, string> {
-   const identity: Record<string, string> = {
+function taskIdentity(projectRoot: string, taskDir: string): Record<string, unknown> {
+   const identity: Record<string, unknown> = {
       path: projectRelativePath(projectRoot, taskDir),
       source_of_truth: "disk",
       injected_content: "bounded cache",
@@ -301,6 +373,7 @@ function taskIdentity(projectRoot: string, taskDir: string): Record<string, stri
       const taskData = JSON.parse(readFileSync(taskJsonPath, "utf-8")) as Record<string, unknown>;
       if (typeof taskData.title === "string") identity.title = taskData.title;
       if (typeof taskData.status === "string") identity.status = taskData.status;
+      identity.lite = liteProfileFromTask(taskData);
    } catch {
       // The task directory remains enough for explicit recovery.
    }
@@ -321,7 +394,7 @@ function manifestLine(entry: ContextEntry): string {
 }
 
 function renderTaskContext(
-   identity: Record<string, string>,
+   identity: Record<string, unknown>,
    entries: ContextEntry[],
    inlineSections: InlineSection[],
 ): string {
@@ -343,7 +416,7 @@ function renderTaskContext(
 }
 
 function renderManifestOverflow(
-   identity: Record<string, string>,
+   identity: Record<string, unknown>,
    entries: ContextEntry[],
 ): string {
    const recoveryEntries = entries.filter((entry) => entry.kind !== "context-file");
@@ -585,6 +658,133 @@ export function buildTaskContext(projectRoot: string, taskDir: string, agentType
       : renderManifestOverflow(identity, entries);
 }
 
+function activeLiteProfile(projectRoot: string, contextKey: string | null): LiteProfile | null {
+   const active = resolveActiveTaskStatus(projectRoot, contextKey);
+   if (!active.taskDir) return null;
+   try {
+      const taskJson = safeTaskFile(projectRoot, active.taskDir, "task.json");
+      if (!taskJson) return null;
+      const taskData = JSON.parse(readFileSync(taskJson, "utf-8")) as Record<string, unknown>;
+      const profile = liteProfileFromTask(taskData);
+      return profile.status === "selected" ? profile : null;
+   } catch {
+      return null;
+   }
+}
+
+function activeLiteState(
+   projectRoot: string,
+   contextKey: string | null,
+): { declared: boolean; profile: LiteProfile | null } {
+   const active = resolveActiveTaskStatus(projectRoot, contextKey);
+   if (!active.taskDir) return { declared: false, profile: null };
+   try {
+      const taskJson = safeTaskFile(projectRoot, active.taskDir, "task.json");
+      if (!taskJson) return { declared: false, profile: null };
+      const taskData = JSON.parse(readFileSync(taskJson, "utf-8")) as Record<string, unknown>;
+      const declared = Object.prototype.hasOwnProperty.call(taskData, "lite");
+      const profile = liteProfileFromTask(taskData);
+      return { declared, profile: profile.status === "selected" ? profile : null };
+   } catch {
+      return { declared: false, profile: null };
+   }
+}
+
+function globMatches(pattern: string, value: string): boolean {
+   let expression = "^";
+   const normalized = pattern.trim().replaceAll("\\", "/").replace(/^\.\//, "");
+   for (let index = 0; index < normalized.length; index += 1) {
+      const char = normalized[index]!;
+      if (char === "*" && normalized[index + 1] === "*") {
+         expression += ".*";
+         index += 1;
+      } else if (char === "*") {
+         expression += "[^/]*";
+      } else if (char === "?") {
+         expression += "[^/]";
+      } else {
+         expression += char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      }
+   }
+   try {
+      return new RegExp(`${expression}$`).test(value);
+   } catch {
+      return false;
+   }
+}
+
+const TOOL_PATH_KEYS = new Set(["path", "file", "filepath", "file_path", "filename", "target", "targets", "files"]);
+
+function collectToolPaths(value: unknown, keyHint = "", output: string[] = [], depth = 0): string[] {
+   if (depth > 5 || output.length >= 64) return output;
+   if (typeof value === "string") {
+      if (TOOL_PATH_KEYS.has(keyHint.toLowerCase())) output.push(value);
+      return output;
+   }
+   if (Array.isArray(value)) {
+      for (const item of value) collectToolPaths(item, keyHint, output, depth + 1);
+      return output;
+   }
+   if (!value || typeof value !== "object") return output;
+   for (const [key, child] of Object.entries(value)) {
+      collectToolPaths(child, key, output, depth + 1);
+   }
+   return output;
+}
+
+function profilePathViolation(projectRoot: string, profile: LiteProfile, input: unknown): string | null {
+   if (!profile.scope_locked) return null;
+   if (profile.allowed_paths.length === 0 && profile.forbidden_paths.length === 0) return null;
+   const root = resolve(projectRoot);
+   for (const rawPath of collectToolPaths(input)) {
+      const lexical = isAbsolute(rawPath) ? resolve(rawPath) : resolve(root, rawPath);
+      if (!isInsideRoot(root, lexical)) return `path escapes project root: ${rawPath}`;
+      const relativePath = relative(root, lexical).replaceAll("\\", "/");
+      if (relativePath === ".trellis" || relativePath.startsWith(".trellis/")) continue;
+      if (profile.forbidden_paths.some((pattern) => globMatches(pattern, relativePath))) {
+         return `path is forbidden by Lite profile: ${relativePath}`;
+      }
+      if (
+         profile.allowed_paths.length > 0
+         && !profile.allowed_paths.some((pattern) => globMatches(pattern, relativePath))
+      ) {
+         return `path is outside Lite profile allowlist: ${relativePath}`;
+      }
+   }
+   return null;
+}
+
+function toolCommand(input: unknown): string {
+   if (!input || typeof input !== "object") return "";
+   const record = input as Record<string, unknown>;
+   for (const key of ["command", "cmd", "script"]) {
+      if (typeof record[key] === "string") return record[key];
+   }
+   return "";
+}
+
+function verificationCategories(command: string): Set<string> {
+   const categories = new Set<string>();
+   if (/\b(?:test|tests|pytest|jest|vitest|mocha|playwright|cypress)\b/i.test(command)) categories.add("test");
+   if (/\b(?:lint|eslint|ruff|flake8|pylint|stylelint)\b/i.test(command)) categories.add("lint");
+   if (/\b(?:typecheck|type-check|tsc|pyright|basedpyright|mypy)\b/i.test(command)) categories.add("typecheck");
+   if (/\b(?:build|compile|pack|bundle)\b/i.test(command)) categories.add("build");
+   if (/\b(?:e2e|integration|smoke)\b/i.test(command)) categories.add("e2e");
+   return categories;
+}
+
+function verificationBudgetViolation(profile: LiteProfile, contextKey: string | null, command: string, calls: Map<string, number>): string | null {
+   if (!contextKey || !command) return null;
+   if (verificationCategories(command).size === 0) return null;
+   const key = `${contextKey}:${profile.verification_level}`;
+   const used = calls.get(key) ?? 0;
+   if (used >= profile.max_verification_passes) {
+      return `verification budget exhausted for ${profile.verification_level}; authorize a follow-up before running another check`;
+   }
+   calls.set(key, used + 1);
+   return null;
+}
+
 // ---------------------------------------------------------------------------
 // Per-turn cache — prevents redundant workflow-state resolution within a
 // single event cascade (input, before_agent_start, and context fire closely)
@@ -687,6 +887,7 @@ export default function(pi: ExtensionAPI): void {
    // compaction has occurred since last injection.
    let lastCompactionTs = 0;
    let lastInjectionTs = 0;
+   const verificationCalls = new Map<string, number>();
 
    const rememberContextKey = (ctx?: { sessionManager?: { getSessionId?: () => string; getSessionFile?: () => string } }): string | null => {
       const key = deriveContextKey(ctx);
@@ -819,12 +1020,58 @@ export default function(pi: ExtensionAPI): void {
       };
    });
 
-   pi.on("tool_call", (event) => {
-      if (agentType !== "trellis-check" || CHECKER_ALLOWED_TOOLS.has(event.toolName)) return;
-      return {
-         block: true,
-         reason: `Trellis Lite checker blocked non-inspection tool: ${event.toolName}`,
-      };
+   pi.on("tool_call", (event, ctx) => {
+      if (agentType === "trellis-check" && !CHECKER_ALLOWED_TOOLS.has(event.toolName)) {
+         return {
+            block: true,
+            reason: `Trellis Lite checker blocked non-inspection tool: ${event.toolName}`,
+         };
+      }
+      const contextKey = rememberContextKey(ctx);
+      if (projectRoot && ["write", "edit", "apply_patch"].includes(event.toolName)) {
+         const state = activeLiteState(projectRoot, contextKey);
+         if (state.declared && !state.profile) {
+            const paths = collectToolPaths(event.input);
+            const productPath = paths.some((rawPath) => {
+               const lexical = isAbsolute(rawPath) ? resolve(rawPath) : resolve(projectRoot!, rawPath);
+               const relativePath = relative(resolve(projectRoot!), lexical).replaceAll("\\", "/");
+               return relativePath !== ".trellis" && !relativePath.startsWith(".trellis/");
+            });
+            if (productPath) {
+               return {
+                  block: true,
+                  reason: "Trellis Lite profile is missing or invalid; select change mode and verification level before editing product files",
+               };
+            }
+         }
+         const profile = state.profile;
+         if (profile) {
+            const violation = profilePathViolation(projectRoot, profile, event.input);
+            if (violation) {
+               return {
+                  block: true,
+                  reason: `Trellis Lite ${profile.change_mode} scope boundary: ${violation}`,
+               };
+            }
+         }
+      }
+      if (projectRoot && event.toolName === "bash") {
+         const profile = activeLiteProfile(projectRoot, contextKey);
+         if (profile) {
+            const violation = verificationBudgetViolation(
+               profile,
+               contextKey,
+               toolCommand(event.input),
+               verificationCalls,
+            );
+            if (violation) {
+               return {
+                  block: true,
+                  reason: `Trellis Lite ${profile.verification_level} scope boundary: ${violation}`,
+               };
+            }
+         }
+      }
    });
 
    pi.on("input", async (_event, ctx) => {

@@ -135,7 +135,7 @@ class TestTrellisLite(unittest.TestCase):
         self.assertEqual(first_mtime, metadata_path.stat().st_mtime_ns)
         metadata = json.loads(first_metadata)
         self.assertEqual(metadata["overlay_id"], "trellis-lite")
-        self.assertEqual(metadata["overlay_version"], "1.0.11")
+        self.assertEqual(metadata["overlay_version"], "1.0.12")
         self.assertEqual(metadata["verification"]["status"], "verified")
 
     def test_check_is_read_only_and_reports_recognized_baseline(self) -> None:
@@ -614,6 +614,115 @@ process.stdout.write(JSON.stringify({
                 self.assertIn("trellis-task-context", payload["afterTypes"])
                 self.assertIn("trellis-workflow-state", payload["afterTypes"])
                 self.assertIn("MAIN-COMPACTION-PRD", payload["afterTaskContent"])
+
+    def test_lite_profile_is_injected_and_bounds_writes_and_verification(self) -> None:
+        project = self.root / "profile-project"
+        task = project / ".trellis/tasks/08-25-profile"
+        runtime = project / ".trellis/.runtime/sessions"
+        task.mkdir(parents=True)
+        runtime.mkdir(parents=True)
+        (task / "task.json").write_text(
+            json.dumps(
+                {
+                    "title": "Profile boundary",
+                    "status": "in_progress",
+                    "lite": {
+                        "change_mode": "P0",
+                        "verification_level": "V1",
+                        "checker": "off",
+                        "allowed_paths": ["frontend/**"],
+                        "forbidden_paths": ["backend/**"],
+                        "selected_by": "user",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        (task / "prd.md").write_text("PROFILE-PRD\n", encoding="utf-8")
+        (runtime / "omp_profile_probe.json").write_text(
+            json.dumps(
+                {
+                    "platform": "session",
+                    "current_task": ".trellis/tasks/08-25-profile",
+                    "current_run": None,
+                }
+            ),
+            encoding="utf-8",
+        )
+        runner = self.root / "profile-guard.mjs"
+        runner.write_text(
+            """import { pathToFileURL } from \"node:url\";
+const [extensionPath, projectRoot] = process.argv.slice(2);
+const extension = await import(pathToFileURL(extensionPath).href);
+const handlers = {};
+extension.default({ on(name, handler) { handlers[name] = handler; }, async sendMessage() {} });
+const ctx = {
+  cwd: projectRoot,
+  ui: { notify() {} },
+  sessionManager: {
+    getSessionId: () => \"profile_probe\",
+    getSessionFile: () => undefined,
+    getEntries: () => [],
+  },
+};
+await handlers.session_start({}, ctx);
+const allowed = handlers.tool_call({ toolName: \"write\", input: { path: \"frontend/Feature.tsx\" } }, ctx) ?? null;
+const blocked = handlers.tool_call({ toolName: \"write\", input: { path: \"backend/policy.py\" } }, ctx) ?? null;
+const firstCheck = handlers.tool_call({ toolName: \"bash\", input: { command: \"npm test -- Feature\" } }, ctx) ?? null;
+const secondCheck = handlers.tool_call({ toolName: \"bash\", input: { command: \"npm test -- Feature\" } }, ctx) ?? null;
+process.stdout.write(JSON.stringify({ allowed, blocked, firstCheck, secondCheck }));
+""",
+            encoding="utf-8",
+        )
+
+        for version, patch_set in MANAGER.PATCH_SETS.items():
+            with self.subTest(version=version):
+                extension_path = patch_set.resource_root / ".omp/extensions/trellis/index.ts"
+                context_runner = self.root / f"profile-context-{version}.mjs"
+                context_runner.write_text(
+                    """import { pathToFileURL } from \"node:url\";
+const [extensionPath, projectRoot, taskDir] = process.argv.slice(2);
+const extension = await import(pathToFileURL(extensionPath).href);
+process.stdout.write(extension.buildTaskContext(projectRoot, taskDir));
+""",
+                    encoding="utf-8",
+                )
+                context_result = subprocess.run(
+                    [
+                        "node",
+                        "--experimental-strip-types",
+                        str(context_runner),
+                        str(extension_path),
+                        str(project),
+                        str(task),
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertIn('"change_mode":"P0"', context_result.stdout)
+                self.assertIn('"verification_level":"V1"', context_result.stdout)
+                self.assertIn('"allowed_paths":["frontend/**"]', context_result.stdout)
+
+                guard_result = subprocess.run(
+                    [
+                        "node",
+                        "--experimental-strip-types",
+                        str(runner),
+                        str(extension_path),
+                        str(project),
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                payload = json.loads(guard_result.stdout)
+                self.assertIsNone(payload["allowed"])
+                self.assertTrue(payload["blocked"]["block"])
+                self.assertIn("Lite profile", payload["blocked"]["reason"])
+                self.assertIsNone(payload["firstCheck"])
+                self.assertTrue(payload["secondCheck"]["block"])
+                self.assertIn("verification budget exhausted", payload["secondCheck"]["reason"])
 
     def test_active_task_pointer_rejects_escape_and_keeps_local_fallback(
         self,

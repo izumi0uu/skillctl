@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Iterator, Sequence
 
 OVERLAY_ID = "trellis-lite"
-OVERLAY_VERSION = "1.0.11"
+OVERLAY_VERSION = "1.0.12"
 METADATA_REL_PATH = Path(".trellis/.overlays/trellis-lite.json")
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 RESOURCE_ROOT_067 = SKILL_ROOT / "resources" / "trellis-0.6.7"
@@ -61,17 +61,18 @@ FILE_SPECS_067 = (
     FileSpec(
         ".trellis/workflow.md",
         "6a0918bb68a5af1f6f0aba0efc004584d5819b36e2b84c093ea0dfdf1cc30ce6",
-        "9cfb471130185643cc4b39849e8388bb560aaf7fdbffe4f35e1bec39e70cf0de",
+        "cc47c03259d07ef5ea44474c99c265a4544ee65f3edfefa49f52668ce2efb9de",
         required=True,
         upgrade_sha256s=(
             "a9e2947a60ceab3acfd2d8c711323e72dbceaea9374e120a5dae1f98e254c54d",
             "e4b42a0232b2a70a67934dc51a7b66d7dc9cd4b920b2af14f19c052a4f8b06de",
+            "9cfb471130185643cc4b39849e8388bb560aaf7fdbffe4f35e1bec39e70cf0de",
         ),
     ),
     FileSpec(
         ".omp/extensions/trellis/index.ts",
         "10cb806e89ba7d0c1bdb0c56168ca5999a07d0ed05e45fb9282ad680f7c4ef4a",
-        "1d49ce00a64bc1d5a4aeddfac2c0c9607b1ca530cef4d5134365d5dee9e510bb",
+        "42a6518e2270c11d55485a803c05a6db8ce833de2e13cdd360249f4edd96a983",
         upgrade_sha256s=(
             "7357b764398f648b44607c42b6033425aaad2b1d755a8df34586c6bb090a2a0c",
             "7009c8f32d4d8c38cc02fa7ec402a2f29c3d4722c147c5ad6121426c82a9c875",
@@ -80,6 +81,7 @@ FILE_SPECS_067 = (
             "d29bb4002d7bb09585fb137e46e2bc4440dc29b95bb9a850bc8158c1314dcf45",
             "9b09cb4fd14ad1ca429efa55547f76dd6837c72c9dd50571ae676b28d4d9e00f",
             "a5a7604b53b5ffdfa6039fe3531b41e2605f60d474a27271b4409aa9bb527e92",
+            "1d49ce00a64bc1d5a4aeddfac2c0c9607b1ca530cef4d5134365d5dee9e510bb",
         ),
     ),
     FileSpec(
@@ -246,16 +248,17 @@ FILE_SPECS_0614 = (
     FileSpec(
         ".trellis/workflow.md",
         "d2ea5e032b53bf7931074519b8110b924968a1b184dd7850b62777c4202462d2",
-        "9cfb471130185643cc4b39849e8388bb560aaf7fdbffe4f35e1bec39e70cf0de",
+        "cc47c03259d07ef5ea44474c99c265a4544ee65f3edfefa49f52668ce2efb9de",
         required=True,
         upgrade_sha256s=(
             "e4b42a0232b2a70a67934dc51a7b66d7dc9cd4b920b2af14f19c052a4f8b06de",
+            "9cfb471130185643cc4b39849e8388bb560aaf7fdbffe4f35e1bec39e70cf0de",
         ),
     ),
     FileSpec(
         ".omp/extensions/trellis/index.ts",
         "55caabda2b031fee56b4c628f170d79ce26ea1caf6c5a892038c7a2c3150f95a",
-        "288785107d27f30efccc5590b205fb43ebfe95db3e3c1368404d229234df4dd4",
+        "c82411c5c021d891ee5a69fe94a9d628baf401c6a28a02faaed482b42d3dba23",
         upgrade_sha256s=(
             "396bda18236deb9e955ea280136be70d492a92cef51791b5b6828ace8f778d6b",
             "1a1f41bb1536148628821ea8286c0a370adb2563d27264f90c5608d9f95f59e1",
@@ -263,6 +266,7 @@ FILE_SPECS_0614 = (
             "f563f175590b81374a518c54112558f4b4986024e6a5db2382db05847dcafad4",
             "c814c8d09cae79f3cc62328b1c19dd79d80694e622cec2c4227c194fd8ce3ca9",
             "4fbc341bc15ac3e1960abff788a4ab55d6fdb788755673ff8a741bc232ee9395",
+            "288785107d27f30efccc5590b205fb43ebfe95db3e3c1368404d229234df4dd4",
         ),
     ),
     FileSpec(

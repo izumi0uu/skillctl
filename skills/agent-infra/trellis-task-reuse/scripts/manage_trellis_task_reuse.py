@@ -122,6 +122,7 @@ PATCH_SETS: dict[str, PatchSet] = {
                     "a9e2947a60ceab3acfd2d8c711323e72dbceaea9374e120a5dae1f98e254c54d",
                     "e4b42a0232b2a70a67934dc51a7b66d7dc9cd4b920b2af14f19c052a4f8b06de",
                     "9cfb471130185643cc4b39849e8388bb560aaf7fdbffe4f35e1bec39e70cf0de",
+                    "cc47c03259d07ef5ea44474c99c265a4544ee65f3edfefa49f52668ce2efb9de",
                 ),
             ),
             FileSpec(
@@ -303,6 +304,7 @@ PATCH_SETS: dict[str, PatchSet] = {
                 compatible_overlay_sha256s=(
                     "e4b42a0232b2a70a67934dc51a7b66d7dc9cd4b920b2af14f19c052a4f8b06de",
                     "9cfb471130185643cc4b39849e8388bb560aaf7fdbffe4f35e1bec39e70cf0de",
+                    "cc47c03259d07ef5ea44474c99c265a4544ee65f3edfefa49f52668ce2efb9de",
                 ),
             ),
             FileSpec(
