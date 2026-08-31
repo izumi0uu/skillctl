@@ -1466,20 +1466,6 @@
       "canonical_rel_path": "skills/productivity-and-artifacts/trellis-design-doc-generator"
     },
     {
-      "skill_id": "trellis-lite",
-      "category": "agent-infra",
-      "visibility": "public",
-      "source_kind": "local-public",
-      "origin_kind": "local-authored",
-      "hash": "bd7162ca7dbddc62a2d381ecac4e94adf5886da7",
-      "managed": true,
-      "targets": [
-        "codex",
-        "pi"
-      ],
-      "canonical_rel_path": "skills/agent-infra/trellis-lite"
-    },
-    {
       "skill_id": "trellis-task-reuse",
       "category": "agent-infra",
       "visibility": "public",
