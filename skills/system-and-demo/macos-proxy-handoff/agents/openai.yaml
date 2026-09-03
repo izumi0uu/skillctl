@@ -1,0 +1,4 @@
+interface:
+  display_name: "macOS Proxy Handoff"
+  short_description: "Safely switch between conflicting local proxy apps"
+  default_prompt: "Use $macos-proxy-handoff to diagnose and safely coordinate two conflicting macOS proxy clients."

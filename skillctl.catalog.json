@@ -1024,6 +1024,23 @@
       "canonical_rel_path": "skills/system-and-demo/local-portable-demo"
     },
     {
+      "skill_id": "macos-proxy-handoff",
+      "category": "system-and-demo",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "0db12f3f282f41af4e3bd53b1dfd28b20ee41ef8",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/system-and-demo/macos-proxy-handoff"
+    },
+    {
       "skill_id": "maintain-mac-dev-environment",
       "category": "system-and-demo",
       "visibility": "public",
