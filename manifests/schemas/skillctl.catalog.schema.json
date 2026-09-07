@@ -53,6 +53,9 @@
           "managed": {
             "type": "boolean"
           },
+          "enabled": {
+            "type": "boolean"
+          },
           "targets": {
             "type": "array",
             "items": {

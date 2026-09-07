@@ -177,6 +177,24 @@ pnpm ci:health
 
 By default only `./skills` is discovered as a managed public root. Use `skillctl.config.example.json` as a starting point for adding upstream or private local sources.
 
+## Enable and Disable Skills
+
+Run `skillctl disable adhd` to save `enabled: false` in the catalog and run the
+normal full sync. Run `skillctl enable adhd` to clear that flag and sync again.
+The canonical source and provenance are retained. The setting applies to all
+declared targets; only configured enabled adapters are synchronized.
+
+Add `--no-sync` to save the setting for a later `skillctl sync`, or `--json` for
+structured output. Commands require one exact managed skill ID and reject unknown
+IDs and options. Repeating a command still syncs, allowing a failed sync to be
+retried. If sync fails, the saved setting remains in the catalog.
+
+Disabling removes final adapter installs using the existing distribution policy.
+Shared `~/.agents/skills` transport copies can remain: agents that discover that
+directory directly may still find the skill. Existing sessions can also retain
+already loaded instructions. This switch controls skillctl distribution, not an
+agent's own runtime permission system.
+
 ## Transport Topology
 
 `skillctl` intentionally keeps the default sync path as:

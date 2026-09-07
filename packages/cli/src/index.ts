@@ -25,6 +25,7 @@ import {
   repairCatalog,
   runDoctor,
   summarizeCatalog,
+  setSkillEnabled,
   syncCatalog,
   upsertRepoReference,
   writeCatalog,
@@ -39,6 +40,8 @@ function usage(): string {
   skillctl import
   skillctl adopt --source <path> [--into <category/path>] [--from-repo <repo>] [--skill-path <path>] [--ref <ref>] [--source-type <github|git|local>] [--source-url <url>] [--origin-kind <local-authored|imported-upstream|derived-from-upstream>]
   skillctl sync
+  skillctl enable <skill-id> [--no-sync] [--json]
+  skillctl disable <skill-id> [--no-sync] [--json]
   skillctl bootstrap-upstream
   skillctl status
   skillctl diff
@@ -58,6 +61,42 @@ Notes:
   - Only managed public skills are synced into agent directories.
   - Sync and repair default to the embedded upstream skills transport when bootstrapped.
   - Private skills stay in local metadata and are never copied to public agent dirs.`;
+}
+
+async function toggleCommand(repoRoot: string, args: string[], enabled: boolean): Promise<void> {
+  const command = enabled ? "enable" : "disable";
+  const skillIds = args.filter((arg) => !arg.startsWith("-"));
+  const unknownFlag = args.find((arg) => arg.startsWith("-") && !["--no-sync", "--json"].includes(arg));
+  if (unknownFlag || skillIds.length !== 1) {
+    throw new Error(`Usage: skillctl ${command} <skill-id> [--no-sync] [--json]${unknownFlag ? ` (unknown option: ${unknownFlag})` : ""}`);
+  }
+  const skillId = skillIds[0]!;
+  const catalog = await loadCatalog(repoRoot);
+  const skill = catalog.skills.find((entry) => entry.skill_id === skillId);
+  if (!skill) throw new Error(`Unknown skill: ${skillId}`);
+  if (!skill.managed) throw new Error(`Skill is not managed by skillctl: ${skillId}`);
+  const config = await loadConfig(repoRoot);
+  const changed = (skill.enabled !== false) !== enabled;
+  setSkillEnabled(catalog, skillId, enabled);
+  await writeCatalog(repoRoot, catalog);
+  const shouldSync = !args.includes("--no-sync");
+  let sync;
+  if (shouldSync) {
+    try {
+      await normalizeCatalogArtifacts(repoRoot, catalog);
+      sync = await syncCatalog(repoRoot, config, catalog);
+      await writeCatalog(repoRoot, catalog);
+    } catch (error) {
+      throw new Error(`Saved ${skillId} as ${enabled ? "enabled" : "disabled"}, but sync failed. Run skillctl sync to retry. ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  const note = "Applies to all configured targets. Shared ~/.agents/skills transport copies may remain; existing sessions may retain loaded skills.";
+  if (args.includes("--json")) {
+    console.log(JSON.stringify({ skillId, enabled, changed, synced: shouldSync, targets: skill.targets, sync, note }, null, 2));
+  } else {
+    console.log(`${skillId}: ${enabled ? "enabled" : "disabled"}${changed ? "" : " (already set)"}. ${shouldSync ? "Catalog synced." : "Saved only; run skillctl sync to apply."}`);
+    console.log(note);
+  }
 }
 
 async function repoRootFromCwd(): Promise<string> {
@@ -137,6 +176,7 @@ async function writeManifestSchemas(repoRoot: string): Promise<void> {
             origin_kind: { enum: ["local-authored", "imported-upstream", "derived-from-upstream"] },
             hash: { type: "string" },
             managed: { type: "boolean" },
+            enabled: { type: "boolean" },
             targets: { type: "array", items: { enum: ["claude-code", "codex", "pi", "hermes", "opencode"] } },
             canonical_rel_path: { type: "string" },
             aliases: { type: "array", items: { type: "string" } },
@@ -581,6 +621,12 @@ export async function runCli(argv: string[], cwd = process.cwd()): Promise<numbe
     case "sync": {
       await ensureInitialized(repoRoot);
       await syncCommand(repoRoot);
+      return 0;
+    }
+    case "enable":
+    case "disable": {
+      await ensureInitialized(repoRoot);
+      await toggleCommand(repoRoot, args, command === "enable");
       return 0;
     }
     case "bootstrap-upstream": {
