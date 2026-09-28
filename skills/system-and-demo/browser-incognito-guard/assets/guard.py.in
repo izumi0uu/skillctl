@@ -1,0 +1,420 @@
+#!/usr/bin/env python3
+# Managed by browser-incognito-guard
+"""Terminal guard for __APP_NAME__'s IncognitoModeAvailability preference."""
+
+from __future__ import annotations
+
+import argparse
+import getpass
+import hashlib
+import os
+import re
+import subprocess
+import sys
+import termios
+import time
+import tty
+from pathlib import Path
+
+
+BUNDLE_ID = "__BUNDLE_ID__"
+APP_ID = BUNDLE_ID
+APP_PATH = Path("__APP_PATH__")
+POLICY_KEY = "IncognitoModeAvailability"
+KEYCHAIN_SERVICE = "__KEYCHAIN_SERVICE__"
+LOCK_SERVICE = "__KEYCHAIN_SERVICE__.lock"
+ACCOUNT = os.environ.get("USER") or os.environ.get("LOGNAME") or "__COMMAND__"
+LOCK_SECONDS = 30 * 60
+SECRET_PATTERN = re.compile(r"[0-9]{50}\Z", re.ASCII)
+
+
+def run(command: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        check=check,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def is_valid_secret(value: str) -> bool:
+    return SECRET_PATTERN.fullmatch(value) is not None
+
+
+def secret_digest(value: str) -> str:
+    return hashlib.sha256(value.encode("ascii")).hexdigest()
+
+
+def keychain_read(service: str) -> str | None:
+    result = run(
+        [
+            "/usr/bin/security",
+            "find-generic-password",
+            "-a",
+            ACCOUNT,
+            "-s",
+            service,
+            "-w",
+        ]
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def keychain_write(service: str, value: str) -> None:
+    result = run(
+        [
+            "/usr/bin/security",
+            "add-generic-password",
+            "-U",
+            "-a",
+            ACCOUNT,
+            "-s",
+            service,
+            "-w",
+            value,
+        ]
+    )
+    if result.returncode != 0:
+        message = result.stderr.strip() or "security add-generic-password failed"
+        raise RuntimeError(message)
+
+
+def keychain_delete(service: str) -> None:
+    run(
+        [
+            "/usr/bin/security",
+            "delete-generic-password",
+            "-a",
+            ACCOUNT,
+            "-s",
+            service,
+        ]
+    )
+
+
+def read_expected_digest() -> str | None:
+    digest = keychain_read(KEYCHAIN_SERVICE)
+    return digest if digest and re.fullmatch(r"[0-9a-f]{64}", digest) else None
+
+
+def save_expected_digest(digest: str) -> None:
+    keychain_write(KEYCHAIN_SERVICE, digest)
+
+
+def read_lock_until() -> float | None:
+    value = keychain_read(LOCK_SERVICE)
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def set_lock_until(timestamp: float) -> None:
+    keychain_write(LOCK_SERVICE, str(timestamp))
+
+
+def clear_cooldown() -> None:
+    keychain_delete(LOCK_SERVICE)
+
+
+def cooldown_remaining() -> int:
+    lock_until = read_lock_until()
+    if lock_until is None:
+        return 0
+    remaining = int(lock_until - time.time())
+    if remaining <= 0:
+        clear_cooldown()
+        return 0
+    return remaining
+
+
+def set_policy(value: int) -> None:
+    result = run(
+        [
+            "/usr/bin/defaults",
+            "write",
+            BUNDLE_ID,
+            POLICY_KEY,
+            "-int",
+            str(value),
+        ]
+    )
+    if result.returncode != 0:
+        message = result.stderr.strip() or "defaults write failed"
+        raise RuntimeError(message)
+
+
+def current_policy() -> str:
+    result = run(["/usr/bin/defaults", "read", BUNDLE_ID, POLICY_KEY])
+    if result.returncode != 0:
+        return "unset"
+    return result.stdout.strip()
+
+
+def app_running() -> bool:
+    return run(["/usr/bin/pgrep", "-x", "__PROCESS_NAME__"]).returncode == 0
+
+
+def quit_app() -> None:
+    run(
+        [
+            "/usr/bin/osascript",
+            "-e",
+            f'tell application id "{APP_ID}" to quit',
+        ]
+    )
+
+
+def wait_for_app_to_stop(timeout_seconds: float = 20.0) -> bool:
+    deadline = time.monotonic() + timeout_seconds
+    while app_running() and time.monotonic() < deadline:
+        time.sleep(0.25)
+    return not app_running()
+
+
+def lock() -> int:
+    set_policy(1)
+    if app_running():
+        quit_app()
+        if not wait_for_app_to_stop():
+            print(
+                "__APP_NAME__ 没有在 20 秒内退出，锁定状态已写入，但请手动退出它。",
+                file=sys.stderr,
+            )
+            return 1
+    print("已锁定：__APP_NAME__ 无痕模式不可用。")
+    return 0
+
+
+def configure_secret() -> int:
+    first = getpass.getpass("设置 50 位数字口令（不回显）：")
+    if not is_valid_secret(first):
+        print("口令必须恰好是 50 位 ASCII 数字。", file=sys.stderr)
+        return 2
+
+    second = getpass.getpass("再次输入以确认：")
+    if first != second:
+        print("两次输入不一致，未保存。", file=sys.stderr)
+        return 2
+
+    save_expected_digest(secret_digest(first))
+    print("已保存校验摘要；50 位原口令不会写入脚本或普通配置文件。")
+    return 0
+
+
+def capture_clipboard() -> bytes | None:
+    result = subprocess.run(
+        ["/usr/bin/pbpaste"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    return result.stdout if result.returncode == 0 else None
+
+
+def replace_clipboard(value: bytes) -> None:
+    subprocess.run(
+        ["/usr/bin/pbcopy"],
+        input=value,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+def render_progress(count: int) -> None:
+    bar = "#" * count + "-" * (50 - min(count, 50))
+    sys.stdout.write(f"\r\033[2KHash: [{bar}] {count}/50")
+    sys.stdout.flush()
+
+
+def read_hash_tui(expected: str) -> bool:
+    """Read exactly 50 manually typed digits without accepting paste input."""
+
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        print("守卫必须在真实终端中运行，拒绝非交互输入。", file=sys.stderr)
+        return False
+
+    original_clipboard = capture_clipboard()
+    fd = sys.stdin.fileno()
+    original_terminal = termios.tcgetattr(fd)
+    entered: list[str] = []
+    reason = "length"
+
+    sys.stdout.write("\033[2J\033[H")
+    sys.stdout.write("__APP_NAME__ Incognito Guard\n")
+    sys.stdout.write("输入正确的 50 位数字 hash；不接受粘贴。\n")
+    sys.stdout.write("输错一次将锁定 30 分钟。\n\n")
+    sys.stdout.flush()
+
+    try:
+        # Bracketed paste makes most terminal emulators send an escape marker;
+        # any escape byte is rejected below. The clipboard is also emptied for
+        # the duration, so Cmd/Ctrl-V cannot insert the previous clipboard text.
+        if original_clipboard is not None:
+            replace_clipboard(b"")
+        tty.setraw(fd, termios.TCSANOW)
+        sys.stdout.write("\033[?2004h")
+        render_progress(0)
+
+        while True:
+            byte = os.read(fd, 1)
+            if not byte:
+                reason = "eof"
+                break
+
+            value = byte[0]
+            if value == 3:  # Ctrl-C
+                raise KeyboardInterrupt
+            if value == 27:  # Escape, including bracketed-paste start
+                reason = "paste"
+                termios.tcflush(fd, termios.TCIFLUSH)
+                break
+            if value in (10, 13):  # Enter
+                reason = "length" if len(entered) != 50 else "value"
+                break
+            if value in (8, 127):  # Backspace/Delete
+                if entered:
+                    entered.pop()
+                    render_progress(len(entered))
+                continue
+            if 48 <= value <= 57 and len(entered) < 50:
+                entered.append(chr(value))
+                render_progress(len(entered))
+                continue
+
+            reason = "invalid"
+            termios.tcflush(fd, termios.TCIFLUSH)
+            break
+    finally:
+        sys.stdout.write("\033[?2004l")
+        termios.tcsetattr(fd, termios.TCSADRAIN, original_terminal)
+        if original_clipboard is not None:
+            replace_clipboard(original_clipboard)
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+    candidate = "".join(entered)
+    if reason == "paste":
+        print("检测到粘贴或 Escape 输入，验证失败。", file=sys.stderr)
+        return False
+    if reason in {"invalid", "eof"}:
+        print("检测到非法输入，验证失败。", file=sys.stderr)
+        return False
+    if not is_valid_secret(candidate) or secret_digest(candidate) != expected:
+        print("hash 不正确，验证失败。", file=sys.stderr)
+        return False
+    return True
+
+
+def verify_gate() -> int:
+    expected = read_expected_digest()
+    if expected is None:
+        print("尚未设置 50 位口令：先运行 `__COMMAND__ set-code`。", file=sys.stderr)
+        return 2
+
+    remaining = cooldown_remaining()
+    if remaining:
+        print(f"守卫仍在冷却：还需等待 {max(1, (remaining + 59) // 60)} 分钟。", file=sys.stderr)
+        return 1
+
+    if read_hash_tui(expected):
+        clear_cooldown()
+        print("验证成功，允许执行开启无痕模式的命令。")
+        return 0
+
+    try:
+        set_lock_until(time.time() + LOCK_SECONDS)
+    finally:
+        # A Keychain write error must not prevent the policy lock attempt.
+        set_policy(1)
+        if app_running():
+            quit_app()
+            wait_for_app_to_stop()
+    print("验证失败：已锁定无痕模式 30 分钟。", file=sys.stderr)
+    return 1
+
+
+def unlock_session() -> int:
+    if verify_gate() != 0:
+        return 1
+    if not APP_PATH.exists():
+        print(f"找不到 __APP_NAME__：{APP_PATH}", file=sys.stderr)
+        return 1
+
+    if app_running():
+        quit_app()
+        if not wait_for_app_to_stop():
+            print("__APP_NAME__ 没有在 20 秒内退出，未解锁。", file=sys.stderr)
+            return 1
+
+    unlocked = False
+    try:
+        set_policy(0)
+        unlocked = True
+        print("__APP_NAME__ 已临时解锁；关闭 __APP_NAME__ 后会自动重新锁定。")
+        result = run(["/usr/bin/open", "-W", "-a", str(APP_PATH)])
+        if result.returncode != 0:
+            print(result.stderr.strip() or "open failed", file=sys.stderr)
+            return 1
+        return 0
+    finally:
+        if unlocked:
+            set_policy(1)
+            if app_running():
+                quit_app()
+                wait_for_app_to_stop()
+            print("会话结束，已重新锁定无痕模式。")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="__COMMAND__",
+        description="拦截 __APP_NAME__ 的无痕模式开启命令，并要求手打一个 50 位数字 hash。",
+    )
+    parser.add_argument(
+        "command",
+        choices=("set-code", "lock", "unlock", "gate", "status"),
+        help=(
+            "set-code 设置口令；lock 立即锁定；unlock 启动受保护会话；"
+            "gate 供 defaults 包装器调用；status 查看当前值。"
+        ),
+    )
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    try:
+        if args.command == "set-code":
+            return configure_secret()
+        if args.command == "lock":
+            return lock()
+        if args.command == "unlock":
+            return unlock_session()
+        if args.command == "gate":
+            return verify_gate()
+        print(f"当前用户级策略值：{current_policy()}（1=禁用，0=允许）")
+        remaining = cooldown_remaining()
+        if remaining:
+            print(f"冷却剩余：{max(1, (remaining + 59) // 60)} 分钟")
+        return 0
+    except KeyboardInterrupt:
+        print("\n已取消；无痕模式保持锁定。", file=sys.stderr)
+        try:
+            lock()
+            return 130
+        except RuntimeError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+    except (OSError, RuntimeError) as exc:
+        print(f"__COMMAND__: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

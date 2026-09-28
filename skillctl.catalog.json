@@ -124,6 +124,23 @@
       "canonical_rel_path": "skills/domain-aws-thrive/aws-rds-dump-restore"
     },
     {
+      "skill_id": "browser-incognito-guard",
+      "category": "system-and-demo",
+      "visibility": "public",
+      "source_kind": "local-public",
+      "origin_kind": "local-authored",
+      "hash": "97ba3c4e05270f020959dbf8760bfee6ce1ef169",
+      "managed": true,
+      "targets": [
+        "claude-code",
+        "codex",
+        "pi",
+        "hermes",
+        "opencode"
+      ],
+      "canonical_rel_path": "skills/system-and-demo/browser-incognito-guard"
+    },
+    {
       "skill_id": "chrome-web-store-publish",
       "category": "deployment-and-platform",
       "visibility": "public",

@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+# Managed by browser-incognito-guard
+"""Require the browser guard for supported incognito enable commands."""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+GUARDS = __GUARDS__
+
+
+def main() -> int:
+    arguments = sys.argv[1:]
+    if (
+        len(arguments) == 5
+        and arguments[0] == "write"
+        and arguments[1] in GUARDS
+        and arguments[2:] == ["IncognitoModeAvailability", "-int", "0"]
+    ):
+        guard = Path(__file__).resolve().parent / GUARDS[arguments[1]]
+        result = subprocess.run([str(guard), "gate"], check=False)
+        if result.returncode != 0:
+            return result.returncode
+
+    os.execv("/usr/bin/defaults", ["defaults", *arguments])
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

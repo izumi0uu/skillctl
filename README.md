@@ -259,6 +259,7 @@ This means `~/.agents/skills` is not accidental temporary output. In `skills-cli
 | anyrouter-config | Agent Infra | local-authored | n/a | n/a | n/a | n/a | no |
 | asu | Productivity And Artifacts | imported-upstream | [Hisn00w/ASu-skills](https://github.com/Hisn00w/ASu-skills/tree/d8a803f75fb923be08d5ad18e897203d9e393bb1/skills/asu) | [skills/asu](https://github.com/Hisn00w/ASu-skills/tree/d8a803f75fb923be08d5ad18e897203d9e393bb1/skills/asu) | d8a803f75fb923be08d5ad18e897203d9e393bb1 | [open](https://github.com/Hisn00w/ASu-skills/tree/d8a803f75fb923be08d5ad18e897203d9e393bb1/skills/asu) | no |
 | aws-rds-dump-restore | Domain AWS-Thrive | local-authored | n/a | n/a | n/a | n/a | no |
+| browser-incognito-guard | System And Demo | local-authored | n/a | n/a | n/a | n/a | no |
 | chrome-web-store-publish | Deployment And Platform | local-authored | n/a | n/a | n/a | n/a | no |
 | claude-design | Frontend And Design | imported-upstream | [jiji262/claude-design-skill](https://github.com/jiji262/claude-design-skill) | [.](https://github.com/jiji262/claude-design-skill) | f1ac87c3decb175d99a269f23ca84860786a598b | [open](https://github.com/jiji262/claude-design-skill) | no |
 | codex-config-health | Agent Infra | local-authored | n/a | n/a | n/a | n/a | no |
@@ -346,5 +347,5 @@ Canonical skill sources live under `skills/` and are grouped by usage-oriented c
 | Deployment And Platform | Deployment, cloud platform, and environment optimization workflows | `chrome-web-store-publish`, `deploy-to-vercel`, `github-issues-dashboard-ops`, `tailscale-vps-ops`, `vercel-cli-with-tokens`, `vercel-optimize` |
 | Productivity And Artifacts | General artifact creation and productivity-oriented tool workflows | `asu`, `excalidraw-diagram`, `generate-images-via-relay`, `google-sheets-editor`, `llm-intern-skill`, `trellis-design-doc-generator`, `writing-for-agents` |
 | Domain AWS-Thrive | AWS-Thrive and related domain-specific operational workflows | `aws-rds-dump-restore`, `recruitflow-project-ops`, `thrive-billing-claim-cleanup-diagnostics`, `thrive-local-db-restore-login`, `thrive-therapy-session-diagnostics` |
-| System And Demo | Portable demos, fixtures, and system validation helpers | `local-portable-demo`, `macos-proxy-handoff`, `maintain-mac-dev-environment` |
+| System And Demo | Portable demos, fixtures, and system validation helpers | `browser-incognito-guard`, `local-portable-demo`, `macos-proxy-handoff`, `maintain-mac-dev-environment` |
 <!-- skillctl:managed-skill-taxonomy:end -->
