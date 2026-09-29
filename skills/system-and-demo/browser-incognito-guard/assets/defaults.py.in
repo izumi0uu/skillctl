@@ -13,15 +13,43 @@ from pathlib import Path
 GUARDS = __GUARDS__
 
 
+def guarded_domain(arguments: list[str]) -> str | None:
+    args = arguments
+    if args[:1] == ["-currentHost"]:
+        args = args[1:]
+    elif args[:1] == ["-host"]:
+        args = args[2:]
+    if len(args) < 2:
+        return None
+    action, domain, *values = args
+    if domain not in GUARDS:
+        return None
+    if action == "import":
+        return domain
+    if action == "delete":
+        return domain if not values or values[0] == "IncognitoModeAvailability" else None
+    if action != "write" or not values:
+        return None
+    # Whole-domain replacement can remove the policy along with other settings.
+    if len(values) == 1:
+        return domain
+    if values[0] != "IncognitoModeAvailability":
+        return None
+    # Only an explicit integer disabling incognito is safe without verification.
+    if len(values) == 3 and values[1] in ("-int", "-integer"):
+        try:
+            if int(values[2], 10) == 1:
+                return None
+        except ValueError:
+            pass
+    return domain
+
+
 def main() -> int:
     arguments = sys.argv[1:]
-    if (
-        len(arguments) == 5
-        and arguments[0] == "write"
-        and arguments[1] in GUARDS
-        and arguments[2:] == ["IncognitoModeAvailability", "-int", "0"]
-    ):
-        guard = Path(__file__).resolve().parent / GUARDS[arguments[1]]
+    domain = guarded_domain(arguments)
+    if domain is not None:
+        guard = Path(__file__).resolve().parent / GUARDS[domain]
         result = subprocess.run([str(guard), "gate"], check=False)
         if result.returncode != 0:
             return result.returncode

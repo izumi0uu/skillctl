@@ -37,6 +37,50 @@ class GuardTests(unittest.TestCase):
                 self.assertEqual(run.call_args.args[0], [str(ROOT / name), 'gate'])
                 execute.assert_not_called()
 
+    def test_policy_removal_and_equivalent_writes_require_verification(self):
+        policy = 'IncognitoModeAvailability'
+        for domain in wrapper.GUARDS:
+            commands = [
+                ['write', domain, policy, '-integer', '0'],
+                ['write', domain, policy, '0'],
+                ['write', domain, policy, '-int', '+0'],
+                ['write', domain, policy, '-string', '0'],
+                ['write', domain, policy, '-int', '2'],
+                ['delete', domain, policy],
+                ['delete', domain],
+                ['write', domain, '{OtherSetting = 1;}'],
+                ['import', domain, 'settings.plist'],
+            ]
+            for command in commands:
+                for prefix in ([], ['-currentHost'], ['-host', 'localhost']):
+                    args = ['defaults', *prefix, *command]
+                    with self.subTest(args=args), patch.object(wrapper.sys, 'argv', args), patch.object(wrapper.subprocess, 'run', return_value=subprocess.CompletedProcess([], 2)), patch.object(wrapper.os, 'execv') as execute:
+                        self.assertEqual(wrapper.main(), 2)
+                        execute.assert_not_called()
+
+    def test_verified_policy_changes_preserve_original_arguments(self):
+        for command in [
+            ['write', 'com.google.Chrome', 'IncognitoModeAvailability', '-integer', '0'],
+            ['delete', 'com.google.Chrome', 'IncognitoModeAvailability'],
+        ]:
+            args = ['defaults', *command]
+            with self.subTest(args=args), patch.object(wrapper.sys, 'argv', args), patch.object(wrapper.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)), patch.object(wrapper.os, 'execv') as execute:
+                wrapper.main()
+                execute.assert_called_once_with('/usr/bin/defaults', args)
+
+    def test_lock_aliases_and_unrelated_settings_do_not_prompt(self):
+        for command in [
+            ['write', 'com.google.Chrome', 'IncognitoModeAvailability', '-integer', '1'],
+            ['-currentHost', 'write', 'com.google.Chrome', 'IncognitoModeAvailability', '-int', '1'],
+            ['write', 'com.google.Chrome', 'OtherSetting', '-int', '0'],
+            ['delete', 'com.google.Chrome', 'OtherSetting'],
+        ]:
+            args = ['defaults', *command]
+            with self.subTest(args=args), patch.object(wrapper.sys, 'argv', args), patch.object(wrapper.subprocess, 'run') as run, patch.object(wrapper.os, 'execv') as execute:
+                wrapper.main()
+                run.assert_not_called()
+                execute.assert_called_once_with('/usr/bin/defaults', args)
+
     def test_verified_write(self):
         args = ['defaults', 'write', 'com.google.Chrome', 'IncognitoModeAvailability', '-int', '0']
         with patch.object(wrapper.sys, 'argv', args), patch.object(wrapper.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)), patch.object(wrapper.os, 'execv') as execute:
