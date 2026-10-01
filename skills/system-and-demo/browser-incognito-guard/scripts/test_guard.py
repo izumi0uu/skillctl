@@ -163,10 +163,6 @@ class GuardTests(unittest.TestCase):
             self.assertEqual(victim.read_text(), 'keep me')
             self.assertFalse((home / '.local/bin/chrome-guard').exists())
 
-    def test_session_relocks_when_open_fails(self):
-        with patch.object(guard, 'verify_gate', return_value=0), patch.object(guard, 'APP_PATH', ROOT), patch.object(guard, 'app_running', return_value=False), patch.object(guard, 'set_policy') as policy, patch.object(guard, 'run', return_value=subprocess.CompletedProcess([], 1, '', 'simulated open failure')):
-            self.assertEqual(guard.unlock_session(), 1)
-            self.assertEqual([c.args[0] for c in policy.call_args_list], [0, 1])
 
     def test_interrupt_never_allows_wrapper_to_continue(self):
         with patch.object(guard.sys, 'argv', ['chrome-guard', 'gate']), patch.object(guard, 'verify_gate', side_effect=KeyboardInterrupt), patch.object(guard, 'lock', return_value=0) as lock:

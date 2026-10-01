@@ -34,17 +34,18 @@ The code must contain exactly 50 ASCII digits. Setup asks twice without echo. On
 | Action | Chrome command | Effect |
 | --- | --- | --- |
 | Disable incognito | `chrome-guard lock` | Writes policy 1 and quits Chrome |
-| Temporary session | `chrome-guard unlock` | Verifies code, restarts Chrome with policy 0, restores policy 1 when the session ends |
 | Persistent enable | `defaults write com.google.Chrome IncognitoModeAvailability -int 0` | Runs the guard, then writes policy 0 after successful verification |
 | Inspect | `chrome-guard status` | Reads the user policy and remaining cooldown |
 
-For Ego use `ego-guard` and bundle ID `com.citrolabs.ego.lite`. Before a requested live lock or unlock, explain that it quits/restarts the browser and may interrupt unsaved work. Package installation or testing alone does not imply a live lock/unlock request.
+For Ego use `ego-guard` and bundle ID `com.citrolabs.ego.lite`. Locking either browser may quit the running browser; save work first.
 
 An unset code blocks the enable command and prints the appropriate `set-code` instruction. Verification requires a terminal and manual entry followed by Enter. It rejects bracketed paste, temporarily clears then restores the plain-text clipboard, and imposes a 30-minute cooldown after failed verification. Failure also writes policy 1 and attempts to quit the selected browser. Backspace is supported.
 
+The command surface intentionally has no `unlock` operation. Keep the policy at `1` to disable incognito; enabling it requires the protected `defaults` wrapper and a successful gate verification.
+
 The wrapper verifies policy writes unless they explicitly set integer `1` using `-int` or `-integer`. This includes `-integer 0`, untyped values, and forced-incognito value `2`. Deleting the policy or browser domain, importing the domain, and whole-domain writes also require verification because they can remove the restriction. Leading `-currentHost` and `-host <hostname>` options are handled. Unrelated keys and read commands pass through.
 
-`unlock` must keep running in the terminal until the browser exits. Its cleanup uses a `finally` block; force-killing the guard or a machine crash can skip relocking. A persistent enable command does not relock automatically and may require restarting the browser for its policy to take effect.
+The explicit lock command writes policy `1` and quits the selected browser. A restart may be required for the browser to apply the policy.
 
 ## Verify And Troubleshoot
 

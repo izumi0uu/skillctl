@@ -339,36 +339,6 @@ def verify_gate() -> int:
     return 1
 
 
-def unlock_session() -> int:
-    if verify_gate() != 0:
-        return 1
-    if not APP_PATH.exists():
-        print(f"找不到 __APP_NAME__：{APP_PATH}", file=sys.stderr)
-        return 1
-
-    if app_running():
-        quit_app()
-        if not wait_for_app_to_stop():
-            print("__APP_NAME__ 没有在 20 秒内退出，未解锁。", file=sys.stderr)
-            return 1
-
-    unlocked = False
-    try:
-        set_policy(0)
-        unlocked = True
-        print("__APP_NAME__ 已临时解锁；关闭 __APP_NAME__ 后会自动重新锁定。")
-        result = run(["/usr/bin/open", "-W", "-a", str(APP_PATH)])
-        if result.returncode != 0:
-            print(result.stderr.strip() or "open failed", file=sys.stderr)
-            return 1
-        return 0
-    finally:
-        if unlocked:
-            set_policy(1)
-            if app_running():
-                quit_app()
-                wait_for_app_to_stop()
-            print("会话结束，已重新锁定无痕模式。")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -378,9 +348,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "command",
-        choices=("set-code", "lock", "unlock", "gate", "status"),
+        choices=("set-code", "lock", "gate", "status"),
         help=(
-            "set-code 设置口令；lock 立即锁定；unlock 启动受保护会话；"
+            "set-code 设置口令；lock 立即锁定；"
             "gate 供 defaults 包装器调用；status 查看当前值。"
         ),
     )
@@ -394,8 +364,6 @@ def main() -> int:
             return configure_secret()
         if args.command == "lock":
             return lock()
-        if args.command == "unlock":
-            return unlock_session()
         if args.command == "gate":
             return verify_gate()
         print(f"当前用户级策略值：{current_policy()}（1=禁用，0=允许）")
